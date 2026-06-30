@@ -1,0 +1,35 @@
+#!/bin/bash
+
+# 允许的分支名格式：
+#   main
+#   feature/xxx
+#   fix/xxx
+#   docs/xxx
+#   refactor/xxx
+#   chore/xxx
+
+branch=$(git symbolic-ref --short HEAD)
+
+# main 分支直接放行
+if [ "$branch" = "main" ]; then
+  exit 0
+fi
+
+# 检查是否符合 类型/描述 的格式
+pattern="^(feature|fix|docs|refactor|chore)\/[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
+
+if ! echo "$branch" | grep -qE "$pattern"; then
+  echo ""
+  echo "❌ 分支名不符合规范: $branch"
+  echo ""
+  echo "正确格式: 类型/简短描述"
+  echo "  允许的类型: feature, fix, docs, refactor, chore"
+  echo "  描述部分: 小写字母、数字、连字符（-），不能以连字符开头或结尾"
+  echo ""
+  echo "示例:"
+  echo "  feature/add-cart"
+  echo "  fix/order-calc-error"
+  echo "  docs/update-readme"
+  echo ""
+  exit 1
+fi

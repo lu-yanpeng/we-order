@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# 读取 commit 消息的第一行（标题）
+title=$(head -n 1 "$1")
+
+# 允许的类型
+types="feat|fix|docs|style|refactor|chore"
+
+# 格式：类型(可选范围): 描述
+# 示例：feat: 添加购物车  或  feat(cart): 添加购物车
+pattern="^($types)(\([a-z][a-z0-9-]*\))?: .+$"
+
+if ! echo "$title" | grep -qE "$pattern"; then
+  echo ""
+  echo "❌ Commit 消息不符合规范: $title"
+  echo ""
+  echo "正确格式: <类型>: <描述>  或  <类型>(<范围>): <描述>"
+  echo "  允许的类型: feat, fix, docs, style, refactor, chore"
+  echo "  范围（可选）: 小写字母、数字、连字符"
+  echo ""
+  echo "示例:"
+  echo "  feat: 添加购物车功能"
+  echo "  fix(order): 修复订单金额计算错误"
+  echo "  chore: add github templates"
+  echo ""
+  exit 1
+fi
