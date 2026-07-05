@@ -133,8 +133,9 @@ graph TD
 {root}/
 ├── pages/                     # 主包页面（仅首屏必需）
 │   └── home/                  # 首页（点餐 tab + 订单列表 tab）
-├── sub-pages/                 # 页面分包（按需加载，pages.json subPackages 配置）
-│   ├── order-confirm/         # 确认订单页
+├── sub-order-confirm/         # 分包：确认订单（按需加载，pages.json subPackages 配置）
+│   └── order-confirm/         # 确认订单页
+├── sub-order-detail/          # 分包：订单详情（按需加载，pages.json subPackages 配置）
 │   └── order-detail/          # 订单详情页
 ├── sub-components/            # 组件分包（占位组件方式按需加载）
 │   └── checkout-bar/          # 结算栏组件
@@ -151,8 +152,8 @@ graph TD
 
 ```mermaid
 graph TD
-    home["首页 (pages/home)"] -->|navigateTo| confirm["确认订单页 (sub-pages/order-confirm)"]
-    home -->|navigateTo| detail["订单详情页 (sub-pages/order-detail)"]
+    home["首页 (pages/home)"] -->|navigateTo| confirm["确认订单页 (sub-order-confirm/order-confirm)"]
+    home -->|navigateTo| detail["订单详情页 (sub-order-detail/order-detail)"]
     confirm -->|模拟支付成功| home
     confirm -->|navigateBack| home
     detail -->|navigateBack| home
@@ -168,13 +169,13 @@ graph TD
 | FR-4 加入购物袋 | composable + Pinia store | AD-1, AD-6, AD-8 |
 | FR-5 结算栏占位组件加载 | `sub-components/checkout-bar/` + composable + 占位组件配置 | AD-4 |
 | FR-6 购物车抽屉 | 组件（页面内） + composable | AD-5, AD-1, AD-8 |
-| FR-7 就餐方式切换 | `sub-pages/order-confirm/` + composable | AD-3, 价格计算约定 |
-| FR-8 备注偏好输入 | `sub-pages/order-confirm/` | AD-3 |
-| FR-9 确认订单页信息展示 | `sub-pages/order-confirm/` + Pinia store | AD-1, AD-6, AD-8 |
+| FR-7 就餐方式切换 | `sub-order-confirm/order-confirm/` + composable | AD-3, 价格计算约定 |
+| FR-8 备注偏好输入 | `sub-order-confirm/order-confirm/` | AD-3 |
+| FR-9 确认订单页信息展示 | `sub-order-confirm/order-confirm/` + Pinia store | AD-1, AD-6, AD-8 |
 | FR-10 模拟支付 | composable + Pinia store + API 层 | AD-1, AD-7, AD-8 |
 | FR-11 订单列表展示 | `pages/home/` 订单 tab + composable | AD-1 |
 | FR-12 订单状态 UI | 组件（页面内） + `mock/` | AD-5 |
-| FR-13 订单详情页 | `sub-pages/order-detail/` + composable | AD-1, AD-3 |
+| FR-13 订单详情页 | `sub-order-detail/order-detail/` + composable | AD-1, AD-3 |
 | FR-14 再来一单 | composable + Pinia store | AD-1, AD-6, AD-8 |
 
 ## Deferred
