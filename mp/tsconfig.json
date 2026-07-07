@@ -1,12 +1,12 @@
 {
   "extends": "@vue/tsconfig/tsconfig.json",
   "compilerOptions": {
-    "sourceMap": true,    
+    "sourceMap": true,
     "paths": {
       "@/*": ["./src/*"]
     },
     "lib": ["esnext", "dom"],
-    "types": ["@dcloudio/types", "@uni-helper/uni-app-types"]
+    "types": ["@dcloudio/types", "@uni-helper/uni-app-types", "@tdesign/uniapp/global",]
   },
   "vueCompilerOptions": {
     "plugins": ["@uni-helper/uni-app-types/volar-plugin"]

@@ -6,6 +6,10 @@
     </view>
     <view>
       <text class="text-3xl font-bold underline text-blue-600">测试</text>
+      <br>
+      <t-button theme="danger" ghost size="large" custom-style="margin-right: 16px;"> 幽灵按钮 </t-button>
+      <br>
+      <t-button theme="primary" size="large" custom-style="margin-right: 16px;"> 填充按钮 </t-button>
     </view>
 
     <view>

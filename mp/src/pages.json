@@ -27,8 +27,13 @@
   ],
   "globalStyle": {
     "navigationBarTextStyle": "black",
-    "navigationBarTitleText": "uni-app",
-    "navigationBarBackgroundColor": "#F8F8F8",
-    "backgroundColor": "#F8F8F8"
+    "navigationBarTitleText": "We-Order",
+    "navigationBarBackgroundColor": "#f2f0eb",
+    "backgroundColor": "#f2f0eb"
+  },
+  "easycom": {
+    "custom": {
+      "^t-(.*)": "@tdesign/uniapp/$1/$1.vue"
+    }
   }
 }

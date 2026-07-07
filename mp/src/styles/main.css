@@ -1,0 +1,7 @@
+@import 'tailwindcss';
+@import './theme.css';
+@source "../**/*.{html,js,ts,jsx,tsx,vue}";
+@source not "../uni_modules";
+@source not "../../node_modules";
+@source not "../dist";
+@source not "../unpackage";
