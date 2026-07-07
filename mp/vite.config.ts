@@ -1,6 +1,7 @@
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import type { ResolvedConfig } from 'vite'
 import uni from '@dcloudio/vite-plugin-uni'
 import { defineConfig } from 'vite'
 import { WeappTailwindcss } from 'weapp-tailwindcss/vite'
@@ -20,36 +21,23 @@ const projectRoot = dirname(fileURLToPath(import.meta.url))
  * - 即使在分包中不写任何样式，打包结果也不包含wxss的情况下，微信开发者工具
  *   还是会报错
  *
- * 该插件在每次打包写入结束后扫描 dist 目录下的 app.json，
+ * 该插件在每次打包写入结束后，从 Vite 解析后的 outDir 读取 app.json，
  * 解析所有页面（含分包）路径，对不存在对应 .wxss 的页面补创建空文件。
  * 一次配置，后续新增分包页面自动覆盖，无需额外维护。
  */
 function ensurePageWxss() {
+  let outDir: string
   return {
     name: 'ensure-page-wxss',
     enforce: 'post' as const,
+    configResolved(config: ResolvedConfig) {
+      outDir = config.build.outDir
+    },
     writeBundle() {
-      // 递归搜索 dist 目录下的 app.json 以适配 uni-app 多平台输出路径
-      function findAppJson(dir: string): { path: string; dir: string } | null {
-        try {
-          for (const entry of readdirSync(dir, { withFileTypes: true })) {
-            if (entry.isFile() && entry.name === 'app.json') {
-              return { path: join(dir, entry.name), dir }
-            }
-            if (entry.isDirectory() && !entry.name.startsWith('.')) {
-              const found = findAppJson(join(dir, entry.name))
-              if (found) return found
-            }
-          }
-        } catch {}
-        return null
-      }
+      const appJsonPath = join(outDir, 'app.json')
+      if (!existsSync(appJsonPath)) return
 
-      const result = findAppJson(resolve(projectRoot, 'dist'))
-      if (!result) return
-
-      const appJson = JSON.parse(readFileSync(result.path, 'utf-8'))
-      // 收集所有页面路径：主包 + 分包
+      const appJson = JSON.parse(readFileSync(appJsonPath, 'utf-8'))
       const pages: string[] = [...(appJson.pages || [])]
       for (const subPkg of appJson.subPackages || appJson.subpackages || []) {
         for (const page of subPkg.pages || []) {
@@ -58,9 +46,8 @@ function ensurePageWxss() {
         }
       }
 
-      // 为缺少 .wxss 的页面创建空文件
       for (const page of pages) {
-        const wxssPath = join(result.dir, `${page}.wxss`)
+        const wxssPath = join(outDir, `${page}.wxss`)
         if (!existsSync(wxssPath)) {
           writeFileSync(wxssPath, '')
         }
