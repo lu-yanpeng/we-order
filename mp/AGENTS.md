@@ -19,9 +19,12 @@
 - `pnpm lint`
 - `pnpm format`
 
+## 样式
+
+项目基于uniapp，长度单位需要使用`rpx`。相关文档在`mp/docs/style.md`，包含tdesign和tailwindcss的一些说明
+
 ## 可参考文档
 
 以下文档按需读取
 
 - 设计文档`mp/docs/DESIGN.md`；项目设计规范，这些规范已经体现在项目原型html中，文档只保留做参考，一般情况下不需要显示读取或修改文档
-- 样式相关`mp/docs/style.md`；tdesign和tailwindcss的一些说明

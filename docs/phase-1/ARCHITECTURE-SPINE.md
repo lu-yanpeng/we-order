@@ -109,6 +109,7 @@ graph TD
 |--------|------|
 | 命名（文件、目录、组件） | 统一使用 kebab-case（小写字母 + 短横线），如 `product-card.vue`、`order-confirm/`、`use-products.ts` |
 | 组件组织 | 每个组件放在以组件名命名的文件夹下，根组件统一命名为 `index.vue`。如 `checkout-bar/index.vue`、`product-card/index.vue`。子组件、样式、类型、测试文件同目录就近放置 |
+| SFC 结构 | 单文件组件的区块顺序固定为 `<script>` → `<template>` → `<style>` |
 | 数据入口 | 参见 AD-1：所有数据读写必须经由 `api/` 层统一入口 |
 | 状态管理 | 参见 AD-6、AD-8：跨组件共享状态用 Pinia，页面内数据用 Composable 内 `ref()`；每个 Store 由一个 Composable 专责写入 |
 | 类型定义 | 共享业务类型（实体、枚举）定义在 `types/` 中；API 层专用的请求/响应类型定义在 `api/` 文件内；TypeScript strict mode 开启 |
