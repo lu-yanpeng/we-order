@@ -21,7 +21,9 @@
 
 ## 样式
 
-项目基于uniapp，长度单位需要使用`rpx`。相关文档在`mp/docs/style.md`，包含tdesign和tailwindcss的一些说明
+项目基于uniapp，长度单位需要使用`rpx`。开发任何组件应该优先考虑tdesing的组件，其次考虑手写。相关文档在`mp/docs/style.md`，包含tdesign和tailwindcss的一些说明
+
+输入样式时，优先使用`styles/main.css`中定义的全局css变量，他是根据`DESIGNS.md`创建的主题样式。
 
 ## 可参考文档
 

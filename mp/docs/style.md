@@ -9,14 +9,18 @@
 
 ## tdesign
 
+> tdesign官网使用SPA页面，AI无法直接获取文档。可以安装官方[MCP工具](https://tdesign.tencent.com/uniapp/mcp)，让AI调用工具查询文档。
+
 组件库参考官方安装教程中的CLI模式安装，以下是安装步骤
-1. 在main.ts中引入基础样式`import '@tdesign/uniapp/theme.less';`，官方推荐使用`.less`文件，它里面使用的`rpx`单位更符合小程序环境。注意这个样式应该在自定义主题的前面导入，不要覆盖自定义主题。
+1. 在main.ts中引入`import './styles/tdesign.less';`，这个文件统一导入了TDesign基础样式和自定义主题。官方推荐使用`.less`文件，它里面使用的`rpx`单位更符合小程序环境。
 2. 在pages.json中注册组件。使用`easycom`方式注册组件，组件中可以通过`t-[组件名]`的方式直接使用，不需要导入。
 3. 在tsconfig.json中添加组件库类型。添加后还需要在env.d.ts中添加对应`<reference>`，否则webstorm可能没有类型提示。
 
-**自定义主题**
+**样式文件结构**
 
-根据DESIGN.md的要求，自定义了tdesign组件库的主题，主题文件在`mp/src/styles/tdesign-theme.less`，这里用less文件主要是为了使用rpx单位。自定义主题在main.ts中引入，注意它应该在基础样式之后引入，这样才能覆盖默认样式。
+- `src/styles/tdesign.less` — 统一入口，先导入官方基础样式，然后通过自定义主题样式覆盖
+
+自定义主题根据DESIGN.md的要求定制，使用less文件主要是为了使用rpx单位。
 
 ## tailwind css v4
 
@@ -27,7 +31,8 @@ uniapp默认不支持tailwindcss，项目通过`weapp-tailwindcss`提供了支�
 
 **自定义主题**
 
-主题文件在`mp/src/styles/theme.css`中，使用rem单位，它会由weapp-tailwindcss自动转换成rpx单位。在main.css中导入。
+应该在main.css创建扩展官方主题主题，但是因为`weapp-tailwindcss`还有一些[问题](https://github.com/sonofmagic/weapp-tailwindcss/issues/978)，
+现在只能先手写css，等待官方修复好后再考虑tailwindcss。
 
 ## uni.scss
 
