@@ -2,6 +2,7 @@
 import { nextTick, onMounted, ref } from 'vue'
 import type { Product } from '@/types/product'
 import ProductCard from './components/product-card/index.vue'
+import CheckoutBar from '@/sub-components/checkout-bar/index.vue'
 
 // 顶栏 Tab ↔ swiper 双向同步
 const activeTab = ref('menu')
@@ -474,6 +475,7 @@ onMounted(() => {
         </view>
       </swiper-item>
     </swiper>
+    <checkout-bar />
   </view>
 </template>
 

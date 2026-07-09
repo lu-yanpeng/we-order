@@ -3,7 +3,10 @@
     {
       "path": "pages/home/index",
       "style": {
-        "navigationBarTitleText": "经典点单"
+        "navigationBarTitleText": "经典点单",
+        "componentPlaceholder": {
+          "checkout-bar": "view"
+        }
       }
     }
   ],
@@ -23,6 +26,10 @@
           "path": "order-detail/index"
         }
       ]
+    },
+    {
+      "root": "sub-components",
+      "pages": []
     }
   ],
   "globalStyle": {

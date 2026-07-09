@@ -16,122 +16,43 @@
 - 商品列表无滚动条：`:enhanced="true"` + `:show-scrollbar="false"`
 - tabs 文字与侧边栏居中对齐：`custom-style` 设置 CSS 变量 `--td-spacer-2` + `padding-left`
 
+## 2026-07-10 购物栏分包组件
+
+### 完成内容
+
+#### sub-components/checkout-bar/index.vue
+- 创建分包组件，使用 `componentPlaceholder` + `lazyCodeLoading` 实现按需加载
+- UI 结构：左侧合计价格 + 明细箭头（t-icon），右侧金色结算按钮
+- 底部安全区适配：通过 `uni.getWindowInfo().safeAreaInsets.bottom` 动态设置 padding-bottom，兼容 iOS/Android
+
+#### 配置变更
+- `pages.json`：新增 `sub-components` 分包（`pages: []`），首页 style 添加 `componentPlaceholder` 映射
+- `manifest.json`：`mp-weixin` 添加 `lazyCodeLoading: "requiredComponents"`
+- `pages/home/index.vue`：引入并使用 `<checkout-bar />`
+
+### 分包组件创建步骤（备忘）
+
+1. `src/sub-components/<name>/index.vue` 创建组件
+2. `pages.json` → `subPackages` 添加 `{ "root": "sub-components", "pages": [] }`
+3. `pages.json` → 页面 style 添加 `"componentPlaceholder": { "<component-name>": "view" }`
+4. `manifest.json` → `mp-weixin` 添加 `"lazyCodeLoading": "requiredComponents"`
+5. 页面中正常 import 使用
+
+### 参考文档
+- [uniapp 分包异步化](https://uniapp.dcloud.net.cn/tutorial/miniprogram-subcontract-asynchrony.html)
+- [微信占位组件](https://developers.weixin.qq.com/miniprogram/dev/framework/custom-component/placeholder.html)
+- [微信用时注入](https://developers.weixin.qq.com/miniprogram/dev/framework/ability/lazyload.html)
+- [组件级 componentPlaceholder 插件](https://ask.dcloud.net.cn/article/42114)
+
+### 验证方式
+- 编译产物中 `sub-components/` 目录独立存在，代码未打入主包 vendor.js
+- 微信开发者工具 Console 对比 `[home] mounted` 和 `[checkout-bar] mounted` 时序
+- Network 面板观察分包下载时机
+
 ## 未完成
-- 商品卡片详细样式（当前仅文字占位）
+- 购物车数据对接（Pinia store + composable）
+- 结算栏显隐逻辑（首次加购滑入、购物车清空不销毁）
+- 购物车抽屉（点击明细展开）
+- 结算按钮跳转确认订单页
 - 订单 Tab 内容
 - 与后端对接（Phase 3）
-
----
-
-## 设计思路：侧边栏 ↔ 商品列表双向联动
-
-### 问题
-侧边栏选中某个分类 → 商品列表自动滚到对应区域；反过来，手指滑动商品列表 → 侧边栏高亮也要跟着变。两个方向的联动都要"丝滑"。
-
-### 方向一：侧边栏点击 → 列表滚动
-
-这个方向相对简单。微信 scroll-view 组件提供了 `scroll-into-view` 属性：传入一个元素 id，组件自动滚动到该元素。
-
-```html
-<scroll-view :scroll-into-view="scrollIntoViewId" ...>
-  <view id="section-coffee">...</view>
-  <view id="section-tea">...</view>
-</scroll-view>
-```
-
-**关键坑**：如果两次设置同一个 id，scroll-view 不会重复滚动。所以需要"先清空再赋值"：
-
-```ts
-scrollIntoViewId.value = ''          // 先清空
-nextTick(() => {
-  scrollIntoViewId.value = categoryId // 再赋值，值变了才触发滚动
-})
-```
-
-**第二个坑**：`scroll-into-view` 触发的滚动过程中，scroll-view 会发射 `@scroll` 事件，这个事件如果被"方向二"的处理器捕获，会把侧边栏高亮改回去，造成"回弹"效果。
-
-解决方案：用一个 `isProgrammaticScroll` 标志位，程序化滚动期间把"方向二"的处理器短路掉，动画结束后再恢复。
-
-```ts
-const handleSidebarClick = (id) => {
-  isProgrammaticScroll.value = true    // 关门
-  // ... 触发 scroll-into-view ...
-  setTimeout(() => {
-    isProgrammaticScroll.value = false // 动画结束后开门
-  }, 400)
-}
-
-const handleContentScroll = (e) => {
-  if (isProgrammaticScroll.value) return // 程序化滚动中，不管
-  // ... 正常判断高亮 ...
-}
-```
-
-### 方向二：列表滚动 → 侧边栏高亮
-
-这个方向更难。核心思路：**预计算每个分类区块在滚动内容中的 top 坐标，滚动时用 scrollTop 对比这些坐标，找出当前处于顶部的分类。**
-
-#### 1. 预计算坐标
-
-```ts
-const query = uni.createSelectorQuery()
-query.select('.content-area').boundingClientRect()  // A: scroll-view 自身
-query.select('#section-coffee').boundingClientRect() // B1: 分类1区块
-query.select('#section-tea').boundingClientRect()    // B2: 分类2区块
-// ... 每个分类一个
-query.exec((res) => {
-  const scrollViewTop = res[0].top       // scroll-view 在页面中的 Y 坐标
-  sectionPositions = categories.map((cat, i) => ({
-    id: cat.id,
-    top: res[i + 1].top - scrollViewTop  // 区块 top 减去 scroll-view 的 top
-  }))                                    // = 区块在滚动内容中的相对位置
-})
-```
-
-`boundingClientRect().top` 返回的是元素相对于**页面视口**的 Y 坐标，不是相对于 scroll-view 内容的坐标。所以需要减去 scroll-view 自身视口的 top，才能得到正确的位置。
-
-**为什么在 `onMounted` + `setTimeout(400ms)` 中执行？** 确保 DOM 渲染完成、布局计算完毕，否则 `boundingClientRect` 返回的坐标可能不准确。
-
-#### 2. 滚动时判断
-
-```ts
-const handleContentScroll = (e) => {
-  const { scrollTop } = e.detail  // 当前滚动偏移量
-  for (let i = positions.length - 1; i >= 0; i--) {
-    if (scrollTop >= positions[i].top) {
-      activeCategory = positions[i].id  // 命中：当前处于第 i 个分类
-      return
-    }
-  }
-}
-```
-
-从后往前遍历，第一个满足 `scrollTop >= 该分类top` 的就是当前可见的分类。举个例子：
-
-```
-scrollTop = 200
-咖啡 top = 0    → 200 >= 0    ✓（不是最后一个命中）
-茶饮 top = 180  → 200 >= 180  ✓（命中！）
-星冰乐 top = 360 → 200 >= 360 ✗
-```
-
-茶饮就是当前分类，侧边栏高亮它。
-
-### 完整交互流程
-
-```
-用户点击侧边栏"茶饮"
-  → handleSidebarClick('section-tea')
-    → isProgrammaticScroll = true（关门）
-    → scrollIntoViewId = '' → nextTick → 'section-tea'
-    → scroll-view 滚动到 #section-tea
-    → 400ms 后 isProgrammaticScroll = false（开门）
-
-用户手指滑商品列表
-  → @scroll 事件触发 handleContentScroll
-    → isProgrammaticScroll = false → 正常执行
-    → scrollTop = 350
-    → 遍历预计算坐标：[咖啡:0, 茶饮:180, 星冰乐:360, ...]
-    → 350 >= 180（命中茶饮）→ activeCategory = 'section-tea'
-    → 侧边栏"茶饮"高亮
-```
