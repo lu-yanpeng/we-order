@@ -22,6 +22,53 @@
 
 自定义主题根据DESIGN.md的要求定制，使用less文件主要是为了使用rpx单位。
 
+**自定义组件样式**
+
+> 参考 `home/components/spec-sheet/index.vue`，这里自定义了t-popup的样式
+
+要[自定义](https://tdesign.tencent.com/uniapp/custom-style)tdesign组件的样式，主要有三种方式：
+
+一、custom-style属性
+
+tdesign组件都支持`custom-style`属性，给组件设置这个属性后，这里的样式会被直接渲染到组件的根节点，打开控制台查看元素就能看到。
+这种方式适合调整较少时使用。
+
+```html
+<t-popup custom-style="padding: 0;" />
+```
+
+二、**同名替换**，推荐
+
+直接使用同名的选择器选中节点，替换需要的样式。这样的方式最灵活，不要类名相同，不止可以修改根节点样式，藏的很深的节点也可以修改。推荐使用
+
+```vue
+<script>
+defineOptions({
+  // 必须设置成这个值才能修改组件内部样式，其他值无效
+  options: {
+    styleIsolation: "shared",
+  }  
+})
+</script>
+
+<template>
+  <t-popup />
+</template>
+
+<style>
+/* 不能加scoped，否则不生效 */
+/* 注意！t-popup这里是<t-popup>组件真实渲染出来的节点的类名，不是乱写的，可以打开控制台查看渲染后的类名。
+.t-popup会作为全局样式被popup根组件选中 */
+.t-popup {
+  /* 这里可以替换也可以新增样式，替换的时候可能需要加 !important */
+}
+</style>
+```
+
+三、t-class
+
+这个值是大多数组件都有属性，具体还是要看文档。为组件添加`t-class`属性，可以修改组件的样式。但是很深的子节点很难选中，改起来也麻烦。建议只用来做根节点的修改。具体用法和方法二相同，都需要设置`styleIsolation`。
+
 ## tailwind css v4
 
 uniapp默认不支持tailwindcss，项目通过`weapp-tailwindcss`提供了支持。tailwindcss基础样式在`src/styles/main.css`，在main.ts中导入样式。

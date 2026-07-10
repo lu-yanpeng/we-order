@@ -8,12 +8,12 @@ defineProps<{
 
 const safeBottom = ref(0)
 const info = uni.getWindowInfo()
-safeBottom.value = info.safeAreaInsets?.bottom || 0
+safeBottom.value = info.safeAreaInsets?.bottom || 8
 </script>
 
 <template>
-  <view class="checkout-bar" :style="{ paddingBottom: safeBottom + 'px' }">
-    <view class="checkout-bar__inner">
+  <view class="checkout-bar">
+    <view class="checkout-bar__inner" :style="{ paddingBottom: safeBottom + 'px' }">
       <view class="checkout-bar__left">
         <view class="checkout-bar__price">
           <text class="checkout-bar__price-label">合计：</text>
@@ -44,8 +44,8 @@ safeBottom.value = info.safeAreaInsets?.bottom || 0
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 112rpx;
-  padding: 0 32rpx;
+  min-height: 120rpx;
+  padding: 16rpx 32rpx 0;
 }
 
 .checkout-bar__left {

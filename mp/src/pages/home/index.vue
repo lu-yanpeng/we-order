@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import type { Product } from '@/types/product'
 import ProductCard from './components/product-card/index.vue'
+import SpecSheet from './components/spec-sheet/index.vue'
 import CheckoutBar from '@/sub-components/checkout-bar/index.vue'
 
 // 顶栏 Tab ↔ swiper 双向同步
@@ -371,6 +372,9 @@ const handleAddToCart = (product: Product) => {
   console.log('add-to-cart', product.name)
 }
 
+// 规格弹窗常驻：取第一个分类的第一个商品作为默认展示
+const defaultSpecProduct = computed(() => categories[0]?.products[0])
+
 // 预计算各分类区块在 scroll-view 内的 top 位置，用于滚动联动
 const computeSectionPositions = () => {
   const query = uni.createSelectorQuery()
@@ -476,6 +480,7 @@ onMounted(() => {
       </swiper-item>
     </swiper>
     <checkout-bar />
+    <spec-sheet :product="defaultSpecProduct" />
   </view>
 </template>
 
