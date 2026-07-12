@@ -156,8 +156,8 @@ safeBottom.value = info.safeAreaInsets?.bottom || 8
 
   /* 调整自定义关闭按钮到合适位置 */
   .t-popup__close {
-    top: -10%;
-    right: 3%;
+    top: -110rpx;
+    right: 16rpx;
   }
 }
 </style>
