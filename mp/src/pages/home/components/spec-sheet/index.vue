@@ -1,150 +1,63 @@
 <script setup lang="ts">
 /**
- * 规格选择弹窗（底部弹出）
+ * 规格选择弹窗（底部弹出）— 纯展示层
  *
- * 透传模式：
- *   - visible / product 由父组件通过 props 控制
- *   - 通过 v-model:visible 双向同步显隐
- *   - 确认选择后 emit('confirm', payload)
+ * 遵循 AD-3：组件仅接收 props 渲染 UI，通过 emit 通知父组件。
+ * 所有表单状态（selections、count）与价格计算均由 useSpecSheet Composable 持有。
  *
  * 两种展示模式：
- *   - 有规格（specGroups 非空）：显示规格组 + 浓缩份数步进器
- *   - 无规格（specGroups 为空）：仅显示数量步进器
+ *   - 有规格（hasSpecs）：显示规格组 + 浓缩份数步进器
+ *   - 无规格（!hasSpecs）：仅显示数量步进器
  */
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import type { Product } from '@/types/product'
-import { calcSpecExtras, buildSpecSummary } from '@/utils/price'
-
-interface SpecConfirmPayload {
-  selections: Record<string, string | string[]>
-  count: number
-}
 
 const props = defineProps<{
   visible: boolean
   product: Product | null
+  /** 各规格组的选中值: { groupId: optionId | optionId[] } */
+  selections: Record<string, string | string[]>
+  /** 步进器数值 */
+  count: number
+  /** 最终价格 */
+  totalPrice: number
+  /** 价格旁摘要文案 */
+  priceLabel: string
+  /** 步进器标签 */
+  stepperLabel: string
+  /** 是否有规格组 */
+  hasSpecs: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'update:visible', value: boolean): void
-  (e: 'confirm', payload: SpecConfirmPayload): void
+  (e: 'confirm'): void
+  (e: 'toggle-option', groupId: string, optionId: string): void
+  (e: 'update-count', delta: number): void
 }>()
 
-// 必须设置 shared 模式，否则无法覆盖 t-popup 的默认样式
 defineOptions({
   options: {
     styleIsolation: 'shared',
   },
 })
 
-/** 当前商品是否有规格组 */
-const hasSpecs = computed(() => {
-  if (!props.product) return false
-  return !!(props.product.specGroups && props.product.specGroups.length > 0)
-})
-
-/** 当前商品各规格组的选中值: { groupId: optionId | optionId[] } */
-const selections = reactive<Record<string, string | string[]>>({})
-
-/** 步进器数量：有规格时为浓缩份数，无规格时为购买数量 */
-const count = ref(1)
-
-/** 步进器标签文案 */
-const stepperLabel = computed(() => (hasSpecs.value ? '浓缩份数' : '数量'))
-
-/** 重置规格选择为默认值（每次弹窗打开时调用） */
-const initSelections = () => {
-  Object.keys(selections).forEach((k) => delete selections[k])
-  if (!props.product) return
-  const groups = props.product.specGroups || []
-  for (const group of groups) {
-    selections[group.id] = group.multi ? [] : group.options[0]?.id || ''
-  }
-  count.value = 1
-}
-
-/** 弹窗打开时重置规格选择（监听 visible 而非 product，因为组件始终挂载） */
-watch(
-  () => props.visible,
-  (isVisible) => {
-    if (isVisible) {
-      initSelections()
-    }
-  },
-)
-
-/** 判断某个规格选项是否被选中 */
+/** 判断某个规格选项是否被选中（纯 UI 显示逻辑，不涉及业务规则） */
 const isActive = (groupId: string, optionId: string) => {
-  const val = selections[groupId]
+  const val = props.selections[groupId]
   if (Array.isArray(val)) return val.includes(optionId)
   return val === optionId
 }
-
-/** 切换规格选项的选中状态（单选直接赋值，多选 toggle 数组） */
-const toggleOption = (groupId: string, optionId: string) => {
-  if (!props.product) return
-  const groups = props.product.specGroups || []
-  const group = groups.find((g) => g.id === groupId)
-  if (!group) return
-
-  if (group.multi) {
-    const arr = (selections[groupId] as string[]) || []
-    const idx = arr.indexOf(optionId)
-    if (idx > -1) {
-      arr.splice(idx, 1)
-    } else {
-      arr.push(optionId)
-    }
-  } else {
-    selections[groupId] = optionId
-  }
-}
-
-/** 步进器 +/- 操作，下限为 1 */
-const updateCount = (delta: number) => {
-  count.value = Math.max(1, count.value + delta)
-}
-
-/**
- * 计算最终价格
- * - 有规格：基础价 + 规格加价 + 浓缩份数加价（每额外一份 +¥4）
- * - 无规格：基础价 × 数量
- */
-const totalPrice = computed(() => {
-  if (!props.product) return 0
-  if (hasSpecs.value) {
-    const groups = props.product.specGroups!
-    let price = props.product.price + calcSpecExtras(groups, selections)
-    if (count.value > 1) {
-      price += (count.value - 1) * 4
-    }
-    return price
-  }
-  return props.product.price * count.value
-})
-
-/** 价格旁的摘要文案：有规格时显示规格组合，无规格时显示 "xN" */
-const priceLabel = computed(() => {
-  if (!props.product) return ''
-  if (hasSpecs.value) {
-    return buildSpecSummary(props.product.specGroups!, selections, count.value)
-  }
-  return `x${count.value}`
-})
 
 /** 关闭弹窗（点击 X 按钮或遮罩） */
 const handleClose = () => {
   emit('update:visible', false)
 }
 
-/** 确认选择：发出 confirm 事件后关闭弹窗 */
+/** 确认选择 */
 const handleConfirm = () => {
   if (!props.product) return
-  emit('confirm', {
-    selections: { ...selections },
-    count: count.value,
-  })
-  emit('update:visible', false)
+  emit('confirm')
 }
 
 /** 代理 props.visible，桥接 t-popup 的 v-model:visible 到父组件 */
@@ -190,7 +103,7 @@ safeBottom.value = info.safeAreaInsets?.bottom || 8
                   :key="opt.id"
                   class="spec-pill"
                   :class="{ 'spec-pill--active': isActive(group.id, opt.id) }"
-                  @click="toggleOption(group.id, opt.id)"
+                  @click="$emit('toggle-option', group.id, opt.id)"
                 >
                   <text class="spec-pill-label">{{ opt.label }}</text>
                   <text v-if="opt.priceExtra > 0" class="spec-pill-extra"
@@ -204,11 +117,11 @@ safeBottom.value = info.safeAreaInsets?.bottom || 8
           <view class="spec-group spec-shots-row">
             <text class="spec-shots-label">{{ stepperLabel }}</text>
             <view class="spec-stepper">
-              <view class="spec-stepper-btn" @click="updateCount(-1)">
+              <view class="spec-stepper-btn" @click="$emit('update-count', -1)">
                 <text class="spec-stepper-symbol translate-y-[-7%]">-</text>
               </view>
               <text class="spec-stepper-val">{{ count }}</text>
-              <view class="spec-stepper-btn" @click="updateCount(1)">
+              <view class="spec-stepper-btn" @click="$emit('update-count', 1)">
                 <text class="spec-stepper-symbol">+</text>
               </view>
             </view>

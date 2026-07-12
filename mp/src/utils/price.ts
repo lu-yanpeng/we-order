@@ -69,3 +69,33 @@ export function buildSpecSummary(
   parts.push(`${shotCount}份浓缩`)
   return parts.join(' / ')
 }
+
+/**
+ * 计算商品最终价格（含规格加价与浓缩份数加价）
+ *
+ * 业务规则：浓缩份数 > 1 时，每额外一份 +¥4。
+ * 无规格时为基础价 × 购买数量。
+ *
+ * @param basePrice 商品基础价格
+ * @param specGroups 规格组列表
+ * @param selections 用户选择的规格值
+ * @param shotCount 浓缩份数（无规格时即为购买数量）
+ * @param hasSpecs 是否有规格组
+ * @returns 最终价格
+ */
+export function calcTotalPrice(
+  basePrice: number,
+  specGroups: SpecGroup[],
+  selections: Record<string, string | string[]>,
+  shotCount: number,
+  hasSpecs: boolean,
+): number {
+  if (!hasSpecs) {
+    return basePrice * shotCount
+  }
+  let price = basePrice + calcSpecExtras(specGroups, selections)
+  if (shotCount > 1) {
+    price += (shotCount - 1) * 4
+  }
+  return price
+}

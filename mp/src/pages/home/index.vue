@@ -3,12 +3,13 @@
  * 首页 — 点餐与订单双 Tab 页面
  *
  * 遵循 AD-3：页面仅负责组件编排和布局，
- * 业务逻辑由 useProducts / useSpecSheet 两个 Composable 承载。
+ * 业务逻辑由 useProducts / useSpecSheet / useHomeTabs 三个 Composable 承载。
  */
-import { nextTick, onMounted, ref } from 'vue'
+import { onMounted } from 'vue'
 import type { Product } from '@/types/product'
 import { useProducts } from '@/composables/use-products'
 import { useSpecSheet } from '@/composables/use-spec-sheet'
+import { useHomeTabs } from '@/composables/use-home-tabs'
 import ProductCard from './components/product-card/index.vue'
 import SpecSheet from './components/spec-sheet/index.vue'
 import CheckoutBar from '@/sub-components/checkout-bar/index.vue'
@@ -22,48 +23,30 @@ const {
   init: initProducts,
 } = useProducts()
 
-const { visible, currentProduct, open: openSpecSheet } = useSpecSheet()
+const {
+  visible,
+  currentProduct,
+  open: openSpecSheet,
+  confirm: confirmSpecSheet,
+  selections,
+  count,
+  hasSpecs,
+  stepperLabel,
+  totalPrice,
+  priceLabel,
+  toggleOption,
+  updateCount,
+} = useSpecSheet()
+const { activeTab, swiperIndex, onTabChange, onSwiperChange } = useHomeTabs()
 
-/** 点击商品加号 → 打开规格弹窗 */
+/** 点击商品加号 → 打开规格弹窗（薄映射：组件事件 → Composable 动作） */
 const handleAddToCart = (product: Product) => {
   openSpecSheet(product)
 }
 
-/**
- * 规格弹窗确认回调
- * 目前 Phase 1 仅打印日志，Phase 4 对接购物车 Pinia store。
- */
-const handleSpecConfirm = (payload: {
-  selections: Record<string, string | string[]>
-  count: number
-}) => {
-  console.log('spec-confirm', currentProduct.value?.name, payload)
-  visible.value = false
-}
-
-// 顶栏 Tab ↔ swiper 双向同步
-const activeTab = ref('menu')
-const swiperIndex = ref(0)
-
-const onTabChange = (e: { value: string | number }) => {
-  activeTab.value = String(e.value)
-  swiperIndex.value = e.value === 'menu' ? 0 : 1
-}
-
-const onSwiperChange = (e: { detail: { current: number } }) => {
-  activeTab.value = e.detail.current === 0 ? 'menu' : 'orders'
-}
-
+// initProducts 由页面 onMounted 调用（数据加载属于页面级初始化编排）
 onMounted(() => {
   initProducts()
-  // TDesign tabs 受控模式下首屏不渲染激活态指示器的 workaround
-  setTimeout(() => {
-    const current = activeTab.value
-    activeTab.value = ''
-    nextTick(() => {
-      activeTab.value = current
-    })
-  }, 100)
 })
 </script>
 
@@ -133,7 +116,19 @@ onMounted(() => {
     </swiper>
 
     <checkout-bar />
-    <SpecSheet v-model:visible="visible" :product="currentProduct" @confirm="handleSpecConfirm" />
+    <spec-sheet
+      v-model:visible="visible"
+      :product="currentProduct"
+      :selections="selections"
+      :count="count"
+      :has-specs="hasSpecs"
+      :total-price="totalPrice"
+      :price-label="priceLabel"
+      :stepper-label="stepperLabel"
+      @confirm="confirmSpecSheet"
+      @toggle-option="toggleOption"
+      @update-count="updateCount"
+    />
   </view>
 </template>
 
