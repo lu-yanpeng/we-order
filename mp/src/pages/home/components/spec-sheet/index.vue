@@ -1,207 +1,176 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+/**
+ * 规格选择弹窗（底部弹出）
+ *
+ * 透传模式：
+ *   - visible / product 由父组件通过 props 控制
+ *   - 通过 v-model:visible 双向同步显隐
+ *   - 确认选择后 emit('confirm', payload)
+ *
+ * 两种展示模式：
+ *   - 有规格（specGroups 非空）：显示规格组 + 浓缩份数步进器
+ *   - 无规格（specGroups 为空）：仅显示数量步进器
+ */
+import { computed, reactive, ref, watch } from 'vue'
 import type { Product } from '@/types/product'
+import { calcSpecExtras, buildSpecSummary } from '@/utils/price'
 
-interface SpecOption {
-  id: string
-  label: string
-  priceExtra: number
-}
-
-interface SpecGroup {
-  id: string
-  title: string
-  options: SpecOption[]
-  multi: boolean
+interface SpecConfirmPayload {
+  selections: Record<string, string | string[]>
+  count: number
 }
 
 const props = defineProps<{
-  product: Product
+  visible: boolean
+  product: Product | null
 }>()
 
+const emit = defineEmits<{
+  (e: 'update:visible', value: boolean): void
+  (e: 'confirm', payload: SpecConfirmPayload): void
+}>()
+
+// 必须设置 shared 模式，否则无法覆盖 t-popup 的默认样式
 defineOptions({
   options: {
-    // 修改t-popup组件的默认样式
     styleIsolation: 'shared',
   },
 })
 
-const specGroups: SpecGroup[] = [
-  {
-    id: 'size',
-    title: '选择杯型',
-    multi: false,
-    options: [
-      { id: 'tall', label: '中杯 Tall', priceExtra: 0 },
-      { id: 'grande', label: '大杯 Grande', priceExtra: 3 },
-      { id: 'venti', label: '超大杯 Venti', priceExtra: 6 },
-    ],
-  },
-  {
-    id: 'temp',
-    title: '温度',
-    multi: false,
-    options: [
-      { id: 'ice', label: '冰饮推荐', priceExtra: 0 },
-      { id: 'hot', label: '热饮', priceExtra: 0 },
-      { id: 'warm', label: '温饮', priceExtra: 0 },
-    ],
-  },
-  {
-    id: 'milk',
-    title: '牛奶选择',
-    multi: false,
-    options: [
-      { id: 'oat', label: '燕麦奶', priceExtra: 2 },
-      { id: 'whole', label: '全脂牛奶', priceExtra: 0 },
-      { id: 'soy', label: '椰乳', priceExtra: 2 },
-      { id: 'skim', label: '脱脂牛奶', priceExtra: 0 },
-      { id: 'coconut', label: '生椰奶', priceExtra: 3 },
-    ],
-  },
-  {
-    id: 'addons',
-    title: '加料选择（可多选）',
-    multi: true,
-    options: [
-      { id: 'caramel', label: '焦糖淋酱', priceExtra: 3 },
-      { id: 'cream', label: '稀奶油', priceExtra: 4 },
-      { id: 'chips', label: '可可碎片', priceExtra: 4 },
-      { id: 'pearls', label: '黑糖珍珠', priceExtra: 3 },
-      { id: 'jelly', label: '椰果', priceExtra: 2 },
-      { id: 'red_bean', label: '红豆', priceExtra: 2 },
-    ],
-  },
-  {
-    id: 'sweetness',
-    title: '甜度',
-    multi: false,
-    options: [
-      { id: 'full', label: '正常糖', priceExtra: 0 },
-      { id: 'less', label: '少糖', priceExtra: 0 },
-      { id: 'half', label: '半糖', priceExtra: 0 },
-      { id: 'none', label: '无糖', priceExtra: 0 },
-    ],
-  },
-  {
-    id: 'ice_level',
-    title: '冰量',
-    multi: false,
-    options: [
-      { id: 'normal', label: '正常冰', priceExtra: 0 },
-      { id: 'less_ice', label: '少冰', priceExtra: 0 },
-      { id: 'no_ice', label: '去冰', priceExtra: 0 },
-    ],
-  },
-]
-
-const selections = reactive({
-  size: 'grande',
-  temp: 'ice',
-  milk: 'oat',
-  addons: [] as string[],
-  sweetness: 'full',
-  ice_level: 'normal',
-  shotCount: 1,
+/** 当前商品是否有规格组 */
+const hasSpecs = computed(() => {
+  if (!props.product) return false
+  return !!(props.product.specGroups && props.product.specGroups.length > 0)
 })
 
-const isActive = (groupId: string, optionId: string) => {
-  if (groupId === 'addons') {
-    return selections.addons.includes(optionId)
+/** 当前商品各规格组的选中值: { groupId: optionId | optionId[] } */
+const selections = reactive<Record<string, string | string[]>>({})
+
+/** 步进器数量：有规格时为浓缩份数，无规格时为购买数量 */
+const count = ref(1)
+
+/** 步进器标签文案 */
+const stepperLabel = computed(() => (hasSpecs.value ? '浓缩份数' : '数量'))
+
+/** 重置规格选择为默认值（每次弹窗打开时调用） */
+const initSelections = () => {
+  Object.keys(selections).forEach((k) => delete selections[k])
+  if (!props.product) return
+  const groups = props.product.specGroups || []
+  for (const group of groups) {
+    selections[group.id] = group.multi ? [] : group.options[0]?.id || ''
   }
-  return selections[groupId as keyof typeof selections] === optionId
+  count.value = 1
 }
 
+/** 弹窗打开时重置规格选择（监听 visible 而非 product，因为组件始终挂载） */
+watch(
+  () => props.visible,
+  (isVisible) => {
+    if (isVisible) {
+      initSelections()
+    }
+  },
+)
+
+/** 判断某个规格选项是否被选中 */
+const isActive = (groupId: string, optionId: string) => {
+  const val = selections[groupId]
+  if (Array.isArray(val)) return val.includes(optionId)
+  return val === optionId
+}
+
+/** 切换规格选项的选中状态（单选直接赋值，多选 toggle 数组） */
 const toggleOption = (groupId: string, optionId: string) => {
-  const group = specGroups.find((g) => g.id === groupId)
+  if (!props.product) return
+  const groups = props.product.specGroups || []
+  const group = groups.find((g) => g.id === groupId)
   if (!group) return
 
   if (group.multi) {
-    const idx = selections.addons.indexOf(optionId)
+    const arr = (selections[groupId] as string[]) || []
+    const idx = arr.indexOf(optionId)
     if (idx > -1) {
-      selections.addons.splice(idx, 1)
+      arr.splice(idx, 1)
     } else {
-      selections.addons.push(optionId)
+      arr.push(optionId)
     }
   } else {
-    ;(selections as Record<string, unknown>)[groupId] = optionId
+    selections[groupId] = optionId
   }
 }
 
-const updateShots = (delta: number) => {
-  selections.shotCount = Math.max(1, selections.shotCount + delta)
+/** 步进器 +/- 操作，下限为 1 */
+const updateCount = (delta: number) => {
+  count.value = Math.max(1, count.value + delta)
 }
 
+/**
+ * 计算最终价格
+ * - 有规格：基础价 + 规格加价 + 浓缩份数加价（每额外一份 +¥4）
+ * - 无规格：基础价 × 数量
+ */
 const totalPrice = computed(() => {
-  let price = props.product.price
-
-  for (const group of specGroups) {
-    if (group.id === 'addons') continue
-    const opt = group.options.find((o) => o.id === selections[group.id as keyof typeof selections])
-    if (opt) price += opt.priceExtra
-  }
-
-  const addonGroup = specGroups.find((g) => g.id === 'addons')
-  if (addonGroup) {
-    for (const id of selections.addons) {
-      const opt = addonGroup.options.find((o) => o.id === id)
-      if (opt) price += opt.priceExtra
+  if (!props.product) return 0
+  if (hasSpecs.value) {
+    const groups = props.product.specGroups!
+    let price = props.product.price + calcSpecExtras(groups, selections)
+    if (count.value > 1) {
+      price += (count.value - 1) * 4
     }
+    return price
   }
-
-  if (selections.shotCount > 1) {
-    price += (selections.shotCount - 1) * 4
-  }
-
-  return price
+  return props.product.price * count.value
 })
 
-const specSummary = computed(() => {
-  const parts: string[] = []
-
-  for (const group of specGroups) {
-    if (group.id === 'addons') continue
-    const selId = selections[group.id as keyof typeof selections]
-    const label = group.options.find((o) => o.id === selId)?.label || ''
-    parts.push(label)
+/** 价格旁的摘要文案：有规格时显示规格组合，无规格时显示 "xN" */
+const priceLabel = computed(() => {
+  if (!props.product) return ''
+  if (hasSpecs.value) {
+    return buildSpecSummary(props.product.specGroups!, selections, count.value)
   }
-
-  parts.push(`${selections.shotCount}份浓缩`)
-
-  const addonLabels = selections.addons
-    .map(
-      (id) =>
-        specGroups.find((g) => g.id === 'addons')?.options.find((o) => o.id === id)?.label || '',
-    )
-    .filter(Boolean)
-
-  return parts.join(' / ') + (addonLabels.length > 0 ? ' / ' + addonLabels.join(' / ') : '')
+  return `x${count.value}`
 })
 
-const visible = ref(true)
+/** 关闭弹窗（点击 X 按钮或遮罩） */
+const handleClose = () => {
+  emit('update:visible', false)
+}
 
+/** 确认选择：发出 confirm 事件后关闭弹窗 */
+const handleConfirm = () => {
+  if (!props.product) return
+  emit('confirm', {
+    selections: { ...selections },
+    count: count.value,
+  })
+  emit('update:visible', false)
+}
+
+/** 代理 props.visible，桥接 t-popup 的 v-model:visible 到父组件 */
+const popupVisible = computed({
+  get: () => props.visible,
+  set: (val) => emit('update:visible', val),
+})
+
+/** 底部安全区高度，确保结算栏不被刘海或底部横条遮挡 */
 const safeBottom = ref(0)
 const info = uni.getWindowInfo()
 safeBottom.value = info.safeAreaInsets?.bottom || 8
-
-const handleUpdateVisible = () => {
-  visible.value = true
-}
 </script>
 
 <template>
-  <t-popup
-    :visible="visible"
-    placement="bottom"
-    :close-on-overlay-click="false"
-    :prevent-scroll-through="false"
-    @update:visible="handleUpdateVisible"
-  >
+  <t-popup v-model:visible="popupVisible" placement="bottom" :prevent-scroll-through="false">
     <template #close-btn>
-      <t-icon name="close-circle" size="60rpx" custom-style="color: var(--mp-color-bg-ceramic);" />
+      <t-icon
+        name="close-circle"
+        size="60rpx"
+        custom-style="color: var(--mp-color-bg-ceramic);"
+        @click="handleClose"
+      />
     </template>
 
-    <view class="spec-content">
+    <view v-if="product" class="spec-content">
       <view class="spec-header">
         <view class="spec-product-img" />
         <view class="spec-product-info">
@@ -212,33 +181,34 @@ const handleUpdateVisible = () => {
 
       <view class="spec-scroll-wrapper">
         <view class="spec-scroll-inner">
-          <view v-for="group in specGroups" :key="group.id" class="spec-group">
-            <text class="spec-group-title">{{ group.title }}</text>
-            <view class="spec-pills-row">
-              <view
-                v-for="opt in group.options"
-                :key="opt.id"
-                class="spec-pill"
-                :class="{ 'spec-pill--active': isActive(group.id, opt.id) }"
-                @click="toggleOption(group.id, opt.id)"
-              >
-                <text class="spec-pill-label">{{ opt.label }}</text>
-                <text v-if="opt.priceExtra > 0" class="spec-pill-extra"
-                  >+¥{{ opt.priceExtra }}</text
+          <template v-if="hasSpecs">
+            <view v-for="group in product.specGroups" :key="group.id" class="spec-group">
+              <text class="spec-group-title">{{ group.title }}</text>
+              <view class="spec-pills-row">
+                <view
+                  v-for="opt in group.options"
+                  :key="opt.id"
+                  class="spec-pill"
+                  :class="{ 'spec-pill--active': isActive(group.id, opt.id) }"
+                  @click="toggleOption(group.id, opt.id)"
                 >
+                  <text class="spec-pill-label">{{ opt.label }}</text>
+                  <text v-if="opt.priceExtra > 0" class="spec-pill-extra"
+                    >+¥{{ opt.priceExtra }}</text
+                  >
+                </view>
               </view>
             </view>
-          </view>
+          </template>
 
           <view class="spec-group spec-shots-row">
-            <text class="spec-shots-label">浓缩份数</text>
+            <text class="spec-shots-label">{{ stepperLabel }}</text>
             <view class="spec-stepper">
-              <view class="spec-stepper-btn" @click="updateShots(-1)">
-                <!-- 微调`-`号否则视觉上会偏下一点点 -->
+              <view class="spec-stepper-btn" @click="updateCount(-1)">
                 <text class="spec-stepper-symbol translate-y-[-7%]">-</text>
               </view>
-              <text class="spec-stepper-val">{{ selections.shotCount }}</text>
-              <view class="spec-stepper-btn" @click="updateShots(1)">
+              <text class="spec-stepper-val">{{ count }}</text>
+              <view class="spec-stepper-btn" @click="updateCount(1)">
                 <text class="spec-stepper-symbol">+</text>
               </view>
             </view>
@@ -253,9 +223,9 @@ const handleUpdateVisible = () => {
               <text class="spec-price-symbol">¥</text>
               <text class="spec-price-value">{{ totalPrice }}</text>
             </view>
-            <text class="spec-price-details">{{ specSummary }}</text>
+            <text class="spec-price-details">{{ priceLabel }}</text>
           </view>
-          <view class="spec-add-btn">
+          <view class="spec-add-btn" @click="handleConfirm">
             <text class="spec-add-btn-text">加入购物袋</text>
           </view>
         </view>
