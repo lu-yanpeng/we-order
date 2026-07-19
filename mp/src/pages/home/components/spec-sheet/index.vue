@@ -83,30 +83,40 @@ safeBottom.value = info.safeAreaInsets?.bottom || 8
       />
     </template>
 
-    <view v-if="product" class="spec-content">
-      <view class="spec-header border-b border-border-hairline">
-        <view class="spec-product-img bg-surface-ceramic" />
-        <view class="spec-product-info">
-          <text class="spec-product-name text-ink">{{ product.name }}</text>
-          <text class="spec-product-desc text-ink-soft">{{ product.desc }}</text>
+    <view
+      v-if="product"
+      class="flex max-h-[75vh] flex-col overflow-hidden rounded-t-[40rpx] bg-surface-card"
+    >
+      <view class="flex shrink-0 items-start border-b border-border-hairline p-[32rpx]">
+        <view
+          class="mr-[24rpx] h-[144rpx] w-[144rpx] shrink-0 rounded-[24rpx] bg-surface-ceramic"
+        />
+        <view class="flex min-w-0 flex-1 flex-col pt-[8rpx]">
+          <text class="leading-[1.3] font-semibold text-[32rpx] text-ink">{{ product.name }}</text>
+          <text class="leading-[1.4] text-[22rpx] text-ink-soft">{{ product.desc }}</text>
         </view>
       </view>
 
-      <view class="spec-scroll-wrapper">
-        <view class="spec-scroll-inner">
+      <view class="spec-scroll-wrapper min-h-0 flex-1 overflow-y-auto">
+        <view class="px-[32rpx] pt-[28rpx] pb-[48rpx]">
           <template v-if="hasSpecs">
-            <view v-for="group in product.specGroups" :key="group.id" class="spec-group">
-              <text class="spec-group-title text-ink">{{ group.title }}</text>
-              <view class="spec-pills-row">
+            <view v-for="group in product.specGroups" :key="group.id" class="mb-[36rpx] last:mb-0">
+              <text class="mb-[16rpx] block font-bold text-[24rpx] text-ink">{{
+                group.title
+              }}</text>
+              <view class="flex flex-wrap">
                 <view
                   v-for="opt in group.options"
                   :key="opt.id"
-                  class="spec-pill border border-border rounded-button text-ink-soft"
-                  :class="{ 'spec-pill--active': isActive(group.id, opt.id) }"
+                  class="mr-[16rpx] mb-[16rpx] flex items-center rounded-button border border-border px-[28rpx] py-[12rpx] font-medium text-[24rpx] text-ink-soft"
+                  :class="{
+                    '!border-green-accent bg-green-accent !font-semibold !text-ink-inverse':
+                      isActive(group.id, opt.id),
+                  }"
                   @click="$emit('toggle-option', group.id, opt.id)"
                 >
-                  <text class="spec-pill-label">{{ opt.label }}</text>
-                  <text v-if="opt.priceExtra > 0" class="spec-pill-extra"
+                  <text class="mr-[8rpx] leading-none">{{ opt.label }}</text>
+                  <text v-if="opt.priceExtra > 0" class="text-[20rpx] opacity-80"
                     >+¥{{ opt.priceExtra }}</text
                   >
                 </view>
@@ -114,38 +124,48 @@ safeBottom.value = info.safeAreaInsets?.bottom || 8
             </view>
           </template>
 
-          <view class="spec-group spec-shots-row">
-            <text class="spec-shots-label text-ink">{{ stepperLabel }}</text>
-            <view class="spec-stepper bg-surface-ceramic rounded-button">
+          <view class="mb-0 flex items-center justify-between">
+            <text class="shrink-0 font-bold text-[24rpx] text-ink">{{ stepperLabel }}</text>
+            <view
+              class="flex items-center justify-between rounded-button bg-surface-ceramic px-[10rpx] py-[8rpx]"
+            >
               <view
-                class="spec-stepper-btn border border-border bg-surface-card"
+                class="flex h-[48rpx] w-[48rpx] items-center justify-center rounded-full border border-border bg-surface-card"
                 @click="$emit('update-count', -1)"
               >
-                <text class="spec-stepper-symbol text-ink-soft translate-y-[-7%]">-</text>
+                <text class="translate-y-[-7%] leading-none font-medium text-[32rpx] text-ink-soft"
+                  >-</text
+                >
               </view>
-              <text class="spec-stepper-val">{{ count }}</text>
+              <text class="min-w-[70rpx] text-center font-semibold text-[26rpx]">{{ count }}</text>
               <view
-                class="spec-stepper-btn border border-border bg-surface-card"
+                class="flex h-[48rpx] w-[48rpx] items-center justify-center rounded-full border border-border bg-surface-card"
                 @click="$emit('update-count', 1)"
               >
-                <text class="spec-stepper-symbol text-ink-soft">+</text>
+                <text class="leading-none font-medium text-[32rpx] text-ink-soft">+</text>
               </view>
             </view>
           </view>
         </view>
       </view>
 
-      <view class="spec-footer border-t border-border-hairline">
-        <view class="spec-footer__inner" :style="{ paddingBottom: safeBottom + 'px' }">
-          <view class="spec-price-section">
-            <view class="spec-price">
-              <text class="spec-price-symbol text-ink">¥</text>
-              <text class="spec-price-value text-ink">{{ totalPrice }}</text>
+      <view class="shrink-0 border-t border-border-hairline bg-surface-card">
+        <view
+          class="flex min-h-[120rpx] items-center justify-between px-[32rpx] pt-[16rpx]"
+          :style="{ paddingBottom: safeBottom + 'px' }"
+        >
+          <view class="mr-[24rpx] flex flex-1 flex-col overflow-hidden">
+            <view class="mb-[4rpx] flex items-baseline">
+              <text class="mr-[2rpx] text-[26rpx] text-ink">¥</text>
+              <text class="leading-none font-bold text-[40rpx] text-ink">{{ totalPrice }}</text>
             </view>
-            <text class="spec-price-details text-ink-soft">{{ priceLabel }}</text>
+            <text class="text-[18rpx] text-ink-soft">{{ priceLabel }}</text>
           </view>
-          <view class="spec-add-btn bg-green-accent rounded-button" @click="handleConfirm">
-            <text class="spec-add-btn-text">加入购物袋</text>
+          <view
+            class="shrink-0 rounded-button bg-green-accent px-[48rpx] py-[20rpx]"
+            @click="handleConfirm"
+          >
+            <text class="font-semibold text-[28rpx] text-ink-inverse">加入购物袋</text>
           </view>
         </view>
       </view>
@@ -169,53 +189,7 @@ safeBottom.value = info.safeAreaInsets?.bottom || 8
 </style>
 
 <style scoped>
-.spec-content {
-  display: flex;
-  flex-direction: column;
-  max-height: 75vh;
-  overflow: hidden;
-  background-color: #ffffff;
-  border-radius: 40rpx 40rpx 0 0;
-}
-
-.spec-header {
-  display: flex;
-  align-items: flex-start;
-  padding: 32rpx;
-  flex-shrink: 0;
-}
-
-.spec-product-img {
-  width: 144rpx;
-  height: 144rpx;
-  border-radius: 24rpx;
-  flex-shrink: 0;
-  margin-right: 24rpx;
-}
-
-.spec-product-info {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  padding-top: 8rpx;
-}
-
-.spec-product-name {
-  font-size: 32rpx;
-  font-weight: 600;
-  line-height: 1.3;
-}
-
-.spec-product-desc {
-  font-size: 22rpx;
-  line-height: 1.4;
-}
-
 .spec-scroll-wrapper {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   scrollbar-width: none;
@@ -225,152 +199,5 @@ safeBottom.value = info.safeAreaInsets?.bottom || 8
   display: none;
   width: 0;
   height: 0;
-}
-
-.spec-scroll-inner {
-  padding: 28rpx 32rpx 48rpx;
-}
-
-.spec-group {
-  margin-bottom: 36rpx;
-}
-
-.spec-group:last-child {
-  margin-bottom: 0;
-}
-
-.spec-group-title {
-  font-size: 24rpx;
-  font-weight: 700;
-  display: block;
-  margin-bottom: 16rpx;
-}
-
-.spec-pills-row {
-  display: flex;
-  flex-wrap: wrap;
-}
-
-.spec-pill {
-  padding: 12rpx 28rpx;
-  font-size: 24rpx;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  margin-right: 16rpx;
-  margin-bottom: 16rpx;
-}
-
-.spec-pill--active {
-  background-color: #00754a;
-  border-color: #00754a;
-  color: #ffffff;
-  font-weight: 600;
-}
-
-.spec-pill-label {
-  line-height: 1;
-  margin-right: 8rpx;
-}
-
-.spec-pill-extra {
-  font-size: 20rpx;
-  opacity: 0.8;
-}
-
-.spec-shots-row {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 0;
-}
-
-.spec-shots-label {
-  font-size: 24rpx;
-  font-weight: 700;
-  flex-shrink: 0;
-}
-
-.spec-stepper {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8rpx 10rpx;
-}
-
-.spec-stepper-btn {
-  width: 48rpx;
-  height: 48rpx;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.spec-stepper-symbol {
-  font-size: 32rpx;
-  font-weight: 500;
-  line-height: 1;
-}
-
-.spec-stepper-val {
-  font-size: 26rpx;
-  font-weight: 600;
-  min-width: 70rpx;
-  text-align: center;
-}
-
-.spec-footer {
-  flex-shrink: 0;
-  background-color: #ffffff;
-}
-
-.spec-footer__inner {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  min-height: 120rpx;
-  padding: 16rpx 32rpx 0;
-}
-
-.spec-price-section {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  margin-right: 24rpx;
-  overflow: hidden;
-}
-
-.spec-price {
-  display: flex;
-  align-items: baseline;
-  margin-bottom: 4rpx;
-}
-
-.spec-price-symbol {
-  font-size: 26rpx;
-  margin-right: 2rpx;
-}
-
-.spec-price-value {
-  font-size: 40rpx;
-  font-weight: 700;
-  line-height: 1;
-}
-
-.spec-price-details {
-  font-size: 18rpx;
-}
-
-.spec-add-btn {
-  padding: 20rpx 48rpx;
-  flex-shrink: 0;
-}
-
-.spec-add-btn-text {
-  color: #ffffff;
-  font-size: 28rpx;
-  font-weight: 600;
 }
 </style>

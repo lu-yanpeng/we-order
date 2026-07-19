@@ -51,7 +51,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <view class="flex h-screen flex-col bg-sb-warm">
+  <view class="bg-sb-warm flex h-screen flex-col">
     <t-tabs
       :value="activeTab"
       :space-evenly="false"
@@ -73,11 +73,15 @@ onMounted(() => {
               <view
                 v-for="cat in categories"
                 :key="cat.id"
-                class="sidebar-item"
-                :class="{ 'sidebar-item--active': activeCategory === cat.id }"
+                class="flex h-[96rpx] items-center justify-center px-[16rpx] font-medium text-[24rpx] text-ink-soft transition-all duration-150"
+                :class="{
+                  'bg-surface-card !font-bold !text-green': activeCategory === cat.id,
+                }"
                 @click="handleSidebarClick(cat.id)"
               >
-                <text class="sidebar-item-text">{{ cat.name }}</text>
+                <text class="max-w-[96rpx] text-center leading-[28rpx] break-all">{{
+                  cat.name
+                }}</text>
               </view>
               <view class="flex-1 bg-[#f7f8fa]" />
             </scroll-view>
@@ -93,24 +97,26 @@ onMounted(() => {
             @scroll="handleContentScroll"
           >
             <view v-for="cat in categories" :key="cat.id" :id="cat.id" class="category-section">
-              <view class="category-title">
+              <view
+                class="sticky top-0 z-10 bg-[rgba(255,255,255,0.85)] py-[24rpx] pl-[32rpx] font-semibold tracking-[0.05em] text-[26rpx] text-ink-soft backdrop-blur-[12rpx]"
+              >
                 {{ cat.name }}
               </view>
-              <view class="pl-4 pr-5">
+              <view class="pr-5 pl-4">
                 <view v-for="product in cat.products" :key="product.id">
                   <ProductCard :product="product" @add-to-cart="handleAddToCart" />
                 </view>
               </view>
             </view>
-            <view class="list-footer">
-              <text class="list-footer-text">--- 到底了 ---</text>
+            <view class="flex justify-center pt-[48rpx] pb-[96rpx]">
+              <text class="text-[22rpx] text-[rgba(0,0,0,0.2)]">--- 到底了 ---</text>
             </view>
           </scroll-view>
         </view>
       </swiper-item>
       <swiper-item>
         <view class="flex h-full items-center justify-center">
-          <text class="text-base text-sb-text-soft">订单 - 待开发</text>
+          <text class="text-sb-text-soft text-base">订单 - 待开发</text>
         </view>
       </swiper-item>
     </swiper>
@@ -131,55 +137,3 @@ onMounted(() => {
     />
   </view>
 </template>
-
-<style scoped>
-.sidebar-item {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 96rpx;
-  padding: 0 16rpx;
-  font-size: 24rpx;
-  font-weight: 500;
-  color: rgba(0, 0, 0, 0.58);
-  transition: all 150ms ease;
-}
-
-.sidebar-item-text {
-  max-width: 96rpx;
-  word-break: break-all;
-  line-height: 28rpx;
-  text-align: center;
-}
-
-.sidebar-item--active {
-  background-color: #ffffff;
-  color: #006241;
-  font-weight: 700;
-}
-
-.category-title {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  padding: 24rpx 0 24rpx 32rpx;
-  font-size: 26rpx;
-  font-weight: 600;
-  color: rgba(0, 0, 0, 0.58);
-  letter-spacing: 0.05em;
-  background-color: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(12rpx);
-  -webkit-backdrop-filter: blur(12rpx);
-}
-
-.list-footer {
-  display: flex;
-  justify-content: center;
-  padding: 48rpx 0 96rpx;
-}
-
-.list-footer-text {
-  font-size: 22rpx;
-  color: rgba(0, 0, 0, 0.2);
-}
-</style>

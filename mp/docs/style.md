@@ -76,6 +76,7 @@ uniapp默认不支持tailwindcss，项目通过`weapp-tailwindcss`提供了支�
 `main.css` 中包含完整的 Tailwind CSS v4 `@theme` 声明，将所有设计 token（颜色、字体、圆角、阴影等）映射为 Tailwind 工具类。设计 token 来源于 `docs/DESIGN.md`。
 
 在模板中使用时，应该优先使用已定义的主题样式，比如`text-green`。无法直接通过类名使用的工具类样式，比如`--mp-space-1`，可以在<style>中通过手写`var(--mp-space-1)`的方式使用。
+可以使用任意值语法的时候，就要优先使用，比如`max-height: 75vh;`可以写成`max-h-[75vh]`。
 
 整个项目应该优先使用tailwindcss，实在无法完成的再考虑手写css。
 
