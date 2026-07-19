@@ -78,17 +78,17 @@ safeBottom.value = info.safeAreaInsets?.bottom || 8
       <t-icon
         name="close-circle"
         size="60rpx"
-        custom-style="color: var(--mp-color-bg-ceramic);"
+        custom-style="color: #edebe9;"
         @click="handleClose"
       />
     </template>
 
     <view v-if="product" class="spec-content">
-      <view class="spec-header">
-        <view class="spec-product-img" />
+      <view class="spec-header border-b border-border-hairline">
+        <view class="spec-product-img bg-surface-ceramic" />
         <view class="spec-product-info">
-          <text class="spec-product-name">{{ product.name }}</text>
-          <text class="spec-product-desc">{{ product.desc }}</text>
+          <text class="spec-product-name text-ink">{{ product.name }}</text>
+          <text class="spec-product-desc text-ink-soft">{{ product.desc }}</text>
         </view>
       </view>
 
@@ -96,12 +96,12 @@ safeBottom.value = info.safeAreaInsets?.bottom || 8
         <view class="spec-scroll-inner">
           <template v-if="hasSpecs">
             <view v-for="group in product.specGroups" :key="group.id" class="spec-group">
-              <text class="spec-group-title">{{ group.title }}</text>
+              <text class="spec-group-title text-ink">{{ group.title }}</text>
               <view class="spec-pills-row">
                 <view
                   v-for="opt in group.options"
                   :key="opt.id"
-                  class="spec-pill"
+                  class="spec-pill border border-border rounded-button text-ink-soft"
                   :class="{ 'spec-pill--active': isActive(group.id, opt.id) }"
                   @click="$emit('toggle-option', group.id, opt.id)"
                 >
@@ -115,30 +115,36 @@ safeBottom.value = info.safeAreaInsets?.bottom || 8
           </template>
 
           <view class="spec-group spec-shots-row">
-            <text class="spec-shots-label">{{ stepperLabel }}</text>
-            <view class="spec-stepper">
-              <view class="spec-stepper-btn" @click="$emit('update-count', -1)">
-                <text class="spec-stepper-symbol translate-y-[-7%]">-</text>
+            <text class="spec-shots-label text-ink">{{ stepperLabel }}</text>
+            <view class="spec-stepper bg-surface-ceramic rounded-button">
+              <view
+                class="spec-stepper-btn border border-border bg-surface-card"
+                @click="$emit('update-count', -1)"
+              >
+                <text class="spec-stepper-symbol text-ink-soft translate-y-[-7%]">-</text>
               </view>
               <text class="spec-stepper-val">{{ count }}</text>
-              <view class="spec-stepper-btn" @click="$emit('update-count', 1)">
-                <text class="spec-stepper-symbol">+</text>
+              <view
+                class="spec-stepper-btn border border-border bg-surface-card"
+                @click="$emit('update-count', 1)"
+              >
+                <text class="spec-stepper-symbol text-ink-soft">+</text>
               </view>
             </view>
           </view>
         </view>
       </view>
 
-      <view class="spec-footer">
+      <view class="spec-footer border-t border-border-hairline">
         <view class="spec-footer__inner" :style="{ paddingBottom: safeBottom + 'px' }">
           <view class="spec-price-section">
             <view class="spec-price">
-              <text class="spec-price-symbol">¥</text>
-              <text class="spec-price-value">{{ totalPrice }}</text>
+              <text class="spec-price-symbol text-ink">¥</text>
+              <text class="spec-price-value text-ink">{{ totalPrice }}</text>
             </view>
-            <text class="spec-price-details">{{ priceLabel }}</text>
+            <text class="spec-price-details text-ink-soft">{{ priceLabel }}</text>
           </view>
-          <view class="spec-add-btn" @click="handleConfirm">
+          <view class="spec-add-btn bg-green-accent rounded-button" @click="handleConfirm">
             <text class="spec-add-btn-text">加入购物袋</text>
           </view>
         </view>
@@ -176,7 +182,6 @@ safeBottom.value = info.safeAreaInsets?.bottom || 8
   display: flex;
   align-items: flex-start;
   padding: 32rpx;
-  border-bottom: 2rpx solid var(--mp-color-border-hairline);
   flex-shrink: 0;
 }
 
@@ -184,7 +189,6 @@ safeBottom.value = info.safeAreaInsets?.bottom || 8
   width: 144rpx;
   height: 144rpx;
   border-radius: 24rpx;
-  background-color: var(--mp-color-bg-ceramic);
   flex-shrink: 0;
   margin-right: 24rpx;
 }
@@ -200,13 +204,11 @@ safeBottom.value = info.safeAreaInsets?.bottom || 8
 .spec-product-name {
   font-size: 32rpx;
   font-weight: 600;
-  color: var(--mp-color-text);
   line-height: 1.3;
 }
 
 .spec-product-desc {
   font-size: 22rpx;
-  color: var(--mp-color-text-soft);
   line-height: 1.4;
 }
 
@@ -240,7 +242,6 @@ safeBottom.value = info.safeAreaInsets?.bottom || 8
 .spec-group-title {
   font-size: 24rpx;
   font-weight: 700;
-  color: var(--mp-color-text);
   display: block;
   margin-bottom: 16rpx;
 }
@@ -251,12 +252,9 @@ safeBottom.value = info.safeAreaInsets?.bottom || 8
 }
 
 .spec-pill {
-  border: 2rpx solid var(--mp-color-border);
   padding: 12rpx 28rpx;
-  border-radius: var(--mp-radius-button);
   font-size: 24rpx;
   font-weight: 500;
-  color: var(--mp-color-text-soft);
   display: flex;
   align-items: center;
   margin-right: 16rpx;
@@ -264,8 +262,8 @@ safeBottom.value = info.safeAreaInsets?.bottom || 8
 }
 
 .spec-pill--active {
-  background-color: var(--mp-color-green-accent);
-  border-color: var(--mp-color-green-accent);
+  background-color: #00754a;
+  border-color: #00754a;
   color: #ffffff;
   font-weight: 600;
 }
@@ -291,7 +289,6 @@ safeBottom.value = info.safeAreaInsets?.bottom || 8
 .spec-shots-label {
   font-size: 24rpx;
   font-weight: 700;
-  color: var(--mp-color-text);
   flex-shrink: 0;
 }
 
@@ -299,17 +296,13 @@ safeBottom.value = info.safeAreaInsets?.bottom || 8
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background-color: var(--mp-color-bg-ceramic);
   padding: 8rpx 10rpx;
-  border-radius: var(--mp-radius-button);
 }
 
 .spec-stepper-btn {
   width: 48rpx;
   height: 48rpx;
   border-radius: 50%;
-  border: 2rpx solid var(--mp-color-border);
-  background-color: var(--mp-color-bg-card);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -318,7 +311,6 @@ safeBottom.value = info.safeAreaInsets?.bottom || 8
 .spec-stepper-symbol {
   font-size: 32rpx;
   font-weight: 500;
-  color: var(--mp-color-text-soft);
   line-height: 1;
 }
 
@@ -330,7 +322,6 @@ safeBottom.value = info.safeAreaInsets?.bottom || 8
 }
 
 .spec-footer {
-  border-top: 2rpx solid var(--mp-color-border-hairline);
   flex-shrink: 0;
   background-color: #ffffff;
 }
@@ -359,26 +350,21 @@ safeBottom.value = info.safeAreaInsets?.bottom || 8
 
 .spec-price-symbol {
   font-size: 26rpx;
-  color: var(--mp-color-text);
   margin-right: 2rpx;
 }
 
 .spec-price-value {
   font-size: 40rpx;
   font-weight: 700;
-  color: var(--mp-color-text);
   line-height: 1;
 }
 
 .spec-price-details {
   font-size: 18rpx;
-  color: var(--mp-color-text-soft);
 }
 
 .spec-add-btn {
-  background-color: var(--mp-color-green-accent);
   padding: 20rpx 48rpx;
-  border-radius: var(--mp-radius-button);
   flex-shrink: 0;
 }
 

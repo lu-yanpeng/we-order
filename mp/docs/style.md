@@ -47,7 +47,7 @@ defineOptions({
   // 必须设置成这个值才能修改组件内部样式，其他值无效
   options: {
     styleIsolation: "shared",
-  }  
+  }
 })
 </script>
 
@@ -71,15 +71,16 @@ defineOptions({
 
 ## tailwind css v4
 
-uniapp默认不支持tailwindcss，项目通过`weapp-tailwindcss`提供了支持。tailwindcss基础样式在`src/styles/main.css`，在main.ts中导入样式。
+uniapp默认不支持tailwindcss，项目通过`weapp-tailwindcss`提供了支持。tailwindcss基础样式在`src/styles/main.css`，在`App.vue`的`<style>`中导入。
+
+`main.css` 中包含完整的 Tailwind CSS v4 `@theme` 声明，将所有设计 token（颜色、字体、圆角、阴影等）映射为 Tailwind 工具类。设计 token 来源于 `docs/DESIGN.md`。
+
+在模板中使用时，应该优先使用已定义的主题样式，比如`text-green`。无法直接通过类名使用的工具类样式，比如`--mp-space-1`，可以在<style>中通过手写`var(--mp-space-1)`的方式使用。
+
+整个项目应该优先使用tailwindcss，实在无法完成的再考虑手写css。
 
 关于`vite.config.ts`的`WeappTailwindcss.cssEntries`，`weapp`官方文档说每个分包都要有自己的入口文件，其实不用，如果分包不需要独立的主题样式，那就不用写独立入口。
 所有分包默认继承基础的main.css主题，需要自定义时再考虑在分包中创建独立css。
-
-**自定义主题**
-
-应该在main.css创建扩展官方主题主题，但是因为`weapp-tailwindcss`还有一些[问题](https://github.com/sonofmagic/weapp-tailwindcss/issues/978)，
-现在只能先手写css，等待官方修复好后再考虑tailwindcss。
 
 ## uni.scss
 

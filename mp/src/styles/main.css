@@ -1,134 +1,154 @@
+/**
+ * We-Order 主题 — 基于 docs/DESIGN.md 星巴克设计规范
+ *
+ * 设计规范定义了四级绿色体系、金色 Rewards 专用色、暖奶油色画布等 token，
+ * 此处通过 Tailwind CSS v4 @theme 声明，将设计 token 映射为 Tailwind 工具类。
+ * 无法归入 @theme 命名空间的 token（动效、组件尺寸等）以 --mp-* 自定义属性保留在文末。
+ *
+ * @see docs/DESIGN.md
+ */
+
 @import 'tailwindcss';
 @source "../**/*.{html,js,ts,jsx,tsx,vue}";
 @source not "../uni_modules";
 @source not "../../node_modules";
-@source not "../dist";
-@source not "../unpackage";
+@source not "../../dist";
+@source not "../../unpackage";
 
-/**
- * We-Order 全局主题变量 — 基于 DESIGN.md 星巴克设计规范
- *
- * 前缀：--mp-*
- * 长度单位：rpx（1px = 2rpx，基于 750rpx 设计稿宽度）
- * 作用域：page（小程序根元素，所有页面/组件可通过 var() 引用）
- *
- * 目前无法自定义tailwindcss主题，参考 https://github.com/sonofmagic/weapp-tailwindcss/issues/978
- * 等待官方修复这个问题后，可以使用自定义的tw主题，不用手写样式
- */
-
-page {
+@theme {
   /* ============================================
    * 品牌色 — 四级绿色体系
    * ============================================ */
-  --mp-color-green: #006241;
-  --mp-color-green-accent: #00754a;
-  --mp-color-green-house: #1e3932;
-  --mp-color-green-uplift: #2b5148;
-  --mp-color-green-light: #d4e9e2;
+  --color-green: #006241;
+  --color-green-accent: #00754a;
+  --color-green-house: #1e3932;
+  --color-green-uplift: #2b5148;
+  --color-green-light: #d4e9e2;
 
   /* ============================================
    * 金色 — 仅限 Rewards 状态仪式
    * ============================================ */
-  --mp-color-gold: #cba258;
-  --mp-color-gold-light: #dfc49d;
-  --mp-color-gold-lightest: #faf6ee;
+  --color-gold: #cba258;
+  --color-gold-light: #dfc49d;
+  --color-gold-lightest: #faf6ee;
 
   /* ============================================
    * 表面色 / 背景色
    * ============================================ */
-  --mp-color-bg-page: #f2f0eb;
-  --mp-color-bg-ceramic: #edebe9;
-  --mp-color-bg-cool: #f9f9f9;
-  --mp-color-bg-card: #ffffff;
-  --mp-color-bg-dark: #000000;
+  --color-surface-page: #f2f0eb;
+  --color-surface-ceramic: #edebe9;
+  --color-surface-cool: #f9f9f9;
+  --color-surface-card: #ffffff;
+  --color-surface-dark: #000000;
 
   /* ============================================
    * 文字色
    * ============================================ */
-  --mp-color-text: rgba(0, 0, 0, 0.87);
-  --mp-color-text-soft: rgba(0, 0, 0, 0.58);
-  --mp-color-text-white: rgba(255, 255, 255, 1);
-  --mp-color-text-white-soft: rgba(255, 255, 255, 0.7);
-  --mp-color-text-rewards: #33433d;
+  --color-ink: rgba(0, 0, 0, 0.87);
+  --color-ink-soft: rgba(0, 0, 0, 0.58);
+  --color-ink-inverse: rgba(255, 255, 255, 1);
+  --color-ink-inverse-soft: rgba(255, 255, 255, 0.7);
+  --color-ink-rewards: #33433d;
 
   /* ============================================
    * 语义色
    * ============================================ */
-  --mp-color-error: #c82014;
-  --mp-color-warning: #fbbc05;
-  --mp-color-valid-tint: hsl(160 32% 87% / 0.33);
-  --mp-color-invalid-tint: hsl(4 82% 43% / 0.05);
+  --color-error: #c82014;
+  --color-warning: #fbbc05;
+  --color-valid-tint: hsl(160 32% 87% / 0.33);
+  --color-invalid-tint: hsl(4 82% 43% / 0.05);
 
   /* ============================================
    * 边框色
    * ============================================ */
-  --mp-color-border: #d6dbde;
-  --mp-color-border-hairline: #e7e7e7;
+  --color-border: #d6dbde;
+  --color-border-hairline: #e7e7e7;
 
   /* ============================================
-   * 黑色 / 白色透明度阶梯
+   * 黑色透明度阶梯
    * ============================================ */
-  --mp-color-black-6: rgba(0, 0, 0, 0.06);
-  --mp-color-black-10: rgba(0, 0, 0, 0.1);
-  --mp-color-black-14: rgba(0, 0, 0, 0.14);
-  --mp-color-black-24: rgba(0, 0, 0, 0.24);
-  --mp-color-black-40: rgba(0, 0, 0, 0.4);
-  --mp-color-black-58: rgba(0, 0, 0, 0.58);
-  --mp-color-black-60: rgba(0, 0, 0, 0.6);
-  --mp-color-black-87: rgba(0, 0, 0, 0.87);
-  --mp-color-black-90: rgba(0, 0, 0, 0.9);
+  --color-black-6: rgba(0, 0, 0, 0.06);
+  --color-black-10: rgba(0, 0, 0, 0.1);
+  --color-black-14: rgba(0, 0, 0, 0.14);
+  --color-black-24: rgba(0, 0, 0, 0.24);
+  --color-black-40: rgba(0, 0, 0, 0.4);
+  --color-black-58: rgba(0, 0, 0, 0.58);
+  --color-black-60: rgba(0, 0, 0, 0.6);
+  --color-black-87: rgba(0, 0, 0, 0.87);
+  --color-black-90: rgba(0, 0, 0, 0.9);
 
-  --mp-color-white-10: rgba(255, 255, 255, 0.1);
-  --mp-color-white-20: rgba(255, 255, 255, 0.2);
-  --mp-color-white-30: rgba(255, 255, 255, 0.3);
-  --mp-color-white-40: rgba(255, 255, 255, 0.4);
-  --mp-color-white-50: rgba(255, 255, 255, 0.5);
-  --mp-color-white-60: rgba(255, 255, 255, 0.6);
-  --mp-color-white-70: rgba(255, 255, 255, 0.7);
-  --mp-color-white-80: rgba(255, 255, 255, 0.8);
-  --mp-color-white-90: rgba(255, 255, 255, 0.9);
+  /* ============================================
+   * 白色透明度阶梯
+   * ============================================ */
+  --color-white-10: rgba(255, 255, 255, 0.1);
+  --color-white-20: rgba(255, 255, 255, 0.2);
+  --color-white-30: rgba(255, 255, 255, 0.3);
+  --color-white-40: rgba(255, 255, 255, 0.4);
+  --color-white-50: rgba(255, 255, 255, 0.5);
+  --color-white-60: rgba(255, 255, 255, 0.6);
+  --color-white-70: rgba(255, 255, 255, 0.7);
+  --color-white-80: rgba(255, 255, 255, 0.8);
+  --color-white-90: rgba(255, 255, 255, 0.9);
 
   /* ============================================
    * 字体家族
    * ============================================ */
-  --mp-font-family:
+  --font-family-sans:
     'Inter', -apple-system, 'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei', sans-serif;
-  --mp-font-family-serif: 'Georgia', 'Iowan Old Style', 'Lora', 'Source Serif Pro', serif;
-  --mp-font-family-script: 'Kalam', 'Comic Sans MS', cursive;
+  --font-family-serif: 'Georgia', 'Iowan Old Style', 'Lora', 'Source Serif Pro', serif;
+  --font-family-script: 'Kalam', 'Comic Sans MS', cursive;
 
   /* ============================================
-   * 字体大小（px → rpx ×2）
+   * 字体大小（rem → rpx 由 weapp-tailwindcss 自动转换）
    * ============================================ */
-  --mp-font-size-micro: 26rpx;
-  --mp-font-size-sm: 28rpx;
-  --mp-font-size-base: 32rpx;
-  --mp-font-size-lg: 38rpx;
-  --mp-font-size-h: 48rpx;
-  --mp-font-size-hero-lg: 56rpx;
-  --mp-font-size-jumbo: 72rpx;
-  --mp-font-size-display: 100rpx;
-
-  /* ============================================
-   * 字重
-   * ============================================ */
-  --mp-font-weight-regular: 400;
-  --mp-font-weight-semibold: 600;
+  --font-size-micro: 0.8125rem;
+  --font-size-sm: 0.875rem;
+  --font-size-base: 1rem;
+  --font-size-lg: 1.1875rem;
+  --font-size-h: 1.5rem;
+  --font-size-hero-lg: 1.75rem;
+  --font-size-jumbo: 2.25rem;
+  --font-size-display: 3.125rem;
 
   /* ============================================
    * 字间距
    * ============================================ */
-  --mp-letter-spacing-normal: -0.01em;
-  --mp-letter-spacing-loose: 0.1em;
-  --mp-letter-spacing-looser: 0.15em;
+  --tracking-normal: -0.01em;
+  --tracking-loose: 0.1em;
+  --tracking-looser: 0.15em;
 
   /* ============================================
    * 行高
    * ============================================ */
-  --mp-line-height: 1.5;
-  --mp-line-height-compact: 1.2;
+  --leading-normal: 1.5;
+  --leading-compact: 1.2;
 
   /* ============================================
-   * 间距体系（px → rpx ×2）
+   * 圆角（rem → rpx 由 weapp-tailwindcss 自动转换）
+   * ============================================ */
+  --radius-card: 0.75rem;
+  --radius-button: 3.125rem;
+  --radius-input: 0.25rem;
+
+  /* ============================================
+   * 阴影（原生 rpx，无需 rem2rpx 转换）
+   * ============================================ */
+  --shadow-card: 0 0 1rpx rgba(0, 0, 0, 0.14), 0 2rpx 2rpx rgba(0, 0, 0, 0.24);
+  --shadow-nav:
+    0 2rpx 6rpx rgba(0, 0, 0, 0.1), 0 4rpx 4rpx rgba(0, 0, 0, 0.06), 0 0 4rpx rgba(0, 0, 0, 0.07);
+  --shadow-frap-base: 0 0 12rpx rgba(0, 0, 0, 0.24);
+  --shadow-frap-ambient: 0 16rpx 24rpx rgba(0, 0, 0, 0.14);
+  --shadow-frap-ambient-active: 0 16rpx 24rpx rgba(0, 0, 0, 0);
+}
+
+/*
+ * 以下 token 无法归入 Tailwind @theme 命名空间（动效、组件尺寸等），
+ * 以 --mp-* 自定义属性保留。组件在需要时可通过 var(--mp-*) 引用。
+ */
+
+page {
+  /* ============================================
+   * 间距体系（仅文档参考，实际使用 Tailwind 默认 spacing）
    * ============================================ */
   --mp-space-1: 8rpx;
   --mp-space-2: 16rpx;
@@ -139,26 +159,7 @@ page {
   --mp-space-7: 96rpx;
   --mp-space-8: 112rpx;
   --mp-space-9: 128rpx;
-
   --mp-gutter: 32rpx;
-
-  /* ============================================
-   * 圆角
-   * ============================================ */
-  --mp-radius-card: 24rpx;
-  --mp-radius-button: 100rpx;
-  --mp-radius-input: 8rpx;
-  --mp-radius-circle: 50%;
-
-  /* ============================================
-   * 阴影
-   * ============================================ */
-  --mp-shadow-card: 0 0 1rpx rgba(0, 0, 0, 0.14), 0 2rpx 2rpx rgba(0, 0, 0, 0.24);
-  --mp-shadow-nav:
-    0 2rpx 6rpx rgba(0, 0, 0, 0.1), 0 4rpx 4rpx rgba(0, 0, 0, 0.06), 0 0 4rpx rgba(0, 0, 0, 0.07);
-  --mp-shadow-frap-base: 0 0 12rpx rgba(0, 0, 0, 0.24);
-  --mp-shadow-frap-ambient: 0 16rpx 24rpx rgba(0, 0, 0, 0.14);
-  --mp-shadow-frap-ambient-active: 0 16rpx 24rpx rgba(0, 0, 0, 0);
 
   /* ============================================
    * 动效 / 过渡
@@ -176,16 +177,12 @@ page {
   --mp-frap-size: 112rpx;
   --mp-frap-size-mini: 80rpx;
   --mp-frap-touch-offset: -16rpx;
-
   --mp-modal-padding: 48rpx;
   --mp-modal-top-padding: 176rpx;
-
   --mp-nav-height: 128rpx;
   --mp-subnav-height: 106rpx;
-
   --mp-button-padding: 14rpx 32rpx;
   --mp-button-font-size: 32rpx;
-
   --mp-input-padding: 24rpx;
   --mp-input-label-font-size: 32rpx;
   --mp-input-label-active-font-size: 26rpx;

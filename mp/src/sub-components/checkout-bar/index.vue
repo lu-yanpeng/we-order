@@ -12,22 +12,24 @@ safeBottom.value = info.safeAreaInsets?.bottom || 8
 </script>
 
 <template>
-  <view class="checkout-bar">
+  <view class="checkout-bar bg-surface-card border-t border-border-hairline">
     <view class="checkout-bar__inner" :style="{ paddingBottom: safeBottom + 'px' }">
       <view class="checkout-bar__left">
         <view class="checkout-bar__price">
-          <text class="checkout-bar__price-label">合计：</text>
-          <text class="checkout-bar__price-symbol">¥</text>
-          <text class="checkout-bar__price-value">{{ totalPrice ?? 0 }}</text>
+          <text class="checkout-bar__price-label text-ink-soft">合计：</text>
+          <text class="checkout-bar__price-symbol text-green">¥</text>
+          <text class="checkout-bar__price-value text-green">{{ totalPrice ?? 0 }}</text>
         </view>
         <view class="checkout-bar__detail">
-          <text class="checkout-bar__detail-text">明细</text>
+          <text class="checkout-bar__detail-text text-ink-soft">明细</text>
           <t-icon name="chevron-up" size="24rpx" color="rgba(0,0,0,0.58)" />
         </view>
       </view>
       <view class="checkout-bar__right">
-        <view class="checkout-bar__submit">
-          <text class="checkout-bar__submit-text">结算({{ totalCount ?? 0 }})</text>
+        <view class="checkout-bar__submit bg-gold rounded-button">
+          <text class="checkout-bar__submit-text text-surface-dark"
+            >结算({{ totalCount ?? 0 }})</text
+          >
         </view>
       </view>
     </view>
@@ -35,11 +37,6 @@ safeBottom.value = info.safeAreaInsets?.bottom || 8
 </template>
 
 <style scoped>
-.checkout-bar {
-  background-color: var(--mp-color-bg-card);
-  border-top: 2rpx solid var(--mp-color-border-hairline);
-}
-
 .checkout-bar__inner {
   display: flex;
   align-items: center;
@@ -63,20 +60,17 @@ safeBottom.value = info.safeAreaInsets?.bottom || 8
 
 .checkout-bar__price-label {
   font-size: 22rpx;
-  color: var(--mp-color-text-soft);
   font-weight: 500;
 }
 
 .checkout-bar__price-symbol {
   font-size: 22rpx;
-  color: var(--mp-color-green);
   font-weight: 700;
   margin-left: 4rpx;
 }
 
 .checkout-bar__price-value {
   font-size: 36rpx;
-  color: var(--mp-color-green);
   font-weight: 700;
 }
 
@@ -89,7 +83,6 @@ safeBottom.value = info.safeAreaInsets?.bottom || 8
 
 .checkout-bar__detail-text {
   font-size: 20rpx;
-  color: var(--mp-color-text-soft);
 }
 
 .checkout-bar__right {
@@ -102,14 +95,11 @@ safeBottom.value = info.safeAreaInsets?.bottom || 8
   justify-content: center;
   height: 76rpx;
   padding: 0 40rpx;
-  background-color: var(--mp-color-gold);
-  border-radius: var(--mp-radius-button);
   box-shadow: 0 4rpx 12rpx rgba(203, 162, 88, 0.2);
 }
 
 .checkout-bar__submit-text {
   font-size: 26rpx;
   font-weight: 700;
-  color: var(--mp-color-bg-dark);
 }
 </style>

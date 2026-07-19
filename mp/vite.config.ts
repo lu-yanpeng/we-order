@@ -62,7 +62,7 @@ export default defineConfig({
     uni(),
     WeappTailwindcss({
       cssEntries: [
-        resolve(projectRoot, 'src/main.css'),
+        resolve(projectRoot, 'src/styles/main.css'),
       ],
       cssOptions: {
         rem2rpx: true,
