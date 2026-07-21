@@ -149,10 +149,12 @@ safeBottom.value = info.safeAreaInsets?.bottom || 8
         </view>
       </view>
 
-      <view class="shrink-0 border-t border-border-hairline bg-surface-card">
+      <view
+        class="shrink-0 border-t border-border-hairline bg-surface-card"
+        :style="{ paddingBottom: safeBottom + 'px' }"
+      >
         <view
-          class="flex min-h-[120rpx] items-center justify-between px-[32rpx] pt-[16rpx]"
-          :style="{ paddingBottom: safeBottom + 'px' }"
+          class="flex min-h-(--mp-frap-size) items-center justify-between px-[32rpx] pt-[16rpx]"
         >
           <view class="mr-[24rpx] flex flex-1 flex-col overflow-hidden">
             <view class="mb-[4rpx] flex items-baseline">

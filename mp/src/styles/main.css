@@ -174,7 +174,7 @@ page {
   /* ============================================
    * 组件尺寸
    * ============================================ */
-  --mp-frap-size: 112rpx;
+  --mp-frap-size: 120rpx; /* 结算栏和加购栏都用统一高度，这个高度加上pt-[16rpx]，刚好能放下两行文字不用换行 */
   --mp-frap-size-mini: 80rpx;
   --mp-frap-touch-offset: -16rpx;
   --mp-modal-padding: 48rpx;

@@ -12,11 +12,11 @@ safeBottom.value = info.safeAreaInsets?.bottom || 8
 </script>
 
 <template>
-  <view class="border-t border-border-hairline bg-surface-card">
-    <view
-      class="flex min-h-[120rpx] items-center justify-between px-[32rpx] pt-[16rpx]"
-      :style="{ paddingBottom: safeBottom + 'px' }"
-    >
+  <view
+    class="border-t border-border-hairline bg-surface-card"
+    :style="{ paddingBottom: safeBottom + 'px' }"
+  >
+    <view class="flex min-h-(--mp-frap-size) items-center justify-between px-[32rpx] pt-[16rpx]">
       <view class="flex h-full flex-1 flex-col justify-center">
         <view class="flex items-baseline">
           <text class="font-medium text-[22rpx] text-ink-soft">合计：</text>
