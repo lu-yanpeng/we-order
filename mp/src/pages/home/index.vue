@@ -41,7 +41,15 @@ const {
   updateCount,
 } = useSpecSheet()
 
-const { totalCount: cartTotalCount, totalPrice: cartTotalPrice, addItem } = useCart()
+const {
+  items: cartItems,
+  totalCount: cartTotalCount,
+  totalPrice: cartTotalPrice,
+  addItem,
+  removeItem,
+  updateQuantity,
+  clearCart,
+} = useCart()
 
 const { activeTab, swiperIndex, onTabChange, onSwiperChange } = useHomeTabs()
 
@@ -68,6 +76,21 @@ const handleSpecConfirm = () => {
 
   addItem(item)
   closeSpecSheet()
+}
+
+/** 清空购物袋 */
+const handleClearCart = () => {
+  clearCart()
+}
+
+/** 更新购物车商品数量 */
+const handleUpdateQty = (item: CartItem, delta: number) => {
+  const newQty = item.quantity + delta
+  if (newQty <= 0) {
+    removeItem(item.productId, item.selections)
+  } else {
+    updateQuantity(item.productId, item.selections, newQty)
+  }
 }
 
 // initProducts 由页面 onMounted 调用（数据加载属于页面级初始化编排）
@@ -147,7 +170,13 @@ onMounted(() => {
       </swiper-item>
     </swiper>
 
-    <checkout-bar :total-count="cartTotalCount" :total-price="cartTotalPrice" />
+    <checkout-bar
+      :items="cartItems"
+      :total-count="cartTotalCount"
+      :total-price="cartTotalPrice"
+      @clear-cart="handleClearCart"
+      @update-qty="handleUpdateQty"
+    />
     <spec-sheet
       v-model:visible="visible"
       :product="currentProduct"
