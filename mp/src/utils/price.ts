@@ -35,19 +35,17 @@ export function calcSpecExtras(
 }
 
 /**
- * 生成规格摘要字符串（在弹窗底部价格旁展示）
+ * 生成规格摘要字符串
  *
- * @example "大杯 Grande / 冰饮推荐 / 燕麦奶 / 正常糖 / 正常冰 / 1份浓缩"
+ * @example "大杯 Grande / 冰饮推荐 / 燕麦奶 / 正常糖 / 正常冰"
  *
  * @param specGroups 规格组列表
  * @param selections 用户选择的规格值
- * @param shotCount 浓缩份数
- * @returns 用 " / " 分隔的规格摘要
+ * @returns 用 " / " 分隔的规格摘要，无规格时返回空字符串
  */
 export function buildSpecSummary(
   specGroups: SpecGroup[],
   selections: Record<string, string | string[]>,
-  shotCount: number,
 ): string {
   const parts: string[] = []
 
@@ -66,20 +64,19 @@ export function buildSpecSummary(
     }
   }
 
-  parts.push(`${shotCount}份浓缩`)
   return parts.join(' / ')
 }
 
 /**
- * 计算商品最终价格（含规格加价与浓缩份数加价）
+ * 计算商品最终价格（数量 × 单价）
  *
- * 业务规则：浓缩份数 > 1 时，每额外一份 +¥4。
- * 无规格时为基础价 × 购买数量。
+ * 有规格时单价 = 基础价 + 规格加价；无规格时单价 = 基础价。
+ * 最终价 = 单价 × 数量。
  *
  * @param basePrice 商品基础价格
  * @param specGroups 规格组列表
  * @param selections 用户选择的规格值
- * @param shotCount 浓缩份数（无规格时即为购买数量）
+ * @param count 购买数量（无规格时即为购买数量，有规格时也为购买数量）
  * @param hasSpecs 是否有规格组
  * @returns 最终价格
  */
@@ -87,15 +84,9 @@ export function calcTotalPrice(
   basePrice: number,
   specGroups: SpecGroup[],
   selections: Record<string, string | string[]>,
-  shotCount: number,
+  count: number,
   hasSpecs: boolean,
 ): number {
-  if (!hasSpecs) {
-    return basePrice * shotCount
-  }
-  let price = basePrice + calcSpecExtras(specGroups, selections)
-  if (shotCount > 1) {
-    price += (shotCount - 1) * 4
-  }
-  return price
+  const unitPrice = hasSpecs ? basePrice + calcSpecExtras(specGroups, selections) : basePrice
+  return unitPrice * count
 }

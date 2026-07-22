@@ -41,3 +41,17 @@ export interface Category {
   name: string
   products: Product[]
 }
+
+/**
+ * 购物车条目 — 已选规格的商品实例
+ */
+export interface CartItem {
+  productId: string
+  productName: string
+  productDesc: string
+  basePrice: number
+  selections: Record<string, string | string[]>
+  quantity: number
+  unitPrice: number
+  specSummary: string
+}

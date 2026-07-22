@@ -4,8 +4,8 @@
  * 职责：
  * 1. 控制弹窗显隐与当前选中商品
  * 2. 管理规格选择的表单状态（selections、count）
- * 3. 计算最终价格，封装业务规则（+¥4/份 等）
- * 4. 处理确认回调（关闭弹窗 + 可选副作用）
+ * 3. 计算最终价格，封装业务规则（规格加价）
+ * 4. 确认回调（关闭弹窗，购物车写入由页面编排）
  *
  * 遵循 AD-2：composable 导入 utils/price（依赖方向 ✓）
  * 遵循 AD-3：交互逻辑与价格规则封装在 Composable 内，组件纯展示
@@ -14,7 +14,7 @@
  */
 import { computed, reactive, ref, watch } from 'vue'
 import type { Product } from '@/types/product'
-import { calcTotalPrice, buildSpecSummary } from '@/utils/price'
+import { calcTotalPrice, calcSpecExtras, buildSpecSummary } from '@/utils/price'
 
 export function useSpecSheet() {
   /** 弹窗是否可见 */
@@ -35,14 +35,22 @@ export function useSpecSheet() {
     return !!(currentProduct.value.specGroups && currentProduct.value.specGroups.length > 0)
   })
 
-  /** 步进器标签文案 */
-  const stepperLabel = computed(() => (hasSpecs.value ? '浓缩份数' : '数量'))
+  /** 单件单价：有规格 = 基础价 + 规格加价，无规格 = 基础价 */
+  const unitPrice = computed(() => {
+    if (!currentProduct.value) return 0
+    if (hasSpecs.value) {
+      return (
+        currentProduct.value.price + calcSpecExtras(currentProduct.value.specGroups!, selections)
+      )
+    }
+    return currentProduct.value.price
+  })
 
   // ---- 价格计算（业务规则在此，不侵入组件） ----
   /**
    * 计算最终价格
+   * - 有规格：(基础价 + 规格加价) × 数量
    * - 无规格：基础价 × 数量
-   * - 有规格：基础价 + 规格加价 + 浓缩份数加价
    */
   const totalPrice = computed(() => {
     if (!currentProduct.value) return 0
@@ -60,9 +68,16 @@ export function useSpecSheet() {
   const priceLabel = computed(() => {
     if (!currentProduct.value) return ''
     if (hasSpecs.value) {
-      return buildSpecSummary(currentProduct.value.specGroups!, selections, count.value)
+      const summary = buildSpecSummary(currentProduct.value.specGroups!, selections)
+      return `${summary} x${count.value}`
     }
     return `x${count.value}`
+  })
+
+  /** 纯规格摘要（不含数量），用于加入购物车时存储 */
+  const specSummary = computed(() => {
+    if (!currentProduct.value || !hasSpecs.value) return ''
+    return buildSpecSummary(currentProduct.value.specGroups!, selections)
   })
 
   // ---- 表单操作方法 ----
@@ -132,12 +147,9 @@ export function useSpecSheet() {
   }
 
   /**
-   * 确认回调
-   * Phase 1：仅打印日志并关闭弹窗
-   * Phase 4：对接购物车 Pinia store
+   * 确认回调：关闭弹窗，由页面编排调用方负责购物车写入
    */
   const confirm = () => {
-    console.log('spec-confirm', currentProduct.value?.name, { selections, count: count.value })
     close()
   }
 
@@ -153,9 +165,11 @@ export function useSpecSheet() {
     count,
     // 计算值（通过 props 传给组件）
     hasSpecs,
-    stepperLabel,
+    stepperLabel: '数量',
+    unitPrice,
     totalPrice,
     priceLabel,
+    specSummary,
     // 操作方法（组件通过 emit 触发）
     isActive,
     toggleOption,

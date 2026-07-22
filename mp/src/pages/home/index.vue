@@ -3,12 +3,13 @@
  * 首页 — 点餐与订单双 Tab 页面
  *
  * 遵循 AD-3：页面仅负责组件编排和布局，
- * 业务逻辑由 useProducts / useSpecSheet / useHomeTabs 三个 Composable 承载。
+ * 业务逻辑由 useProducts / useSpecSheet / useCart / useHomeTabs 四个 Composable 承载。
  */
 import { onMounted } from 'vue'
-import type { Product } from '@/types/product'
+import type { Product, CartItem } from '@/types/product'
 import { useProducts } from '@/composables/use-products'
 import { useSpecSheet } from '@/composables/use-spec-sheet'
+import { useCart } from '@/composables/use-cart'
 import { useHomeTabs } from '@/composables/use-home-tabs'
 import ProductCard from './components/product-card/index.vue'
 import SpecSheet from './components/spec-sheet/index.vue'
@@ -27,21 +28,46 @@ const {
   visible,
   currentProduct,
   open: openSpecSheet,
-  confirm: confirmSpecSheet,
+  confirm: closeSpecSheet,
   selections,
   count,
   hasSpecs,
   stepperLabel,
+  unitPrice,
   totalPrice,
   priceLabel,
+  specSummary,
   toggleOption,
   updateCount,
 } = useSpecSheet()
+
+const { totalCount: cartTotalCount, totalPrice: cartTotalPrice, addItem } = useCart()
+
 const { activeTab, swiperIndex, onTabChange, onSwiperChange } = useHomeTabs()
 
-/** 点击商品加号 → 打开规格弹窗（薄映射：组件事件 → Composable 动作） */
+/** 点击商品加号 → 打开规格弹窗 */
 const handleAddToCart = (product: Product) => {
   openSpecSheet(product)
+}
+
+/** 规格弹窗确认 → 构建 CartItem 写入购物车 */
+const handleSpecConfirm = () => {
+  const product = currentProduct.value
+  if (!product) return
+
+  const item: CartItem = {
+    productId: product.id,
+    productName: product.name,
+    productDesc: product.desc,
+    basePrice: product.price,
+    selections: { ...selections },
+    quantity: count.value,
+    unitPrice: unitPrice.value,
+    specSummary: specSummary.value,
+  }
+
+  addItem(item)
+  closeSpecSheet()
 }
 
 // initProducts 由页面 onMounted 调用（数据加载属于页面级初始化编排）
@@ -121,7 +147,7 @@ onMounted(() => {
       </swiper-item>
     </swiper>
 
-    <checkout-bar />
+    <checkout-bar :total-count="cartTotalCount" :total-price="cartTotalPrice" />
     <spec-sheet
       v-model:visible="visible"
       :product="currentProduct"
@@ -131,7 +157,7 @@ onMounted(() => {
       :total-price="totalPrice"
       :price-label="priceLabel"
       :stepper-label="stepperLabel"
-      @confirm="confirmSpecSheet"
+      @confirm="handleSpecConfirm"
       @toggle-option="toggleOption"
       @update-count="updateCount"
     />

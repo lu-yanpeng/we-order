@@ -6,7 +6,7 @@
  * 所有表单状态（selections、count）与价格计算均由 useSpecSheet Composable 持有。
  *
  * 两种展示模式：
- *   - 有规格（hasSpecs）：显示规格组 + 浓缩份数步进器
+ *   - 有规格（hasSpecs）：显示规格组 + 数量步进器
  *   - 无规格（!hasSpecs）：仅显示数量步进器
  */
 import { computed, ref } from 'vue'
