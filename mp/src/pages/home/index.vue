@@ -85,11 +85,11 @@ const handleClearCart = () => {
 
 /** 更新购物车商品数量 */
 const handleUpdateQty = (item: CartItem, delta: number) => {
-  const newQty = item.quantity + delta
-  if (newQty <= 0) {
+  item.quantity = delta
+  if (delta <= 0) {
     removeItem(item.productId, item.selections)
   } else {
-    updateQuantity(item.productId, item.selections, newQty)
+    updateQuantity(item.productId, item.selections, delta)
   }
 }
 

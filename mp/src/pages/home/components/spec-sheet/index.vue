@@ -11,6 +11,7 @@
  */
 import { computed, ref } from 'vue'
 import type { Product } from '@/types/product'
+import MyStepper from '@/components/stepper/index.vue'
 
 const props = defineProps<{
   visible: boolean
@@ -126,25 +127,11 @@ safeBottom.value = info.safeAreaInsets?.bottom || 8
 
           <view class="mb-0 flex items-center justify-between">
             <text class="shrink-0 font-bold text-[24rpx] text-ink">{{ stepperLabel }}</text>
-            <view
-              class="flex items-center justify-between rounded-button bg-surface-ceramic px-[10rpx] py-[8rpx]"
-            >
-              <view
-                class="flex h-[48rpx] w-[48rpx] items-center justify-center rounded-full border border-border bg-surface-card"
-                @click="$emit('update-count', -1)"
-              >
-                <text class="translate-y-[-7%] leading-none font-medium text-[32rpx] text-ink-soft"
-                  >-</text
-                >
-              </view>
-              <text class="min-w-[70rpx] text-center font-semibold text-[26rpx]">{{ count }}</text>
-              <view
-                class="flex h-[48rpx] w-[48rpx] items-center justify-center rounded-full border border-border bg-surface-card"
-                @click="$emit('update-count', 1)"
-              >
-                <text class="leading-none font-medium text-[32rpx] text-ink-soft">+</text>
-              </view>
-            </view>
+            <my-stepper
+              :model-value="count"
+              @update:model-value="$emit('update-count', $event)"
+              :min="1"
+            />
           </view>
         </view>
       </view>

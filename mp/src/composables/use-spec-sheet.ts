@@ -121,7 +121,7 @@ export function useSpecSheet() {
 
   /** 步进器 +/- 操作，下限为 1 */
   const updateCount = (delta: number) => {
-    count.value = Math.max(1, count.value + delta)
+    count.value = delta
   }
 
   // ---- 弹窗生命周期 ----

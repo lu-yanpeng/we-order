@@ -70,4 +70,9 @@ export default defineConfig({
     }),
     ensurePageWxss(),
   ],
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+    },
+  },
 });

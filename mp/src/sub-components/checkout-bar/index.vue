@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { getCurrentInstance, nextTick, onMounted, ref } from 'vue'
 import type { CartItem } from '@/types/product'
+import MyStepper from '@/components/stepper/index.vue'
 
 defineProps<{
   totalCount?: number
@@ -142,28 +143,10 @@ const closeCartDetail = () => {
               <text class="font-bold text-[28rpx] text-ink"
                 >¥{{ item.unitPrice * item.quantity }}</text
               >
-              <view
-                class="flex items-center gap-[16rpx] rounded-button bg-surface-ceramic px-[8rpx] py-[6rpx]"
-              >
-                <view
-                  class="flex h-[48rpx] w-[48rpx] items-center justify-center rounded-full border border-border bg-surface-card"
-                  @click="emit('update-qty', item, -1)"
-                >
-                  <text
-                    class="translate-y-[-7%] leading-none font-medium text-[32rpx] text-ink-soft"
-                    >-</text
-                  >
-                </view>
-                <text class="min-w-[28rpx] text-center font-semibold text-[26rpx]">{{
-                  item.quantity
-                }}</text>
-                <view
-                  class="flex h-[48rpx] w-[48rpx] items-center justify-center rounded-full border border-border bg-surface-card"
-                  @click="emit('update-qty', item, 1)"
-                >
-                  <text class="leading-none font-medium text-[32rpx] text-ink-soft">+</text>
-                </view>
-              </view>
+              <my-stepper
+                :model-value="item.quantity"
+                @update:model-value="$emit('update-qty', item, $event)"
+              />
             </view>
           </view>
         </view>
