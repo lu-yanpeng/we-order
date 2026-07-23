@@ -3,13 +3,35 @@
 这是点餐小程序的前端子项目，主要用到以下技术
 
 - uniapp
-- vue3
+- vue3.5
 - typescript
 - pnpm
 - [tDesign](https://tdesign.tencent.com/uniapp/overview) 组件库
 - tailwind css v4
 
 该项目最终只会部署到微信小程序平台，不需要考虑兼容其他平台。比如h5和其他小程序，只需要考虑微信的语法，不要做其他平台的适配。
+
+## vue相关
+
+### 最新语法
+
+写vue代码时，优先考虑用vue3.5的最新语法。
+
+**响应式解构**，解构props的同时给出默认值
+
+```ts
+const { max = 100 } = defineProps<{
+  max?: number
+}>()
+```
+
+**事件标注类型**，优先使用具名元组语法
+
+```ts
+const emit = defineEmits<{
+  update: [value: string]
+}>()
+```
 
 ## 项目质量
 
