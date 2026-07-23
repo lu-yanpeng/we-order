@@ -3,7 +3,17 @@ import { getCurrentInstance, nextTick, onMounted, ref } from 'vue'
 import type { CartItem } from '@/types/product'
 import MyStepper from '@/components/stepper/index.vue'
 
-defineProps<{
+defineOptions({
+  options: {
+    styleIsolation: 'shared',
+  },
+})
+
+const {
+  totalCount = 0,
+  totalPrice = 0,
+  items,
+} = defineProps<{
   totalCount?: number
   totalPrice?: number
   items: CartItem[]
@@ -18,6 +28,21 @@ const safeBottom = ref(0)
 const barHeight = ref(0)
 const cartDetailVisible = ref(false)
 const cartDetailAnimated = ref(false)
+const clearDialogVisible = ref(false)
+
+const clearDialogConfirmBtn = {
+  content: '确认清空',
+  theme: 'danger' as const,
+  size: 'small' as const,
+  shape: 'round' as const,
+}
+
+const clearDialogCancelBtn = {
+  content: '取消',
+  variant: 'outline' as const,
+  size: 'small' as const,
+  shape: 'round' as const,
+}
 
 const instance = getCurrentInstance()
 
@@ -37,6 +62,15 @@ onMounted(() => {
       .exec()
   })
 })
+
+const openClearDialog = () => {
+  clearDialogVisible.value = true
+}
+
+const handleConfirmClear = () => {
+  clearDialogVisible.value = false
+  emit('clear-cart')
+}
 
 const toggleCartDetail = () => {
   if (cartDetailVisible.value) {
@@ -68,30 +102,30 @@ const closeCartDetail = () => {
       :style="{ paddingBottom: safeBottom + 'px' }"
     >
       <view class="flex min-h-(--mp-frap-size) items-center justify-between px-[32rpx] pt-[16rpx]">
-        <view class="flex h-full flex-1 flex-col justify-center" @click="toggleCartDetail">
-          <view class="flex items-baseline">
-            <text class="font-medium text-[22rpx] text-ink-soft">合计：</text>
-            <text class="ml-[4rpx] font-bold text-[22rpx] text-green">¥</text>
-            <text class="font-bold text-[36rpx] text-green">{{ totalPrice ?? 0 }}</text>
-          </view>
-          <view class="mt-[2rpx] flex items-center gap-[4rpx]">
-            <text class="text-[20rpx] text-ink-soft">明细</text>
-            <t-icon
-              name="chevron-up"
-              size="24rpx"
-              color="rgba(0,0,0,0.58)"
-              :class="{ 'rotate-180': cartDetailAnimated }"
-              custom-style="transition: transform 250ms ease;"
-            />
+        <view class="flex h-full flex-1 flex-col justify-center">
+          <view class="self-start" @click="toggleCartDetail">
+            <view class="flex items-baseline">
+              <text class="font-medium text-[22rpx] text-ink-soft">合计：</text>
+              <text class="ml-[4rpx] font-bold text-[22rpx] text-green">¥</text>
+              <text class="font-bold text-[36rpx] text-green">{{ totalPrice }}</text>
+            </view>
+            <view class="mt-[2rpx] flex items-center gap-[4rpx]">
+              <text class="text-[20rpx] text-ink-soft">明细</text>
+              <t-icon
+                name="chevron-up"
+                size="24rpx"
+                color="rgba(0,0,0,0.58)"
+                :class="{ 'rotate-180': cartDetailAnimated }"
+                custom-style="transition: transform 250ms ease;"
+              />
+            </view>
           </view>
         </view>
         <view class="shrink-0">
           <view
             class="flex h-[76rpx] items-center justify-center rounded-button bg-gold px-[40rpx] shadow-[0_4rpx_12rpx_rgba(203,162,88,0.2)]"
           >
-            <text class="font-bold text-[26rpx] text-surface-dark"
-              >结算({{ totalCount ?? 0 }})</text
-            >
+            <text class="font-bold text-[26rpx] text-surface-dark">结算({{ totalCount }})</text>
           </view>
         </view>
       </view>
@@ -115,27 +149,27 @@ const closeCartDetail = () => {
         class="flex shrink-0 items-center justify-between border-b border-border-hairline px-[40rpx] py-[28rpx]"
       >
         <text class="font-semibold text-[26rpx] text-ink">已购商品</text>
-        <view class="flex items-center gap-[8rpx]" @click="emit('clear-cart')">
+        <view v-if="items.length > 0" class="flex items-center gap-[8rpx]" @click="openClearDialog">
           <t-icon name="delete" size="28rpx" color="rgba(0,0,0,0.58)" />
-          <text class="text-[24rpx] text-ink-soft">清空购物袋</text>
+          <text class="text-[24rpx] text-ink-soft">清空购物车</text>
         </view>
       </view>
 
       <view class="spec-scroll-wrapper min-h-0 flex-1 overflow-y-auto">
         <view v-if="items.length === 0" class="flex items-center justify-center py-[80rpx]">
-          <text class="text-[24rpx] text-ink-soft">购物袋是空的</text>
+          <text class="text-[24rpx] text-ink-soft">购物车是空的</text>
         </view>
         <view v-else class="px-[40rpx]">
           <view
             v-for="item in items"
             :key="item.productId + '-' + item.specSummary"
-            class="flex items-center justify-between border-b border-border-hairline py-[28rpx]"
+            class="flex items-center justify-between border-b border-border-hairline py-[28rpx] last:border-b-0"
           >
             <view class="mr-[24rpx] flex min-w-0 flex-1 flex-col gap-[6rpx]">
               <text class="truncate font-semibold text-[26rpx] text-ink">{{
                 item.productName
               }}</text>
-              <text v-if="item.specSummary" class="truncate text-[20rpx] text-ink-soft">{{
+              <text v-if="item.specSummary" class="text-[20rpx] text-ink-soft">{{
                 item.specSummary
               }}</text>
             </view>
@@ -152,6 +186,17 @@ const closeCartDetail = () => {
         </view>
       </view>
     </view>
+
+    <t-dialog
+      t-class="checkout-clear-dialog"
+      :visible="clearDialogVisible"
+      title="清空购物车"
+      :confirm-btn="clearDialogConfirmBtn"
+      :cancel-btn="clearDialogCancelBtn"
+      close-on-overlay-click
+      @confirm="handleConfirmClear"
+      @close="clearDialogVisible = false"
+    />
   </view>
 </template>
 
@@ -184,5 +229,36 @@ const closeCartDetail = () => {
   display: none;
   width: 0;
   height: 0;
+}
+</style>
+
+<style>
+.t-popup.t-popup--center.t-dialog__wrapper {
+  background-color: transparent;
+
+  .checkout-clear-dialog {
+    --td-dialog-border-radius: 24rpx;
+    --td-dialog-width: 520rpx;
+    border-radius: 24rpx;
+    overflow: hidden;
+
+    .t-dialog__content {
+      padding: 52rpx 0;
+
+      .t-dialog__header {
+        font-size: 30rpx !important;
+        font-weight: 600 !important;
+        color: rgba(0, 0, 0, 0.87) !important;
+      }
+    }
+
+    .t-dialog__footer {
+      padding: 0 32rpx 32rpx !important;
+
+      .t-dialog__button {
+        min-width: 160rpx !important;
+      }
+    }
+  }
 }
 </style>

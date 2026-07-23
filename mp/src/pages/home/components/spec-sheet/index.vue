@@ -154,7 +154,7 @@ safeBottom.value = info.safeAreaInsets?.bottom || 8
             class="shrink-0 rounded-button bg-green-accent px-[48rpx] py-[20rpx]"
             @click="handleConfirm"
           >
-            <text class="font-semibold text-[28rpx] text-ink-inverse">加入购物袋</text>
+            <text class="font-semibold text-[28rpx] text-ink-inverse">加入购物车</text>
           </view>
         </view>
       </view>
