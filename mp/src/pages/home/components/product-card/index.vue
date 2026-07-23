@@ -6,7 +6,7 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'add-to-cart', product: Product): void
+  'add-to-cart': [product: Product]
 }>()
 
 const handleAddToCart = (product: Product) => {

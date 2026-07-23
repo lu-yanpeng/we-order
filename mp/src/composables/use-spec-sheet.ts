@@ -92,13 +92,6 @@ export function useSpecSheet() {
     count.value = 1
   }
 
-  /** 判断某个规格选项是否被选中 */
-  const isActive = (groupId: string, optionId: string) => {
-    const val = selections[groupId]
-    if (Array.isArray(val)) return val.includes(optionId)
-    return val === optionId
-  }
-
   /** 切换规格选项的选中状态 */
   const toggleOption = (groupId: string, optionId: string) => {
     if (!currentProduct.value) return
@@ -171,7 +164,6 @@ export function useSpecSheet() {
     priceLabel,
     specSummary,
     // 操作方法（组件通过 emit 触发）
-    isActive,
     toggleOption,
     updateCount,
   }

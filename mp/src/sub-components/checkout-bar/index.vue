@@ -10,8 +10,8 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'clear-cart'): void
-  (e: 'update-qty', item: CartItem, delta: number): void
+  'clear-cart': []
+  'update-qty': [item: CartItem, qty: number]
 }>()
 
 const safeBottom = ref(0)

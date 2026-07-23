@@ -4,7 +4,7 @@
  * 职责：
  * 1. 初始化时从 localStorage 加载购物车
  * 2. 购物车变更时自动持久化到 localStorage
- * 3. 暴露 addItem / removeItem / updateQuantity / clearCart 等操作方法
+ * 3. 暴露 addItem / setItemQuantity / clearCart 等操作方法
  * 4. 暴露 totalCount / totalPrice / items 等派生状态
  *
  * 遵循 AD-1：localStorage 读写经由 api/cart
@@ -47,20 +47,16 @@ export function useCart() {
     store.addItem(item)
   }
 
-  function removeItem(productId: string, selections: Record<string, string | string[]>) {
-    store.removeItem(productId, selections)
-  }
-
-  function updateQuantity(
-    productId: string,
-    selections: Record<string, string | string[]>,
-    quantity: number,
-  ) {
-    store.updateQuantity(productId, selections, quantity)
-  }
-
   function clearCart() {
     store.clearCart()
+  }
+
+  function setItemQuantity(item: CartItem, quantity: number) {
+    if (quantity <= 0) {
+      store.removeItem(item.productId, item.selections)
+    } else {
+      store.updateQuantity(item.productId, item.selections, quantity)
+    }
   }
 
   return {
@@ -68,8 +64,7 @@ export function useCart() {
     totalCount,
     totalPrice,
     addItem,
-    removeItem,
-    updateQuantity,
     clearCart,
+    setItemQuantity,
   }
 }

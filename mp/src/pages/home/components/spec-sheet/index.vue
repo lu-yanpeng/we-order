@@ -31,10 +31,10 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'update:visible', value: boolean): void
-  (e: 'confirm'): void
-  (e: 'toggle-option', groupId: string, optionId: string): void
-  (e: 'update-count', delta: number): void
+  'update:visible': [value: boolean]
+  confirm: []
+  'toggle-option': [groupId: string, optionId: string]
+  'update-count': [delta: number]
 }>()
 
 defineOptions({

@@ -46,8 +46,7 @@ const {
   totalCount: cartTotalCount,
   totalPrice: cartTotalPrice,
   addItem,
-  removeItem,
-  updateQuantity,
+  setItemQuantity,
   clearCart,
 } = useCart()
 
@@ -84,13 +83,8 @@ const handleClearCart = () => {
 }
 
 /** 更新购物车商品数量 */
-const handleUpdateQty = (item: CartItem, delta: number) => {
-  item.quantity = delta
-  if (delta <= 0) {
-    removeItem(item.productId, item.selections)
-  } else {
-    updateQuantity(item.productId, item.selections, delta)
-  }
+const handleUpdateQty = (item: CartItem, qty: number) => {
+  setItemQuantity(item, qty)
 }
 
 // initProducts 由页面 onMounted 调用（数据加载属于页面级初始化编排）
