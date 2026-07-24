@@ -29,6 +29,7 @@ const barHeight = ref(0)
 const cartDetailVisible = ref(false)
 const cartDetailAnimated = ref(false)
 const clearDialogVisible = ref(false)
+const slideUpReady = ref(false)
 
 const clearDialogConfirmBtn = {
   content: '确认清空',
@@ -47,6 +48,8 @@ const clearDialogCancelBtn = {
 const instance = getCurrentInstance()
 
 onMounted(() => {
+  uni.hideLoading()
+
   const info = uni.getWindowInfo()
   safeBottom.value = info.safeAreaInsets?.bottom || 8
 
@@ -60,6 +63,10 @@ onMounted(() => {
         }
       })
       .exec()
+
+    setTimeout(() => {
+      slideUpReady.value = true
+    }, 50)
   })
 })
 
@@ -99,7 +106,10 @@ const closeCartDetail = () => {
   <view>
     <view
       class="checkout-bar-root relative z-700 border-t border-border-hairline bg-surface-card"
-      :style="{ paddingBottom: safeBottom + 'px' }"
+      :style="{
+        paddingBottom: safeBottom + 'px',
+        transform: slideUpReady ? 'translateY(0)' : 'translateY(100%)',
+      }"
     >
       <view class="flex min-h-(--mp-frap-size) items-center justify-between px-[32rpx] pt-[16rpx]">
         <view class="flex h-full flex-1 flex-col justify-center">
@@ -201,6 +211,11 @@ const closeCartDetail = () => {
 </template>
 
 <style scoped>
+.checkout-bar-root {
+  transition: transform 300ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  transform: translateY(100%);
+}
+
 .cart-detail-overlay {
   background-color: rgba(0, 0, 0, 0);
   transition: background-color 250ms ease;

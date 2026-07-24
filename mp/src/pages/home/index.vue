@@ -45,6 +45,9 @@ const {
   items: cartItems,
   totalCount: cartTotalCount,
   totalPrice: cartTotalPrice,
+  checkoutBarVisible,
+  initCheckoutBar,
+  showCheckoutBar,
   addItem,
   setItemQuantity,
   clearCart,
@@ -74,6 +77,7 @@ const handleSpecConfirm = () => {
   }
 
   addItem(item)
+  showCheckoutBar()
   closeSpecSheet()
 }
 
@@ -90,6 +94,7 @@ const handleUpdateQty = (item: CartItem, qty: number) => {
 // initProducts 由页面 onMounted 调用（数据加载属于页面级初始化编排）
 onMounted(() => {
   initProducts()
+  initCheckoutBar()
 })
 </script>
 
@@ -165,6 +170,7 @@ onMounted(() => {
     </swiper>
 
     <checkout-bar
+      v-if="checkoutBarVisible"
       :items="cartItems"
       :total-count="cartTotalCount"
       :total-price="cartTotalPrice"
