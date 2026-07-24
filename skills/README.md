@@ -17,7 +17,6 @@ constraint: 作为AI助手，在没有人类明确要求的情况下，不得直
 | [brooks-lint](https://github.com/hyhmrright/brooks-lint) | brooks-audit<br>brooks-debt<br>brooks-health<br>brooks-review<br>brooks-sweep<br>brooks-test | AI 代码审查与风险诊断工具，包含审计、技术债、健康度、通用审查、自动修复、测试评估等 |                              直接到仓库复制技能，粘贴到项目中                              |
 | [antfu-skills](https://github.com/antfu/skills)          | antfu<br>pinia<br>pnpm<br>turborepo<br>vitest<br>vue<br>vue-best-practices<br>vue-router-best-practices<br>vue-testing-best-practices<br>vueuse-functions |      包含 antfu 个人偏好的前端代码规范，vue 相关的最佳实践       | `pnpx skills add antfu/skills --skill='*'`<br>安装到本地`.agents/skills`后手动复制过来 |
 
-// TODO: 整理当前文档，应当说明什么时候使用这些技能，怎么使用，AI 能不能自行读取skill。注意同步修改根目录的AGENTS.md，还要说明技能可能会过期，必要时可以手动下载最新技能替换
 ## 给人类
 
 > 以下内容只给人类做参考，AI助手立即返回
