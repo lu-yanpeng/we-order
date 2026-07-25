@@ -3,13 +3,14 @@
  * 首页 — 点餐与订单双 Tab 页面
  *
  * 遵循 AD-3：页面仅负责组件编排和布局，
- * 业务逻辑由 useProducts / useSpecSheet / useCart / useHomeTabs 四个 Composable 承载。
+ * 业务逻辑由 useProducts / useSpecSheet / useCart / useHomeTabs / useCheckoutBar 五个 Composable 承载。
  */
 import { onMounted } from 'vue'
 import type { Product, CartItem } from '@/types/product'
 import { useProducts } from '@/composables/use-products'
 import { useSpecSheet } from '@/composables/use-spec-sheet'
 import { useCart } from '@/composables/use-cart'
+import { useCheckoutBar } from '@/composables/use-checkout-bar'
 import { useHomeTabs } from '@/composables/use-home-tabs'
 import ProductCard from './components/product-card/index.vue'
 import SpecSheet from './components/spec-sheet/index.vue'
@@ -45,13 +46,12 @@ const {
   items: cartItems,
   totalCount: cartTotalCount,
   totalPrice: cartTotalPrice,
-  checkoutBarVisible,
-  initCheckoutBar,
-  showCheckoutBar,
   addItem,
   setItemQuantity,
   clearCart,
 } = useCart()
+
+const { checkoutBarVisible, initCheckoutBar, showCheckoutBar } = useCheckoutBar(cartItems)
 
 const { activeTab, swiperIndex, onTabChange, onSwiperChange } = useHomeTabs()
 
