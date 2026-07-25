@@ -9,9 +9,10 @@
  *   - 有规格（hasSpecs）：显示规格组 + 数量步进器
  *   - 无规格（!hasSpecs）：仅显示数量步进器
  */
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import type { Product } from '@/types/product'
 import MyStepper from '@/components/stepper/index.vue'
+import { getSafeBottom } from '@/utils/platform'
 
 const props = defineProps<{
   visible: boolean
@@ -68,9 +69,7 @@ const popupVisible = computed({
 })
 
 /** 底部安全区高度，确保结算栏不被刘海或底部横条遮挡 */
-const safeBottom = ref(0)
-const info = uni.getWindowInfo()
-safeBottom.value = info.safeAreaInsets?.bottom || 8
+const safeBottom = getSafeBottom()
 </script>
 
 <template>

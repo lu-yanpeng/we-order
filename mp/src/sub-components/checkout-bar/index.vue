@@ -2,6 +2,7 @@
 import { getCurrentInstance, nextTick, onMounted, ref } from 'vue'
 import type { CartItem } from '@/types/product'
 import MyStepper from '@/components/stepper/index.vue'
+import { getSafeBottom } from '@/utils/platform'
 
 defineOptions({
   options: {
@@ -24,7 +25,7 @@ const emit = defineEmits<{
   'update-qty': [item: CartItem, qty: number]
 }>()
 
-const safeBottom = ref(0)
+const safeBottom = getSafeBottom()
 const barHeight = ref(0)
 const cartDetailVisible = ref(false)
 const cartDetailAnimated = ref(false)
@@ -49,9 +50,6 @@ const instance = getCurrentInstance()
 
 onMounted(() => {
   uni.hideLoading()
-
-  const info = uni.getWindowInfo()
-  safeBottom.value = info.safeAreaInsets?.bottom || 8
 
   nextTick(() => {
     const query = uni.createSelectorQuery().in(instance?.proxy)
