@@ -62,6 +62,8 @@ onMounted(() => {
       })
       .exec()
 
+    // 收起：先移除 active class 播放 CSS 过渡动画，动画结束后隐藏 DOM
+    // 延时（250ms）与 .cart-detail-panel 的 CSS transition 时长保持一致
     setTimeout(() => {
       slideUpReady.value = true
     }, 50)
@@ -87,6 +89,7 @@ const toggleCartDetail = () => {
 
 const openCartDetail = () => {
   cartDetailVisible.value = true
+  // 展开：先挂载 DOM，下一帧添加 active class 触发 CSS transition
   setTimeout(() => {
     cartDetailAnimated.value = true
   }, 20)
@@ -94,6 +97,8 @@ const openCartDetail = () => {
 
 const closeCartDetail = () => {
   cartDetailAnimated.value = false
+  // 收起：先移除 active class 播放 CSS 过渡动画，动画结束后隐藏 DOM
+  // 延时（250ms）与 .cart-detail-panel 的 CSS transition 时长保持一致
   setTimeout(() => {
     cartDetailVisible.value = false
   }, 250)

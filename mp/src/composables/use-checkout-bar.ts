@@ -44,6 +44,7 @@ export function useCheckoutBar(items: Ref<CartItem[]>) {
       _checkoutBarVisible = true
       checkoutBarVisible.value = true
       uni.showLoading({ title: '加载中...', mask: true })
+      // 结算栏分包加载超时兜底：超时后自动隐藏 loading
       _loadingTimer = setTimeout(hideLoading, 5000)
     }
   }

@@ -29,6 +29,7 @@ export function useHomeTabs() {
    * 通过先清空再赋值触发重新渲染
    */
   onMounted(() => {
+    // TDesign Tabs 组件首次渲染 workaround：重新挂载 Tab 以触发正确布局
     setTimeout(() => {
       const current = activeTab.value
       activeTab.value = ''

@@ -54,6 +54,7 @@ export function useProducts() {
     scrollIntoViewId.value = ''
     nextTick(() => {
       scrollIntoViewId.value = categoryId
+      // 程序滚动完成后，延时重置 isProgrammaticScroll 标志
       setTimeout(() => {
         isProgrammaticScroll.value = false
       }, 400)
@@ -111,6 +112,7 @@ export function useProducts() {
     await loadCategories()
     if (categories.value.length > 0) {
       activeCategory.value = categories.value[0].id
+      // 初始加载后延时计算各分类区域位置，等待首次渲染完成
       setTimeout(() => {
         computeSectionPositions()
       }, 400)
