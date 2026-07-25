@@ -163,7 +163,7 @@ const closeCartDetail = () => {
         </view>
       </view>
 
-      <view class="spec-scroll-wrapper min-h-0 flex-1 overflow-y-auto">
+      <view class="scrollbar-hide min-h-0 flex-1 overflow-y-auto">
         <view v-if="items.length === 0" class="flex items-center justify-center py-[80rpx]">
           <text class="text-[24rpx] text-ink-soft">购物车是空的</text>
         </view>
@@ -230,18 +230,6 @@ const closeCartDetail = () => {
 
 .cart-detail-panel--active {
   transform: translateY(0);
-}
-
-.spec-scroll-wrapper {
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-  scrollbar-width: none;
-}
-
-.spec-scroll-wrapper::-webkit-scrollbar {
-  display: none;
-  width: 0;
-  height: 0;
 }
 </style>
 

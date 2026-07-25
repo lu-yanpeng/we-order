@@ -97,7 +97,7 @@ const safeBottom = getSafeBottom()
         </view>
       </view>
 
-      <view class="spec-scroll-wrapper min-h-0 flex-1 overflow-y-auto">
+      <view class="scrollbar-hide min-h-0 flex-1 overflow-y-auto">
         <view class="px-[32rpx] pt-[28rpx] pb-[48rpx]">
           <template v-if="hasSpecs">
             <view v-for="group in product.specGroups" :key="group.id" class="mb-[36rpx] last:mb-0">
@@ -173,19 +173,5 @@ const safeBottom = getSafeBottom()
     top: -110rpx;
     right: 16rpx;
   }
-}
-</style>
-
-<style scoped>
-.spec-scroll-wrapper {
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-  scrollbar-width: none;
-}
-
-.spec-scroll-wrapper::-webkit-scrollbar {
-  display: none;
-  width: 0;
-  height: 0;
 }
 </style>
