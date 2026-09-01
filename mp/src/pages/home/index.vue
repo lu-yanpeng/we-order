@@ -51,7 +51,8 @@ const {
   clearCart,
 } = useCart()
 
-const { checkoutBarVisible, initCheckoutBar, showCheckoutBar } = useCheckoutBar(cartItems)
+const { checkoutBarVisible, initCheckoutBar, showCheckoutBar, goToCheckout } =
+  useCheckoutBar(cartItems)
 
 const { activeTab, swiperIndex, onTabChange, onSwiperChange } = useHomeTabs()
 
@@ -89,6 +90,11 @@ const handleClearCart = () => {
 /** 更新购物车商品数量 */
 const handleUpdateQty = (item: CartItem, qty: number) => {
   setItemQuantity(item, qty)
+}
+
+/** 点击结算 → 跳转确认订单页 */
+const handleCheckout = () => {
+  goToCheckout()
 }
 
 // initProducts 由页面 onMounted 调用（数据加载属于页面级初始化编排）
@@ -176,6 +182,7 @@ onMounted(() => {
       :total-price="cartTotalPrice"
       @clear-cart="handleClearCart"
       @update-qty="handleUpdateQty"
+      @checkout="handleCheckout"
     />
     <spec-sheet
       v-model:visible="visible"

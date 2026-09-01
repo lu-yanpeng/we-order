@@ -23,6 +23,7 @@ const {
 const emit = defineEmits<{
   'clear-cart': []
   'update-qty': [item: CartItem, qty: number]
+  checkout: []
 }>()
 
 const safeBottom = getSafeBottom()
@@ -86,7 +87,6 @@ const toggleCartDetail = () => {
     openCartDetail()
   }
 }
-
 const openCartDetail = () => {
   cartDetailVisible.value = true
   // 展开：先挂载 DOM，下一帧添加 active class 触发 CSS transition
@@ -136,9 +136,17 @@ const closeCartDetail = () => {
         </view>
         <view class="shrink-0">
           <view
-            class="flex h-[76rpx] items-center justify-center rounded-button bg-gold px-[40rpx] shadow-[0_4rpx_12rpx_rgba(203,162,88,0.2)]"
+            class="flex h-[76rpx] items-center justify-center rounded-button px-[40rpx]"
+            :class="
+              totalCount > 0 ? 'bg-gold shadow-[0_4rpx_12rpx_rgba(203,162,88,0.2)]' : 'bg-black-14'
+            "
+            @click="emit('checkout')"
           >
-            <text class="font-bold text-[26rpx] text-surface-dark">结算({{ totalCount }})</text>
+            <text
+              class="font-bold text-[26rpx]"
+              :class="totalCount > 0 ? 'text-surface-dark' : 'text-black-58'"
+              >结算({{ totalCount }})</text
+            >
           </view>
         </view>
       </view>
