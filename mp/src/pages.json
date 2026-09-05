@@ -15,7 +15,10 @@
       "root": "sub-order-confirm",
       "pages": [
         {
-          "path": "order-confirm/index"
+          "path": "order-confirm/index",
+          "style": {
+            "navigationBarTitleText": "确认订单"
+          }
         }
       ]
     },
