@@ -22,6 +22,7 @@ const {
   scrollIntoViewId,
   handleSidebarClick,
   handleContentScroll,
+  footerHeight,
   init: initProducts,
 } = useProducts()
 
@@ -51,8 +52,14 @@ const {
   clearCart,
 } = useCart()
 
-const { checkoutBarVisible, initCheckoutBar, showCheckoutBar, goToCheckout } =
-  useCheckoutBar(cartItems)
+const {
+  checkoutBarVisible,
+  initCheckoutBar,
+  showCheckoutBar,
+  goToCheckout,
+  sidebarHeight,
+  onBarHeightChange,
+} = useCheckoutBar(cartItems)
 
 const { activeTab, swiperIndex, onTabChange, onSwiperChange } = useHomeTabs()
 
@@ -105,7 +112,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <view class="bg-sb-warm flex h-screen flex-col">
+  <view class="flex h-screen flex-col">
     <t-tabs
       :value="activeTab"
       :space-evenly="false"
@@ -119,11 +126,11 @@ onMounted(() => {
       <t-tab-panel label="订单" value="orders" />
     </t-tabs>
 
-    <swiper class="flex-1" :current="swiperIndex" :duration="250" @change="onSwiperChange">
+    <swiper class="swiper flex-1" :current="swiperIndex" :duration="250" @change="onSwiperChange">
       <swiper-item>
         <view class="flex h-full overflow-hidden">
-          <view class="sidebar w-1/5 shrink-0 flex-col bg-[#f7f8fa]">
-            <scroll-view class="flex-1" scroll-y :enhanced="true" :show-scrollbar="false">
+          <view class="sidebar flex w-1/5 shrink-0 flex-col bg-[#f7f8fa]">
+            <scroll-view class="min-h-0 flex-1" scroll-y :enhanced="true" :show-scrollbar="false">
               <view
                 v-for="cat in categories"
                 :key="cat.id"
@@ -137,7 +144,7 @@ onMounted(() => {
                   cat.name
                 }}</text>
               </view>
-              <view class="flex-1 bg-[#f7f8fa]" />
+              <view :style="{ height: sidebarHeight }" />
             </scroll-view>
           </view>
 
@@ -152,7 +159,7 @@ onMounted(() => {
           >
             <view v-for="cat in categories" :key="cat.id" :id="cat.id" class="category-section">
               <view
-                class="sticky top-0 z-10 bg-[rgba(255,255,255,0.85)] py-[24rpx] pl-[32rpx] font-semibold tracking-[0.05em] text-[26rpx] text-ink-soft backdrop-blur-[12rpx]"
+                class="category-title sticky top-0 z-10 bg-[rgba(255,255,255,0.85)] py-[24rpx] pl-[32rpx] font-semibold tracking-[0.05em] text-[26rpx] text-ink-soft backdrop-blur-[12rpx]"
               >
                 {{ cat.name }}
               </view>
@@ -162,11 +169,22 @@ onMounted(() => {
                 </view>
               </view>
             </view>
-            <view class="flex justify-center pt-[48rpx] pb-[96rpx]">
-              <text class="text-[22rpx] text-[rgba(0,0,0,0.2)]">--- 到底了 ---</text>
+            <view class="flex justify-center" :style="{ height: footerHeight }">
+              <text class="mt-[48rpx] text-[22rpx] text-[rgba(0,0,0,0.2)]">--- 没有更多了 ---</text>
             </view>
           </scroll-view>
         </view>
+
+        <checkout-bar
+          v-if="checkoutBarVisible"
+          :items="cartItems"
+          :total-count="cartTotalCount"
+          :total-price="cartTotalPrice"
+          @clear-cart="handleClearCart"
+          @update-qty="handleUpdateQty"
+          @checkout="handleCheckout"
+          @height-change="onBarHeightChange"
+        />
       </swiper-item>
       <swiper-item>
         <view class="flex h-full items-center justify-center">
@@ -175,15 +193,6 @@ onMounted(() => {
       </swiper-item>
     </swiper>
 
-    <checkout-bar
-      v-if="checkoutBarVisible"
-      :items="cartItems"
-      :total-count="cartTotalCount"
-      :total-price="cartTotalPrice"
-      @clear-cart="handleClearCart"
-      @update-qty="handleUpdateQty"
-      @checkout="handleCheckout"
-    />
     <spec-sheet
       v-model:visible="visible"
       :product="currentProduct"

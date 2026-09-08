@@ -107,7 +107,33 @@ export function useProducts() {
     })
   }
 
-  /** 初始化：加载数据并延迟计算分类位置（等待 DOM 渲染完成） */
+  /**
+   * 商品列表底部留白：让最后一个分类被 scroll-into-view 定位时恰好把标题顶到列表顶部。
+   * 精确值 = 商品内容区高度 - 分类标题高度
+   * 首次渲染时 swiper 未就绪，先用50vh高度兜底。
+   */
+  const footerHeight = ref<string>('50vh')
+
+  const measureFooterHeight = () => {
+    const query = uni.createSelectorQuery()
+    // 内容区
+    query.select('.content-area').boundingClientRect()
+    // 获取分类标题
+    query.select('.content-area > .category-section > .category-title').boundingClientRect()
+    query.exec((res: UniApp.NodeInfo[]) => {
+      const contentRect = res[0]
+      const titleRect = res[1]
+      if (!contentRect || !titleRect) return
+      const contentHeight = contentRect.height ?? 0
+      const titleHeight = titleRect.height ?? 0
+      if (contentHeight <= 0) return
+      footerHeight.value = `calc(${contentHeight}px - ${titleHeight}px)`
+    })
+  }
+
+  /**
+   * 初始化加载数据，并延时触发位置计算与底部留白测量（等待首次渲染完成）
+   */
   const init = async () => {
     await loadCategories()
     if (categories.value.length > 0) {
@@ -115,6 +141,7 @@ export function useProducts() {
       // 初始加载后延时计算各分类区域位置，等待首次渲染完成
       setTimeout(() => {
         computeSectionPositions()
+        measureFooterHeight()
       }, 400)
     }
   }
@@ -126,6 +153,7 @@ export function useProducts() {
     activeCategory,
     scrollIntoViewId,
     isProgrammaticScroll,
+    footerHeight,
     handleSidebarClick,
     handleContentScroll,
     computeSectionPositions,

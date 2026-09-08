@@ -417,4 +417,212 @@ export const mockCategories: Category[] = [
       },
     ],
   },
+  {
+    id: 'section-seasonal',
+    name: '当季新品',
+    products: [
+      {
+        id: 'prod-501',
+        name: '桂花拿铁',
+        desc: '桂花香与醇厚浓缩的秋日限定',
+        price: 36,
+        tags: ['新品'],
+        sales: 145,
+      },
+      {
+        id: 'prod-502',
+        name: '栗子星冰乐',
+        desc: '栗子香甜与奶霜冰沙的秋冬之约',
+        price: 38,
+        tags: ['新品', '热门'],
+        sales: 167,
+      },
+    ],
+  },
+  {
+    id: 'section-iced',
+    name: '冰爽特饮',
+    products: [
+      {
+        id: 'prod-601',
+        name: '青柠薄荷苏打',
+        desc: '清爽气泡水搭配青柠与薄荷',
+        price: 26,
+        tags: [],
+        sales: 98,
+      },
+      {
+        id: 'prod-602',
+        name: '西瓜冷萃',
+        desc: '鲜榨西瓜汁与冷萃咖啡的夏日混搭',
+        price: 32,
+        tags: ['新品'],
+        sales: 76,
+      },
+      {
+        id: 'prod-603',
+        name: '椰青美式',
+        desc: '天然椰青水与浓缩咖啡的清爽碰撞',
+        price: 30,
+        tags: [],
+        sales: 112,
+      },
+    ],
+  },
+  {
+    id: 'section-blended',
+    name: '果昔奶昔',
+    products: [
+      {
+        id: 'prod-701',
+        name: '香蕉燕麦奶昔',
+        desc: '香蕉与燕麦奶的绵密顺滑',
+        price: 30,
+        tags: [],
+        sales: 88,
+      },
+      {
+        id: 'prod-702',
+        name: '草莓酸奶昔',
+        desc: '新鲜草莓与酸奶的酸甜搭配',
+        price: 31,
+        tags: ['热门'],
+        sales: 134,
+      },
+    ],
+  },
+  {
+    id: 'section-tea-series',
+    name: '茶瓦纳精选',
+    products: [
+      {
+        id: 'prod-801',
+        name: '碧螺春冷萃茶',
+        desc: '明前碧螺春低温冷萃，回甘悠长',
+        price: 28,
+        tags: ['新品'],
+        sales: 67,
+      },
+      {
+        id: 'prod-802',
+        name: '茉莉银毫',
+        desc: '茉莉花香与银毫茶底的清雅之选',
+        price: 27,
+        tags: [],
+        sales: 89,
+      },
+    ],
+  },
+  {
+    id: 'section-cold-brew',
+    name: '冷萃系列',
+    products: [
+      {
+        id: 'prod-901',
+        name: '经典冷萃',
+        desc: '20 小时慢速冷萃，口感顺滑',
+        price: 33,
+        tags: ['热门'],
+        sales: 156,
+      },
+    ],
+  },
+  {
+    id: 'section-espresso',
+    name: '浓缩特调',
+    products: [
+      {
+        id: 'prod-1001',
+        name: '燕麦丝绒拿铁',
+        desc: '燕麦奶与浓缩的丝绒口感',
+        price: 35,
+        tags: [],
+        sales: 98,
+      },
+    ],
+  },
+  {
+    id: 'section-breakfast',
+    name: '早餐优选',
+    products: [
+      {
+        id: 'prod-1101',
+        name: '帕尼尼套餐',
+        desc: '现烤帕尼尼搭配中杯美式',
+        price: 39,
+        tags: ['热门'],
+        sales: 210,
+      },
+    ],
+  },
+  {
+    id: 'section-sandwich',
+    name: '三明治',
+    products: [
+      {
+        id: 'prod-1201',
+        name: '火腿芝士三明治',
+        desc: '火腿与车打芝士的经典组合',
+        price: 24,
+        tags: [],
+        sales: 78,
+      },
+    ],
+  },
+  {
+    id: 'section-salad',
+    name: '轻食沙拉',
+    products: [
+      {
+        id: 'prod-1301',
+        name: '鸡胸肉沙拉',
+        desc: '低脂鸡胸肉搭配时蔬',
+        price: 34,
+        tags: ['新品'],
+        sales: 45,
+      },
+    ],
+  },
+  {
+    id: 'section-cake',
+    name: '蛋糕专区',
+    products: [
+      {
+        id: 'prod-1401',
+        name: '巴斯克芝士',
+        desc: '焦香外皮包裹绵密芝士',
+        price: 32,
+        tags: [],
+        sales: 120,
+      },
+    ],
+  },
+  {
+    id: 'section-drink-bottles',
+    name: '瓶装饮品',
+    products: [
+      {
+        id: 'prod-1501',
+        name: '冷萃瓶装咖啡',
+        desc: '即开即饮的冷萃原液',
+        price: 22,
+        tags: [],
+        sales: 67,
+      },
+    ],
+  },
+  {
+    id: 'section-merch',
+    name: '周边好物',
+    products: [
+      {
+        id: 'prod-1601',
+        name: '城市随行杯',
+        desc: '陶瓷内胆随行杯，保温 6 小时',
+        price: 128,
+        tags: ['热门'],
+        sales: 34,
+      },
+    ],
+  },
 ]

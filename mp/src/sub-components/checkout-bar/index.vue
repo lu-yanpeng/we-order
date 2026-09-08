@@ -24,6 +24,7 @@ const emit = defineEmits<{
   'clear-cart': []
   'update-qty': [item: CartItem, qty: number]
   checkout: []
+  'height-change': [height: number]
 }>()
 
 const safeBottom = getSafeBottom()
@@ -59,6 +60,7 @@ onMounted(() => {
       .boundingClientRect((rect) => {
         if (rect && !Array.isArray(rect) && rect.height != null) {
           barHeight.value = rect.height
+          emit('height-change', rect.height)
         }
       })
       .exec()
@@ -108,7 +110,7 @@ const closeCartDetail = () => {
 <template>
   <view>
     <view
-      class="checkout-bar-root relative z-700 border-t border-border-hairline bg-surface-card"
+      class="checkout-bar-root fixed right-0 bottom-0 left-0 z-700 border-t border-border-hairline bg-surface-card"
       :style="{
         paddingBottom: safeBottom + 'px',
         transform: slideUpReady ? 'translateY(0)' : 'translateY(100%)',

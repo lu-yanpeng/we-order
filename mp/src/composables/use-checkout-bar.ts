@@ -6,12 +6,14 @@
  * 2. 页面初始化时根据购物车数据决定是否触发渲染（initCheckoutBar）
  * 3. 首次加购时触发渲染（showCheckoutBar）
  * 4. 结算跳转与防重复点击（goToCheckout）
+ * 5. 接收结算栏自报高度、维护侧边栏底部留白
  *
  * 遵循 AD-4：结算栏位于分包中，使用占位组件机制按需加载。
  * 遵循 AD-8：此 composable 不会写入 cart store。
  */
 
-import { ref, type Ref } from 'vue'
+import { ref } from 'vue'
+import type { Ref } from 'vue'
 import type { CartItem } from '@/types/product'
 
 /** 模块级闭包，保证 once-true-never-false（AD-4-e） */
@@ -91,10 +93,24 @@ export function useCheckoutBar(items: Ref<CartItem[]>) {
     })
   }
 
+  /**
+   * 侧边栏底部留白：结算栏滑入后遮住侧边栏底部，
+   * 需要在其出现时额外垫出对应高度，保证最后一个分类仍可滚入可视区。
+   * 结算栏按需渲染（v-if），未出现时不需要留白。
+   */
+  const sidebarHeight = ref('0px')
+
+  // checkout-bar挂载后会抛出自己的高度，在home中捕获后自动传递给onBarHeightChange
+  const onBarHeightChange = (height: number) => {
+    sidebarHeight.value = `${height}px`
+  }
+
   return {
     checkoutBarVisible,
     initCheckoutBar,
     showCheckoutBar,
     goToCheckout,
+    sidebarHeight,
+    onBarHeightChange,
   }
 }
