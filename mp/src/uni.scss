@@ -15,33 +15,33 @@
 /* 颜色变量 */
 
 /* 行为相关颜色 */
-$uni-color-primary: #007aff;
-$uni-color-success: #4cd964;
-$uni-color-warning: #f0ad4e;
-$uni-color-error: #dd524d;
+$uni-color-primary: #00754a;
+$uni-color-success: #009a4d;
+$uni-color-warning: #fbbc05;
+$uni-color-error: #c82014;
 
 /* 文字基本颜色 */
-$uni-text-color: #333; // 基本色
-$uni-text-color-inverse: #fff; // 反色
-$uni-text-color-grey: #999; // 辅助灰色，如加载更多的提示信息
-$uni-text-color-placeholder: #808080;
-$uni-text-color-disable: #c0c0c0;
+$uni-text-color: rgba(0, 0, 0, 0.87);
+$uni-text-color-inverse: #fff;
+$uni-text-color-grey: rgba(0, 0, 0, 0.58);
+$uni-text-color-placeholder: rgba(0, 0, 0, 0.4);
+$uni-text-color-disable: rgba(0, 0, 0, 0.26);
 
 /* 背景颜色 */
 $uni-bg-color: #fff;
-$uni-bg-color-grey: #f8f8f8;
-$uni-bg-color-hover: #f1f1f1; // 点击状态颜色
-$uni-bg-color-mask: rgba(0, 0, 0, 0.4); // 遮罩颜色
+$uni-bg-color-grey: #f9f9f9;
+$uni-bg-color-hover: #edebe9;
+$uni-bg-color-mask: rgba(0, 0, 0, 0.4);
 
 /* 边框颜色 */
-$uni-border-color: #c8c7cc;
+$uni-border-color: #d6dbde;
 
 /* 尺寸变量 */
 
 /* 文字尺寸 */
-$uni-font-size-sm: 12px;
+$uni-font-size-sm: 13px;
 $uni-font-size-base: 14px;
-$uni-font-size-lg: 16;
+$uni-font-size-lg: 16px;
 
 /* 图片尺寸 */
 $uni-img-size-sm: 20px;
@@ -49,28 +49,28 @@ $uni-img-size-base: 26px;
 $uni-img-size-lg: 40px;
 
 /* Border Radius */
-$uni-border-radius-sm: 2px;
-$uni-border-radius-base: 3px;
-$uni-border-radius-lg: 6px;
+$uni-border-radius-sm: 4px;
+$uni-border-radius-base: 12px;
+$uni-border-radius-lg: 50px;
 $uni-border-radius-circle: 50%;
 
 /* 水平间距 */
-$uni-spacing-row-sm: 5px;
-$uni-spacing-row-base: 10px;
-$uni-spacing-row-lg: 15px;
+$uni-spacing-row-sm: 4px;
+$uni-spacing-row-base: 16px;
+$uni-spacing-row-lg: 24px;
 
 /* 垂直间距 */
 $uni-spacing-col-sm: 4px;
 $uni-spacing-col-base: 8px;
-$uni-spacing-col-lg: 12px;
+$uni-spacing-col-lg: 16px;
 
 /* 透明度 */
 $uni-opacity-disabled: 0.3; // 组件禁用态的透明度
 
-/* 文章场景相关 */
-$uni-color-title: #2c405a; // 文章标题颜色
-$uni-font-size-title: 20px;
-$uni-color-subtitle: #555; // 二级标题颜色
-$uni-font-size-subtitle: 18px;
-$uni-color-paragraph: #3f536e; // 文章段落颜色
-$uni-font-size-paragraph: 15px;
+/* 文章场景相关 — 对齐 docs/DESIGN.md §3 排版规范 */
+$uni-color-title: #006241; // H1 — Starbucks Green
+$uni-font-size-title: 24px; // H1 / H2 共享 24px
+$uni-color-subtitle: rgba(0, 0, 0, 0.87); // H2 — Text Black
+$uni-font-size-subtitle: 24px; // 与 H1 同尺寸，靠字重区分层级
+$uni-color-paragraph: rgba(0, 0, 0, 0.58); // 段落 — Text Black Soft
+$uni-font-size-paragraph: 16px; // Body — 16px

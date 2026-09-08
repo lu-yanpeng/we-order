@@ -9,15 +9,12 @@ We-Order 微信点餐小程序，由三个子项目平铺组成（非 monorepo�
 
 四阶段计划：Phase 1（静态页面 Mock 数据）→ Phase 2（Supabase 后端）→ Phase 3（对接真实 API）→ Phase 4（B 端后台）。
 
-## 约束
-
-根目录`skills`文件夹放置专用skills，只在特殊时候由开发者本人指派的AI才能访问。没有人类授权，AI不能自行读取该目录下任何文件。
-
 ## 子项目组织（AD-1）
 
 三个子项目平铺在仓库根目录，各自独立工具链（详见 `docs/adr/0001-flat-subprojects-over-monorepo.md`）：
 - **不要**当作 monorepo 处理，无需统一的 package.json、tsconfig、lint-staged
 - Supabase 的 types 需手动同步到 mp 和 admin
+- 子项目具体约束请从子项目内的AGENTS.md获取
 
 ## 关键文档
 

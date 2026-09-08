@@ -1,9 +1,12 @@
 {
   "pages": [
     {
-      "path": "pages/index/index",
+      "path": "pages/home/index",
       "style": {
-        "navigationBarTitleText": "uni-app"
+        "navigationBarTitleText": "经典点单",
+        "componentPlaceholder": {
+          "checkout-bar": "view"
+        }
       }
     }
   ],
@@ -12,7 +15,10 @@
       "root": "sub-order-confirm",
       "pages": [
         {
-          "path": "order-confirm/index"
+          "path": "order-confirm/index",
+          "style": {
+            "navigationBarTitleText": "确认订单"
+          }
         }
       ]
     },
@@ -23,12 +29,21 @@
           "path": "order-detail/index"
         }
       ]
+    },
+    {
+      "root": "sub-components",
+      "pages": []
     }
   ],
   "globalStyle": {
     "navigationBarTextStyle": "black",
-    "navigationBarTitleText": "uni-app",
-    "navigationBarBackgroundColor": "#F8F8F8",
-    "backgroundColor": "#F8F8F8"
+    "navigationBarTitleText": "We-Order",
+    "navigationBarBackgroundColor": "#f2f0eb",
+    "backgroundColor": "#f2f0eb"
+  },
+  "easycom": {
+    "custom": {
+      "^t-(.*)": "@tdesign/uniapp/$1/$1.vue"
+    }
   }
 }

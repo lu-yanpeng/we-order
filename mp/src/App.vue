@@ -11,4 +11,6 @@ onHide(() => {
 })
 </script>
 
-<style></style>
+<style>
+@import './styles/main.css';
+</style>

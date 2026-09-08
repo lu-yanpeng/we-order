@@ -14,6 +14,7 @@
 │   └── phase-1          # 阶段性的prd和架构文档
 └── skills               # 专用skill
     └── brooks-lint      # 检查架构或全面检查代码
+    └── antfu-skills     # vue最佳实践
 ```
 
 ## 其他

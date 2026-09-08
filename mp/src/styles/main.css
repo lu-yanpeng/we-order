@@ -1,0 +1,201 @@
+/**
+ * We-Order 主题 — 基于 docs/DESIGN.md 星巴克设计规范
+ *
+ * 设计规范定义了四级绿色体系、金色 Rewards 专用色、暖奶油色画布等 token，
+ * 此处通过 Tailwind CSS v4 @theme 声明，将设计 token 映射为 Tailwind 工具类。
+ * 无法归入 @theme 命名空间的 token（动效、组件尺寸等）以 --mp-* 自定义属性保留在文末。
+ *
+ * @see docs/DESIGN.md
+ */
+
+@import 'tailwindcss';
+@source '../**/*.{html,js,ts,jsx,tsx,vue}';
+@source not '../uni_modules';
+@source not '../../node_modules';
+@source not '../../dist';
+@source not '../../unpackage';
+
+@theme {
+  /* ============================================
+   * 品牌色 — 四级绿色体系
+   * ============================================ */
+  --color-green: #006241;
+  --color-green-accent: #00754a;
+  --color-green-house: #1e3932;
+  --color-green-uplift: #2b5148;
+  --color-green-light: #d4e9e2;
+
+  /* ============================================
+   * 金色 — 仅限 Rewards 状态仪式
+   * ============================================ */
+  --color-gold: #cba258;
+  --color-gold-light: #dfc49d;
+  --color-gold-lightest: #faf6ee;
+
+  /* ============================================
+   * 表面色 / 背景色
+   * ============================================ */
+  --color-surface-page: #f2f0eb;
+  --color-surface-ceramic: #edebe9;
+  --color-surface-cool: #f9f9f9;
+  --color-surface-card: #ffffff;
+  --color-surface-dark: #000000;
+
+  /* ============================================
+   * 文字色
+   * ============================================ */
+  --color-ink: rgba(0, 0, 0, 0.87);
+  --color-ink-soft: rgba(0, 0, 0, 0.58);
+  --color-ink-inverse: rgba(255, 255, 255, 1);
+  --color-ink-inverse-soft: rgba(255, 255, 255, 0.7);
+  --color-ink-rewards: #33433d;
+
+  /* ============================================
+   * 语义色
+   * ============================================ */
+  --color-error: #c82014;
+  --color-warning: #fbbc05;
+  --color-valid-tint: hsl(160 32% 87% / 0.33);
+  --color-invalid-tint: hsl(4 82% 43% / 0.05);
+
+  /* ============================================
+   * 边框色
+   * ============================================ */
+  --color-border: #d6dbde;
+  --color-border-hairline: #e7e7e7;
+
+  /* ============================================
+   * 黑色透明度阶梯
+   * ============================================ */
+  --color-black-6: rgba(0, 0, 0, 0.06);
+  --color-black-10: rgba(0, 0, 0, 0.1);
+  --color-black-14: rgba(0, 0, 0, 0.14);
+  --color-black-24: rgba(0, 0, 0, 0.24);
+  --color-black-40: rgba(0, 0, 0, 0.4);
+  --color-black-58: rgba(0, 0, 0, 0.58);
+  --color-black-60: rgba(0, 0, 0, 0.6);
+  --color-black-87: rgba(0, 0, 0, 0.87);
+  --color-black-90: rgba(0, 0, 0, 0.9);
+
+  /* ============================================
+   * 白色透明度阶梯
+   * ============================================ */
+  --color-white-10: rgba(255, 255, 255, 0.1);
+  --color-white-20: rgba(255, 255, 255, 0.2);
+  --color-white-30: rgba(255, 255, 255, 0.3);
+  --color-white-40: rgba(255, 255, 255, 0.4);
+  --color-white-50: rgba(255, 255, 255, 0.5);
+  --color-white-60: rgba(255, 255, 255, 0.6);
+  --color-white-70: rgba(255, 255, 255, 0.7);
+  --color-white-80: rgba(255, 255, 255, 0.8);
+  --color-white-90: rgba(255, 255, 255, 0.9);
+
+  /* ============================================
+   * 字体家族
+   * ============================================ */
+  --font-family-sans:
+    'Inter', -apple-system, 'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei', sans-serif;
+  --font-family-serif: 'Georgia', 'Iowan Old Style', 'Lora', 'Source Serif Pro', serif;
+  --font-family-script: 'Kalam', 'Comic Sans MS', cursive;
+
+  /* ============================================
+   * 字体大小（rem → rpx 由 weapp-tailwindcss 自动转换）
+   * ============================================ */
+  --font-size-micro: 0.8125rem;
+  --font-size-sm: 0.875rem;
+  --font-size-base: 1rem;
+  --font-size-lg: 1.1875rem;
+  --font-size-h: 1.5rem;
+  --font-size-hero-lg: 1.75rem;
+  --font-size-jumbo: 2.25rem;
+  --font-size-display: 3.125rem;
+
+  /* ============================================
+   * 字间距
+   * ============================================ */
+  --tracking-normal: -0.01em;
+  --tracking-loose: 0.1em;
+  --tracking-looser: 0.15em;
+
+  /* ============================================
+   * 行高
+   * ============================================ */
+  --leading-normal: 1.5;
+  --leading-compact: 1.2;
+
+  /* ============================================
+   * 圆角（rem → rpx 由 weapp-tailwindcss 自动转换）
+   * ============================================ */
+  --radius-card: 0.75rem;
+  --radius-button: 3.125rem;
+  --radius-input: 0.25rem;
+
+  /* ============================================
+   * 阴影（原生 rpx，无需 rem2rpx 转换）
+   * ============================================ */
+  --shadow-card: 0 0 1rpx rgba(0, 0, 0, 0.14), 0 2rpx 2rpx rgba(0, 0, 0, 0.24);
+  --shadow-nav:
+    0 2rpx 6rpx rgba(0, 0, 0, 0.1), 0 4rpx 4rpx rgba(0, 0, 0, 0.06), 0 0 4rpx rgba(0, 0, 0, 0.07);
+  --shadow-frap-base: 0 0 12rpx rgba(0, 0, 0, 0.24);
+  --shadow-frap-ambient: 0 16rpx 24rpx rgba(0, 0, 0, 0.14);
+  --shadow-frap-ambient-active: 0 16rpx 24rpx rgba(0, 0, 0, 0);
+}
+
+@utility scrollbar-hide {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+}
+
+/*
+ * 以下 token 无法归入 Tailwind @theme 命名空间（动效、组件尺寸等），
+ * 以 --mp-* 自定义属性保留。组件在需要时可通过 var(--mp-*) 引用。
+ */
+
+page {
+  /* ============================================
+   * 间距体系（仅文档参考，实际使用 Tailwind 默认 spacing）
+   * ============================================ */
+  --mp-space-1: 8rpx;
+  --mp-space-2: 16rpx;
+  --mp-space-3: 32rpx;
+  --mp-space-4: 48rpx;
+  --mp-space-5: 64rpx;
+  --mp-space-6: 80rpx;
+  --mp-space-7: 96rpx;
+  --mp-space-8: 112rpx;
+  --mp-space-9: 128rpx;
+  --mp-gutter: 32rpx;
+
+  /* ============================================
+   * 动效 / 过渡
+   * ============================================ */
+  --mp-button-active-scale: scale(0.95);
+  --mp-button-transition: all 0.2s ease;
+  --mp-expander-duration: 300ms;
+  --mp-expander-easing: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --mp-input-spring: cubic-bezier(0.32, 2.32, 0.61, 0.27);
+  --mp-image-fade: opacity 0.3s ease-in;
+
+  /* ============================================
+   * 组件尺寸
+   * ============================================ */
+  --mp-frap-size: 120rpx; /* 结算栏和加购栏都用统一高度，这个高度加上pt-[16rpx]，刚好能放下两行文字不用换行 */
+  --mp-frap-size-mini: 80rpx;
+  --mp-frap-touch-offset: -16rpx;
+  --mp-modal-padding: 48rpx;
+  --mp-modal-top-padding: 176rpx;
+  --mp-nav-height: 128rpx;
+  --mp-subnav-height: 106rpx;
+  --mp-button-padding: 14rpx 32rpx;
+  --mp-button-font-size: 32rpx;
+  --mp-input-padding: 24rpx;
+  --mp-input-label-font-size: 32rpx;
+  --mp-input-label-active-font-size: 26rpx;
+}
