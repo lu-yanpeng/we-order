@@ -5,14 +5,16 @@
  * 数据来自购物车 cart store（跨页面共享状态，FR-9/AD-6），
  * 业务逻辑封装在 useOrderConfirm composable（AD-3）。
  * 备注为纯 UI 输入状态，保留在页面内。
- * 「立即支付」（FR-10）暂未实现。
+ * 「立即支付」为纯前端模拟支付（FR-10）：成功后清空购物车并返回首页订单 tab。
  *
  * loading 由 useCheckoutBar.goToCheckout 显示，页面首屏渲染完成后在此取消。
  */
-import { ref } from 'vue'
+import { onUnmounted, ref, watch } from 'vue'
 import { onReady } from '@dcloudio/uni-app'
 import BottomBar from '@/components/bottom-bar/index.vue'
-import { useOrderConfirm } from '@/composables/use-order-confirm'
+import { useOrderConfirm } from '@/sub-order-confirm/composables/use-order-confirm'
+import { useCart } from '@/composables/use-cart'
+import { HOME_TAB_SWITCH_EVENT } from '@/composables/use-home-tabs'
 
 defineOptions({
   options: {
@@ -28,9 +30,30 @@ const {
   payAmount,
   etaText,
   selectDiningMode,
+  paymentPhase,
+  paying,
+  startPay,
 } = useOrderConfirm()
 
+const { clearCart } = useCart()
+
 const notes = ref('')
+
+/** 支付成功展示 1.5s 后的收尾定时器（清空购物车 + 返回首页订单 tab），页面卸载时清理 */
+let payDoneTimer: ReturnType<typeof setTimeout> | null = null
+
+watch(paymentPhase, (phase) => {
+  if (phase !== 'success') return
+  payDoneTimer = setTimeout(() => {
+    clearCart()
+    uni.$emit(HOME_TAB_SWITCH_EVENT, 'orders')
+    uni.navigateBack()
+  }, 1500)
+})
+
+onUnmounted(() => {
+  if (payDoneTimer) clearTimeout(payDoneTimer)
+})
 
 onReady(() => {
   uni.hideLoading()
@@ -161,12 +184,39 @@ onReady(() => {
       </template>
       <template #right>
         <view
-          class="flex h-[76rpx] items-center justify-center rounded-button bg-green-accent px-[48rpx]"
+          class="pay-btn flex h-[76rpx] items-center justify-center rounded-button bg-green-accent px-[48rpx]"
+          hover-class="pay-btn--pressed"
+          @click="startPay"
         >
           <text class="font-bold text-[26rpx] text-white">立即支付</text>
         </view>
       </template>
     </bottom-bar>
+
+    <!-- 模拟支付弹层（FR-10，纯前端演示，不会真实扣款） -->
+    <view
+      v-if="paying"
+      class="fixed top-0 right-0 bottom-0 left-0 z-[2000] flex items-center justify-center bg-black-40 px-[48rpx]"
+    >
+      <view
+        class="flex w-full max-w-[640rpx] flex-col items-center rounded-[32rpx] bg-surface-card px-[48rpx] py-[48rpx] text-center shadow-[0_20rpx_50rpx_rgba(0,0,0,0.25)]"
+      >
+        <view v-if="paymentPhase === 'verifying'" class="payment-spinner" />
+        <view v-else class="payment-success-icon">
+          <t-icon name="check" size="48rpx" color="#00754a" />
+        </view>
+        <text class="mb-[16rpx] font-semibold text-[32rpx] text-ink">
+          {{ paymentPhase === 'verifying' ? '模拟支付中' : '模拟支付成功' }}
+        </text>
+        <text class="leading-[1.4] text-[24rpx] text-ink-soft">
+          {{
+            paymentPhase === 'verifying'
+              ? '演示环境，不会产生任何真实扣款'
+              : `¥${payAmount} 未真实扣除，饮品已下发吧台制作`
+          }}
+        </text>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -181,5 +231,46 @@ onReady(() => {
 .notes-input {
   font-size: 24rpx !important;
   line-height: 34rpx !important;
+}
+
+/* 模拟支付弹层：spinner 旋转圈（设计稿 .payment-spinner） */
+.payment-spinner {
+  width: 96rpx;
+  height: 96rpx;
+  margin-bottom: 32rpx;
+  border: 8rpx solid var(--color-border);
+  border-top-color: var(--color-green-accent);
+  border-radius: 50%;
+  animation: payment-spin 1s linear infinite;
+}
+
+@keyframes payment-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* 模拟支付弹层：成功勾图标圆底（设计稿 .payment-success-icon） */
+.payment-success-icon {
+  width: 96rpx;
+  height: 96rpx;
+  margin-bottom: 32rpx;
+  background-color: rgba(0, 117, 74, 0.1);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 立即支付按钮按压反馈（设计稿 .btn-pay-now:active） */
+.pay-btn {
+  transition: all 0.2s ease;
+}
+
+.pay-btn--pressed {
+  transform: scale(0.95);
 }
 </style>
