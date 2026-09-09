@@ -1,18 +1,18 @@
 <script setup lang="ts">
 /**
- * 确认订单页 — 静态 UI 版本
+ * 确认订单页
  *
- * 本版仅还原原型 UI：商品明细为临时静态示例数据，
- * 下一对话对接购物车 mock 数据时，按 AD-1/AD-3 新建 use-order-confirm
- * composable + api/mock 层，届时移除静态数据。
+ * 数据来自购物车 cart store（跨页面共享状态，FR-9/AD-6），
+ * 业务逻辑封装在 useOrderConfirm composable（AD-3）。
+ * 备注为纯 UI 输入状态，保留在页面内。
+ * 「立即支付」（FR-10）暂未实现。
  *
  * loading 由 useCheckoutBar.goToCheckout 显示，页面首屏渲染完成后在此取消。
  */
-import { computed, ref } from 'vue'
+import { ref } from 'vue'
 import { onReady } from '@dcloudio/uni-app'
 import BottomBar from '@/components/bottom-bar/index.vue'
-
-type DiningMode = 'dinein' | 'takeout'
+import { useOrderConfirm } from '@/composables/use-order-confirm'
 
 defineOptions({
   options: {
@@ -20,27 +20,17 @@ defineOptions({
   },
 })
 
-const diningMode = ref<DiningMode>('dinein')
+const {
+  items,
+  diningMode,
+  totalCount: totalQty,
+  packagingFee,
+  payAmount,
+  etaText,
+  selectDiningMode,
+} = useOrderConfirm()
+
 const notes = ref('')
-
-/** 静态示例商品（临时占位，对接购物车数据时移除） */
-const goodsItems = [
-  { name: '春日限定樱花拿铁', specs: '超大杯/冰/燕麦奶/2份浓缩', price: 48, qty: 1 },
-  { name: '抹茶星冰乐', specs: '大杯/冰/燕麦奶/1份浓缩', price: 42, qty: 1 },
-  { name: '美式咖啡', specs: '中杯/冰/全脂牛奶/1份浓缩', price: 27, qty: 1 },
-]
-
-const goodsTotal = computed(() => goodsItems.reduce((sum, i) => sum + i.price * i.qty, 0))
-const packagingFee = computed(() => (diningMode.value === 'takeout' ? 2 : 0))
-const totalQty = computed(() => goodsItems.reduce((sum, i) => sum + i.qty, 0))
-const payAmount = computed(() => goodsTotal.value + packagingFee.value)
-const etaText = computed(() =>
-  diningMode.value === 'dinein' ? '预计 10-15 分钟后可取' : '预计 15-20 分钟后打包完成',
-)
-
-const selectDiningMode = (mode: DiningMode) => {
-  diningMode.value = mode
-}
 
 onReady(() => {
   uni.hideLoading()
@@ -92,20 +82,22 @@ onReady(() => {
 
           <view class="flex flex-col gap-[20rpx]">
             <view
-              v-for="item in goodsItems"
-              :key="item.name"
+              v-for="item in items"
+              :key="item.productId + item.specSummary"
               class="flex items-start justify-between gap-[20rpx]"
             >
               <view class="flex min-w-0 flex-1 flex-col gap-[4rpx]">
-                <text class="font-semibold text-[24rpx] text-ink">{{ item.name }}</text>
-                <text class="leading-[1.3] text-[20rpx] text-ink-soft">{{ item.specs }}</text>
+                <text class="font-semibold text-[24rpx] text-ink">{{ item.productName }}</text>
+                <text class="leading-[1.3] text-[20rpx] text-ink-soft">{{ item.specSummary }}</text>
               </view>
               <view class="flex shrink-0 flex-col items-end gap-[2rpx]">
                 <view class="flex items-baseline">
                   <text class="font-bold text-[18rpx] text-ink">¥</text>
-                  <text class="font-bold text-[24rpx] text-ink">{{ item.price * item.qty }}</text>
+                  <text class="font-bold text-[24rpx] text-ink">{{
+                    item.unitPrice * item.quantity
+                  }}</text>
                 </view>
-                <text class="text-[18rpx] text-ink-soft">x{{ item.qty }}</text>
+                <text class="text-[18rpx] text-ink-soft">x{{ item.quantity }}</text>
               </view>
             </view>
           </view>
