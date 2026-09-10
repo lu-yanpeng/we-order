@@ -2,7 +2,7 @@
 import { getCurrentInstance, nextTick, onMounted, ref } from 'vue'
 import type { CartItem } from '@/types/product'
 import MyStepper from '@/components/stepper/index.vue'
-import { getSafeBottom } from '@/utils/platform'
+import BottomBar from '@/components/bottom-bar/index.vue'
 
 defineOptions({
   options: {
@@ -27,7 +27,6 @@ const emit = defineEmits<{
   'height-change': [height: number]
 }>()
 
-const safeBottom = getSafeBottom()
 const barHeight = ref(0)
 const cartDetailVisible = ref(false)
 const cartDetailAnimated = ref(false)
@@ -56,7 +55,7 @@ onMounted(() => {
   nextTick(() => {
     const query = uni.createSelectorQuery().in(instance?.proxy)
     query
-      .select('.checkout-bar-root')
+      .select('.checkout-bar >>> .checkout-bar-root')
       .boundingClientRect((rect) => {
         if (rect && !Array.isArray(rect) && rect.height != null) {
           barHeight.value = rect.height
@@ -108,15 +107,12 @@ const closeCartDetail = () => {
 </script>
 
 <template>
-  <view>
-    <view
-      class="checkout-bar-root fixed right-0 bottom-0 left-0 z-700 border-t border-border-hairline bg-surface-card"
-      :style="{
-        paddingBottom: safeBottom + 'px',
-        transform: slideUpReady ? 'translateY(0)' : 'translateY(100%)',
-      }"
+  <view class="checkout-bar">
+    <bottom-bar
+      custom-class="checkout-bar-root fixed right-0 bottom-0 left-0"
+      :custom-style="{ transform: slideUpReady ? 'translateY(0)' : 'translateY(100%)' }"
     >
-      <view class="flex min-h-(--mp-frap-size) items-center justify-between px-[32rpx] pt-[16rpx]">
+      <template #left>
         <view class="flex h-full flex-1 flex-col justify-center">
           <view class="self-start" @click="toggleCartDetail">
             <view class="flex items-baseline">
@@ -136,6 +132,9 @@ const closeCartDetail = () => {
             </view>
           </view>
         </view>
+      </template>
+
+      <template #right>
         <view class="shrink-0">
           <view
             class="flex h-[76rpx] items-center justify-center rounded-button px-[40rpx]"
@@ -147,12 +146,12 @@ const closeCartDetail = () => {
             <text
               class="font-bold text-[26rpx]"
               :class="totalCount > 0 ? 'text-surface-dark' : 'text-black-58'"
-              >结算({{ totalCount }})</text
+            >结算({{ totalCount }})</text
             >
           </view>
         </view>
-      </view>
-    </view>
+      </template>
+    </bottom-bar>
 
     <view
       v-show="cartDetailVisible"
@@ -224,32 +223,15 @@ const closeCartDetail = () => {
 </template>
 
 <style scoped>
-.checkout-bar-root {
+:deep(.checkout-bar-root) {
+  /* 开发者工具里面没有过渡动画，但是真机预览的时候有 */
   transition: transform 300ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
   transform: translateY(100%);
+  /* 使用bottom-bar组件后，z-700的形式无法转换成样式 */
+  z-index: 700;
 }
 
-.cart-detail-overlay {
-  background-color: rgba(0, 0, 0, 0);
-  transition: background-color 250ms ease;
-}
-
-.cart-detail-overlay--active {
-  background-color: rgba(0, 0, 0, 0.4);
-}
-
-.cart-detail-panel {
-  transform: translateY(100%);
-  transition: transform 250ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
-}
-
-.cart-detail-panel--active {
-  transform: translateY(0);
-}
-</style>
-
-<style>
-.t-popup.t-popup--center.t-dialog__wrapper {
+:deep(.t-popup.t-popup--center.t-dialog__wrapper) {
   background-color: transparent;
 
   .checkout-clear-dialog {
@@ -276,5 +258,23 @@ const closeCartDetail = () => {
       }
     }
   }
+}
+
+.cart-detail-overlay {
+  background-color: rgba(0, 0, 0, 0);
+  transition: background-color 250ms ease;
+}
+
+.cart-detail-overlay--active {
+  background-color: rgba(0, 0, 0, 0.4);
+}
+
+.cart-detail-panel {
+  transform: translateY(100%);
+  transition: transform 250ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.cart-detail-panel--active {
+  transform: translateY(0);
 }
 </style>
