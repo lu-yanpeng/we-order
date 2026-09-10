@@ -55,11 +55,12 @@ defineOptions({
   <t-popup />
 </template>
 
-<style>
-/* 不能加scoped，否则不生效 */
-/* 注意！t-popup这里是<t-popup>组件真实渲染出来的节点的类名，不是乱写的，可以打开控制台查看渲染后的类名。
-.t-popup会作为全局样式被popup根组件选中 */
-.t-popup {
+<style scoped>
+/*
+在 <style scoped> 中要修改组件的样式，需要使用 :deep() 伪类
+注意！t-popup这里是<t-popup>组件真实渲染出来的节点的类名，不是乱写的，可以打开控制台查看渲染后的类名。
+*/
+:deep(.t-popup) {
   /* 这里可以替换也可以新增样式，替换的时候可能需要加 !important */
 }
 </style>

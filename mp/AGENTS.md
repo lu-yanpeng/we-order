@@ -47,6 +47,8 @@ const emit = defineEmits<{
 
 输入样式时，优先使用`styles/main.css`中定义的tailwindcss主题，没有对应样式的可以使用任意值语法，实在无法使用tailwindcss的再考虑手写。
 
+关于自己创建的组件，如何接收并设置样式，可以参考 [bottom-bar](mp/src/components/bottom-bar/index.vue)
+
 ## 可参考文档
 
 以下文档按需读取
