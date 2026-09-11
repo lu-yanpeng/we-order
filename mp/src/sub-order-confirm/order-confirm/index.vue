@@ -157,14 +157,13 @@ onReady(() => {
             </view>
           </view>
 
-          <view class="flex flex-col gap-[12rpx]">
+          <view class="notes-container flex flex-col gap-[12rpx]">
             <text class="font-semibold text-[22rpx] text-ink">备注偏好</text>
             <t-textarea
               v-model="notes"
               :autosize="true"
               :maxlength="30"
               placeholder="输入备注"
-              placeholder-class="notes-placeholder"
               t-class-textarea="notes-input"
               custom-style="padding: 16rpx 24rpx; background-color: #f9f9f9; border-radius: 12rpx;"
             />
@@ -220,17 +219,13 @@ onReady(() => {
   </view>
 </template>
 
-<style>
+<style scoped>
 /*
  * 占位符与输入文字统一 24rpx。
- * 占位符经 placeholder-class 直接作用，输入框经 t-class-textarea 注入；
- * t-textarea 内部 .t-textarea__wrapper-inner 自带 font 简写（32rpx/48rpx）且带
- * data-v scoped 特异性更高，需 !important 才能覆盖（shared 模式下官方推荐做法）。
  */
-.notes-placeholder,
-.notes-input {
-  font-size: 24rpx !important;
-  line-height: 34rpx !important;
+.notes-container :deep(.notes-input) {
+  font-size: 24rpx;
+  line-height: 34rpx;
 }
 
 /* 模拟支付弹层：spinner 旋转圈（设计稿 .payment-spinner） */

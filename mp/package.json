@@ -1,6 +1,7 @@
 {
   "name": "点餐小程序",
   "version": "0.0.1",
+  "packageManager": "pnpm@11.25.0",
   "scripts": {
     "dev:custom": "uni -p",
     "dev:h5": "uni",

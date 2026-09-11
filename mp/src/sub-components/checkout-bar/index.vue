@@ -146,7 +146,7 @@ const closeCartDetail = () => {
             <text
               class="font-bold text-[26rpx]"
               :class="totalCount > 0 ? 'text-surface-dark' : 'text-black-58'"
-            >结算({{ totalCount }})</text
+              >结算({{ totalCount }})</text
             >
           </view>
         </view>
@@ -222,8 +222,8 @@ const closeCartDetail = () => {
   </view>
 </template>
 
-<style scoped>
-:deep(.checkout-bar-root) {
+<style scoped lang="less">
+.checkout-bar :deep(.checkout-bar-root) {
   /* 开发者工具里面没有过渡动画，但是真机预览的时候有 */
   transition: transform 300ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
   transform: translateY(100%);
@@ -231,31 +231,23 @@ const closeCartDetail = () => {
   z-index: 700;
 }
 
-:deep(.t-popup.t-popup--center.t-dialog__wrapper) {
-  background-color: transparent;
+.checkout-bar :deep(.checkout-clear-dialog) {
+  --td-dialog-border-radius: 24rpx;
+  --td-dialog-width: 520rpx;
+  border-radius: 24rpx;
+  overflow: hidden;
 
-  .checkout-clear-dialog {
-    --td-dialog-border-radius: 24rpx;
-    --td-dialog-width: 520rpx;
-    border-radius: 24rpx;
-    overflow: hidden;
-
-    .t-dialog__content {
-      padding: 52rpx 0;
-
-      .t-dialog__header {
-        font-size: 30rpx !important;
-        font-weight: 600 !important;
-        color: rgba(0, 0, 0, 0.87) !important;
-      }
+  .t-dialog__content {
+    padding: 52rpx 0;
+    .t-dialog__header {
+      font-size: 48rpx;
     }
+  }
 
-    .t-dialog__footer {
-      padding: 0 32rpx 32rpx !important;
-
-      .t-dialog__button {
-        min-width: 160rpx !important;
-      }
+  .t-dialog__footer {
+    padding: 0 32rpx 52rpx;
+    .t-dialog__button {
+      min-width: 150rpx;
     }
   }
 }
