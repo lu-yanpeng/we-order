@@ -12,7 +12,7 @@
 import { computed } from 'vue'
 import type { Product } from '@/types/product'
 import MyStepper from '@/components/stepper/index.vue'
-import { getSafeBottom } from '@/utils/platform'
+import BottomBar from '@/components/bottom-bar/index.vue'
 
 const props = defineProps<{
   visible: boolean
@@ -67,9 +67,6 @@ const popupVisible = computed({
   get: () => props.visible,
   set: (val) => emit('update:visible', val),
 })
-
-/** 底部安全区高度，确保结算栏不被刘海或底部横条遮挡 */
-const safeBottom = getSafeBottom()
 </script>
 
 <template>
@@ -142,13 +139,8 @@ const safeBottom = getSafeBottom()
           </view>
         </view>
 
-        <view
-          class="shrink-0 border-t border-border-hairline bg-surface-card"
-          :style="{ paddingBottom: safeBottom + 'px' }"
-        >
-          <view
-            class="flex min-h-(--mp-frap-size) items-center justify-between px-[32rpx] pt-[16rpx]"
-          >
+        <bottom-bar custom-class="shrink-0">
+          <template #left>
             <view class="mr-[24rpx] flex flex-1 flex-col overflow-hidden">
               <view class="mb-[4rpx] flex items-baseline">
                 <text class="mr-[2rpx] text-[26rpx] text-ink">¥</text>
@@ -156,14 +148,17 @@ const safeBottom = getSafeBottom()
               </view>
               <text class="text-[18rpx] text-ink-soft">{{ priceLabel }}</text>
             </view>
+          </template>
+
+          <template #right>
             <view
               class="shrink-0 rounded-button bg-green-accent px-[48rpx] py-[20rpx]"
               @click="handleConfirm"
             >
               <text class="font-semibold text-[28rpx] text-ink-inverse">加入购物车</text>
             </view>
-          </view>
-        </view>
+          </template>
+        </bottom-bar>
       </view>
     </t-popup>
   </view>
