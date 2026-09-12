@@ -7,7 +7,7 @@ paradigm: 'Vue 3 Component-Based Architecture'
 scope: 'We-Order 小程序 Phase 1 静态页面与交互（Mock 数据驱动，无后端）'
 status: final
 created: '2026-07-03'
-updated: '2026-07-22'
+updated: '2026-09-09'
 binds:
   - FR-1 ~ FR-14
 sources:
@@ -108,12 +108,25 @@ graph TD
 - **Prevents:** 多个 Composable 各自写同一个 Pinia store，导致状态来源不一致、竞争条件
 - **Rule:** 每个 Pinia store 只能由一个 Composable 持有写权限。其他需要读取该 store 的 Composable 或组件，通过该 store 的 getter 或 `storeToRefs` 读取，不直接写入。
 
+### AD-9 — Composable 归属规则
+
+- **Binds:** all composables
+- **Prevents:** 仅分包使用的代码被打进主包（体积污染、微信质检报错「主包不应存在主包未使用的 JS 文件」）、跨页面不必要依赖、根 `composables/` 膨胀
+- **Rule:** composable 先放在使用它的页面所在包内：
+  - 主包页面：`pages/<page>/composables/`
+  - 分包页面：该分包根目录下 `sub-<pkg>/composables/`（不细分到页面）
+  仅当需要跨目录复用时按以下规则提升：
+  - 同一包内两个页面复用：主包 → 根 `composables/`；分包 → 该分包根 `composables/`（不提升到主包）
+  - 跨包复用（主包↔分包、分包↔分包）：提升到根 `composables/`（主包）
+  硬约束（微信分包规则）：主包引用的 JS 不得放在分包目录（主包不能 require 分包代码）；仅分包使用的 JS 不得放在主包目录树（触发微信质检报错）。
+
 ## Consistency Conventions
 
 | 关注点 | 约定                                                                                                               |
 |--------|------------------------------------------------------------------------------------------------------------------|
 | 命名（文件、目录、组件） | 统一使用 kebab-case（小写字母 + 短横线），如 `product-card.vue`、`order-confirm/`、`use-products.ts`、`<product-cart />` |
 | 组件组织 | 每个组件放在以组件名命名的文件夹下，根组件统一命名为 `index.vue`。如 `checkout-bar/index.vue`、`product-card/index.vue`。子组件、样式、类型、测试文件同目录就近放置 |
+| Composable 归属 | 参见 AD-9：页面专属 composable 放页面所在包（`pages/<page>/composables/` 或 `sub-<pkg>/composables/`），跨目录复用时按 AD-9 提升规则处理 |
 | SFC 结构 | 单文件组件的区块顺序固定为 `<script>` → `<template>` → `<style>`                                                              |
 | 数据入口 | 参见 AD-1：所有数据读写必须经由 `api/` 层统一入口                                                                                  |
 | 状态管理 | 参见 AD-6、AD-8：跨组件共享状态用 Pinia，页面内数据用 Composable 内 `ref()`；每个 Store 由一个 Composable 专责写入                             |
@@ -139,15 +152,17 @@ graph TD
 {root}/
 ├── pages/                     # 主包页面（仅首屏必需）
 │   └── home/                  # 首页（点餐 tab + 订单列表 tab）
+│       └── composables/       # 首页专属 composable（AD-9）
 ├── sub-order-confirm/         # 分包：确认订单（按需加载，pages.json subPackages 配置）
-│   └── order-confirm/         # 确认订单页
+│   ├── order-confirm/         # 确认订单页
+│   └── composables/           # 确认订单分包专属 composable（AD-9）
 ├── sub-order-detail/          # 分包：订单详情（按需加载，pages.json subPackages 配置）
 │   └── order-detail/          # 订单详情页
 ├── sub-components/            # 组件分包（占位组件方式按需加载）
 │   └── checkout-bar/          # 结算栏组件
 ├── components/                # 全局复用组件
 ├── stores/                    # Pinia 状态（仅跨组件共享的响应式状态）
-├── composables/               # 组合式函数（页面逻辑、数据加载）
+├── composables/               # 跨包/跨页面复用的组合式函数（AD-9）
 ├── api/                       # 数据访问层（Mock JSON / localStorage 的统一入口）
 ├── mock/                      # Mock 数据 JSON 文件
 ├── types/                     # 共享 TypeScript 类型定义

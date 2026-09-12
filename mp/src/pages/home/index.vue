@@ -7,10 +7,10 @@
  */
 import { onMounted } from 'vue'
 import type { Product, CartItem } from '@/types/product'
-import { useProducts } from '@/composables/use-products'
-import { useSpecSheet } from '@/composables/use-spec-sheet'
+import { useProducts } from './composables/use-products'
+import { useSpecSheet } from './composables/use-spec-sheet'
 import { useCart } from '@/composables/use-cart'
-import { useCheckoutBar } from '@/composables/use-checkout-bar'
+import { useCheckoutBar } from './composables/use-checkout-bar'
 import { useHomeTabs } from '@/composables/use-home-tabs'
 import ProductCard from './components/product-card/index.vue'
 import SpecSheet from './components/spec-sheet/index.vue'

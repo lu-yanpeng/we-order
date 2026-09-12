@@ -1,18 +1,20 @@
 <script setup lang="ts">
 /**
- * 确认订单页 — 静态 UI 版本
+ * 确认订单页
  *
- * 本版仅还原原型 UI：商品明细为临时静态示例数据，
- * 下一对话对接购物车 mock 数据时，按 AD-1/AD-3 新建 use-order-confirm
- * composable + api/mock 层，届时移除静态数据。
+ * 数据来自购物车 cart store（跨页面共享状态，FR-9/AD-6），
+ * 业务逻辑封装在 useOrderConfirm composable（AD-3）。
+ * 备注为纯 UI 输入状态，保留在页面内。
+ * 「立即支付」为纯前端模拟支付（FR-10）：成功后清空购物车并返回首页订单 tab。
  *
  * loading 由 useCheckoutBar.goToCheckout 显示，页面首屏渲染完成后在此取消。
  */
-import { computed, ref } from 'vue'
+import { onUnmounted, ref, watch } from 'vue'
 import { onReady } from '@dcloudio/uni-app'
 import BottomBar from '@/components/bottom-bar/index.vue'
-
-type DiningMode = 'dinein' | 'takeout'
+import { useOrderConfirm } from '@/sub-order-confirm/composables/use-order-confirm'
+import { useCart } from '@/composables/use-cart'
+import { HOME_TAB_SWITCH_EVENT } from '@/composables/use-home-tabs'
 
 defineOptions({
   options: {
@@ -20,27 +22,38 @@ defineOptions({
   },
 })
 
-const diningMode = ref<DiningMode>('dinein')
+const {
+  items,
+  diningMode,
+  totalCount: totalQty,
+  packagingFee,
+  payAmount,
+  etaText,
+  selectDiningMode,
+  paymentPhase,
+  paying,
+  startPay,
+} = useOrderConfirm()
+
+const { clearCart } = useCart()
+
 const notes = ref('')
 
-/** 静态示例商品（临时占位，对接购物车数据时移除） */
-const goodsItems = [
-  { name: '春日限定樱花拿铁', specs: '超大杯/冰/燕麦奶/2份浓缩', price: 48, qty: 1 },
-  { name: '抹茶星冰乐', specs: '大杯/冰/燕麦奶/1份浓缩', price: 42, qty: 1 },
-  { name: '美式咖啡', specs: '中杯/冰/全脂牛奶/1份浓缩', price: 27, qty: 1 },
-]
+/** 支付成功展示 1.5s 后的收尾定时器（清空购物车 + 返回首页订单 tab），页面卸载时清理 */
+let payDoneTimer: ReturnType<typeof setTimeout> | null = null
 
-const goodsTotal = computed(() => goodsItems.reduce((sum, i) => sum + i.price * i.qty, 0))
-const packagingFee = computed(() => (diningMode.value === 'takeout' ? 2 : 0))
-const totalQty = computed(() => goodsItems.reduce((sum, i) => sum + i.qty, 0))
-const payAmount = computed(() => goodsTotal.value + packagingFee.value)
-const etaText = computed(() =>
-  diningMode.value === 'dinein' ? '预计 10-15 分钟后可取' : '预计 15-20 分钟后打包完成',
-)
+watch(paymentPhase, (phase) => {
+  if (phase !== 'success') return
+  payDoneTimer = setTimeout(() => {
+    clearCart()
+    uni.$emit(HOME_TAB_SWITCH_EVENT, 'orders')
+    uni.navigateBack()
+  }, 1500)
+})
 
-const selectDiningMode = (mode: DiningMode) => {
-  diningMode.value = mode
-}
+onUnmounted(() => {
+  if (payDoneTimer) clearTimeout(payDoneTimer)
+})
 
 onReady(() => {
   uni.hideLoading()
@@ -92,20 +105,22 @@ onReady(() => {
 
           <view class="flex flex-col gap-[20rpx]">
             <view
-              v-for="item in goodsItems"
-              :key="item.name"
+              v-for="item in items"
+              :key="item.productId + item.specSummary"
               class="flex items-start justify-between gap-[20rpx]"
             >
               <view class="flex min-w-0 flex-1 flex-col gap-[4rpx]">
-                <text class="font-semibold text-[24rpx] text-ink">{{ item.name }}</text>
-                <text class="leading-[1.3] text-[20rpx] text-ink-soft">{{ item.specs }}</text>
+                <text class="font-semibold text-[24rpx] text-ink">{{ item.productName }}</text>
+                <text class="leading-[1.3] text-[20rpx] text-ink-soft">{{ item.specSummary }}</text>
               </view>
               <view class="flex shrink-0 flex-col items-end gap-[2rpx]">
                 <view class="flex items-baseline">
                   <text class="font-bold text-[18rpx] text-ink">¥</text>
-                  <text class="font-bold text-[24rpx] text-ink">{{ item.price * item.qty }}</text>
+                  <text class="font-bold text-[24rpx] text-ink">{{
+                    item.unitPrice * item.quantity
+                  }}</text>
                 </view>
-                <text class="text-[18rpx] text-ink-soft">x{{ item.qty }}</text>
+                <text class="text-[18rpx] text-ink-soft">x{{ item.quantity }}</text>
               </view>
             </view>
           </view>
@@ -142,14 +157,13 @@ onReady(() => {
             </view>
           </view>
 
-          <view class="flex flex-col gap-[12rpx]">
+          <view class="notes-container flex flex-col gap-[12rpx]">
             <text class="font-semibold text-[22rpx] text-ink">备注偏好</text>
             <t-textarea
               v-model="notes"
               :autosize="true"
               :maxlength="30"
               placeholder="输入备注"
-              placeholder-class="notes-placeholder"
               t-class-textarea="notes-input"
               custom-style="padding: 16rpx 24rpx; background-color: #f9f9f9; border-radius: 12rpx;"
             />
@@ -169,25 +183,89 @@ onReady(() => {
       </template>
       <template #right>
         <view
-          class="flex h-[76rpx] items-center justify-center rounded-button bg-green-accent px-[48rpx]"
+          class="pay-btn flex h-[76rpx] items-center justify-center rounded-button bg-green-accent px-[48rpx]"
+          hover-class="pay-btn--pressed"
+          @click="startPay"
         >
           <text class="font-bold text-[26rpx] text-white">立即支付</text>
         </view>
       </template>
     </bottom-bar>
+
+    <!-- 模拟支付弹层（FR-10，纯前端演示，不会真实扣款） -->
+    <view
+      v-if="paying"
+      class="fixed top-0 right-0 bottom-0 left-0 z-[2000] flex items-center justify-center bg-black-40 px-[48rpx]"
+    >
+      <view
+        class="flex w-full max-w-[640rpx] flex-col items-center rounded-[32rpx] bg-surface-card px-[48rpx] py-[48rpx] text-center shadow-[0_20rpx_50rpx_rgba(0,0,0,0.25)]"
+      >
+        <view v-if="paymentPhase === 'verifying'" class="payment-spinner" />
+        <view v-else class="payment-success-icon">
+          <t-icon name="check" size="48rpx" color="#00754a" />
+        </view>
+        <text class="mb-[16rpx] font-semibold text-[32rpx] text-ink">
+          {{ paymentPhase === 'verifying' ? '模拟支付中' : '模拟支付成功' }}
+        </text>
+        <text class="leading-[1.4] text-[24rpx] text-ink-soft">
+          {{
+            paymentPhase === 'verifying'
+              ? '演示环境，不会产生任何真实扣款'
+              : `¥${payAmount} 未真实扣除，饮品已下发吧台制作`
+          }}
+        </text>
+      </view>
+    </view>
   </view>
 </template>
 
-<style>
+<style scoped>
 /*
  * 占位符与输入文字统一 24rpx。
- * 占位符经 placeholder-class 直接作用，输入框经 t-class-textarea 注入；
- * t-textarea 内部 .t-textarea__wrapper-inner 自带 font 简写（32rpx/48rpx）且带
- * data-v scoped 特异性更高，需 !important 才能覆盖（shared 模式下官方推荐做法）。
  */
-.notes-placeholder,
-.notes-input {
-  font-size: 24rpx !important;
-  line-height: 34rpx !important;
+.notes-container :deep(.notes-input) {
+  font-size: 24rpx;
+  line-height: 34rpx;
+}
+
+/* 模拟支付弹层：spinner 旋转圈（设计稿 .payment-spinner） */
+.payment-spinner {
+  width: 96rpx;
+  height: 96rpx;
+  margin-bottom: 32rpx;
+  border: 8rpx solid var(--color-border);
+  border-top-color: var(--color-green-accent);
+  border-radius: 50%;
+  animation: payment-spin 1s linear infinite;
+}
+
+@keyframes payment-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* 模拟支付弹层：成功勾图标圆底（设计稿 .payment-success-icon） */
+.payment-success-icon {
+  width: 96rpx;
+  height: 96rpx;
+  margin-bottom: 32rpx;
+  background-color: rgba(0, 117, 74, 0.1);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 立即支付按钮按压反馈（设计稿 .btn-pay-now:active） */
+.pay-btn {
+  transition: all 0.2s ease;
+}
+
+.pay-btn--pressed {
+  transform: scale(0.95);
 }
 </style>

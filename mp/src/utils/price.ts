@@ -4,6 +4,7 @@
  * 不依赖 Vue 响应式系统，可独立测试。
  */
 import type { SpecGroup } from '@/types/product'
+import type { DiningMode } from '@/types/order'
 
 /**
  * 计算规格选项的累计加价金额
@@ -89,4 +90,14 @@ export function calcTotalPrice(
 ): number {
   const unitPrice = hasSpecs ? basePrice + calcSpecExtras(specGroups, selections) : basePrice
   return unitPrice * count
+}
+
+/**
+ * 计算包装费（FR-7）
+ *
+ * @param mode 就餐方式
+ * @returns 外带 ¥2，堂食免收
+ */
+export function calcPackagingFee(mode: DiningMode): number {
+  return mode === 'takeout' ? 2 : 0
 }

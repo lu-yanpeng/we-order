@@ -24,7 +24,8 @@
 
 **自定义组件样式**
 
-> 参考 `home/components/spec-sheet/index.vue`，这里自定义了t-popup的样式
+> 参考 `home/components/spec-sheet/index.vue`，这里自定义了t-popup的样式。
+> 关于踩坑和:deep()的原理，可以查看[我的笔记](我的[笔记](https://lu-yanpeng.github.io/docs/vue/component/css-scope))。额外说一句，在小程序中`:deep(.a, .b)`配合分组选择器，样式会失效，只能拆开分别设置
 
 要[自定义](https://tdesign.tencent.com/uniapp/custom-style)tdesign组件的样式，主要有三种方式：
 
@@ -39,7 +40,7 @@ tdesign组件都支持`custom-style`属性，给组件设置这个属性后，�
 
 二、**同名替换**，推荐
 
-直接使用同名的选择器选中节点，替换需要的样式。这样的方式最灵活，不要类名相同，不止可以修改根节点样式，藏的很深的节点也可以修改。推荐使用
+直接使用同名的选择器选中节点，替换需要的样式。这样的方式最灵活，只要类名相同，不止可以修改根节点样式，藏的很深的节点也可以修改。推荐使用
 
 ```vue
 <script>
@@ -52,15 +53,20 @@ defineOptions({
 </script>
 
 <template>
-  <t-popup />
+  <view class="checkout-bar">
+    <t-popup />
+  </view>
 </template>
 
-<style>
-/* 不能加scoped，否则不生效 */
-/* 注意！t-popup这里是<t-popup>组件真实渲染出来的节点的类名，不是乱写的，可以打开控制台查看渲染后的类名。
-.t-popup会作为全局样式被popup根组件选中 */
-.t-popup {
+<style scoped>
+/*
+在 <style scoped> 中要修改组件的样式，需要使用 :deep() 伪类
+注意！t-popup这里是<t-popup>组件真实渲染出来的节点的类名，不是乱写的，可以打开控制台查看渲染后的类名。
+*/
+.checkout-bar :deep(.t-popup) {
   /* 这里可以替换也可以新增样式，替换的时候可能需要加 !important */
+  /* 使用嵌套css，需要使用 less ，uniapp会把css原样输出给小程序，小程序不支持css原生的嵌套语法 */
+  /* 组件直接作为根节点时 :deep() 会失效。可以在组件外层套一个view，让他作为根节点。 */
 }
 </style>
 ```

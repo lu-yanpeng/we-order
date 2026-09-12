@@ -46,6 +46,33 @@ const emit = defineEmits<{
 项目基于uniapp，长度单位需要使用`rpx`。开发任何组件应该优先考虑tdesing的组件，其次考虑手写。相关文档在`mp/docs/style.md`，包含tdesign和tailwindcss的一些说明
 
 输入样式时，优先使用`styles/main.css`中定义的tailwindcss主题，没有对应样式的可以使用任意值语法，实在无法使用tailwindcss的再考虑手写。
+手写css时，应该把样式写在`<style scoped>`，尽量避免污染全局样式。对于组件样式可以使用`:deep()`伪类来修改，参考以下代码：
+
+```vue
+<script>
+defineOptions({
+  // 必须设置成这个值才能修改组件内部样式，其他值无效
+  options: {
+    styleIsolation: "shared",
+  }
+})
+</script>
+
+<template>
+  <view class="checkout-bar">
+    <t-popup />
+  </view>
+</template>
+
+<style scoped>
+.checkout-bar :deep(.t-popup) {
+  /* 使用嵌套css，需要使用 less ，uniapp会把css原样输出给小程序，小程序不支持css原生的嵌套语法 */
+  /* 组件直接作为根节点时 :deep() 会失效。可以在组件外层套一个view，让他作为根节点。原理参考我的[笔记](https://lu-yanpeng.github.io/docs/vue/component/css-scope) */
+}
+</style>
+```
+
+关于自己创建的组件，如何接收并设置样式，可以参考 [bottom-bar](mp/src/components/bottom-bar/index.vue)
 
 ## 可参考文档
 
