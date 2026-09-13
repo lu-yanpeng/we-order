@@ -9,11 +9,13 @@ import { onMounted } from 'vue'
 import type { Product, CartItem } from '@/types/product'
 import { useProducts } from './composables/use-products'
 import { useSpecSheet } from './composables/use-spec-sheet'
+import { useOrders } from './composables/use-orders'
 import { useCart } from '@/composables/use-cart'
 import { useCheckoutBar } from './composables/use-checkout-bar'
 import { useHomeTabs } from '@/composables/use-home-tabs'
 import ProductCard from './components/product-card/index.vue'
 import SpecSheet from './components/spec-sheet/index.vue'
+import OrderCard from './components/order-card/index.vue'
 import CheckoutBar from '@/sub-components/checkout-bar/index.vue'
 
 const {
@@ -63,6 +65,16 @@ const {
 
 const { activeTab, swiperIndex, onTabChange, onSwiperChange } = useHomeTabs()
 
+const {
+  orders,
+  error: ordersError,
+  initOrders,
+  goToOrderDetail,
+  urgeOrder,
+  confirmPickup,
+  reorder,
+} = useOrders()
+
 /** 点击商品加号 → 打开规格弹窗 */
 const handleAddToCart = (product: Product) => {
   openSpecSheet(product)
@@ -107,6 +119,7 @@ const handleCheckout = () => {
 // initProducts 由页面 onMounted 调用（数据加载属于页面级初始化编排）
 onMounted(() => {
   initProducts()
+  initOrders()
   initCheckoutBar()
 })
 </script>
@@ -187,9 +200,28 @@ onMounted(() => {
         />
       </swiper-item>
       <swiper-item>
-        <view class="flex h-full items-center justify-center">
-          <text class="text-sb-text-soft text-base">订单 - 待开发</text>
-        </view>
+        <scroll-view
+          class="h-full bg-surface-page"
+          scroll-y
+          :enhanced="true"
+          :show-scrollbar="false"
+        >
+          <view class="px-[32rpx] pt-[32rpx] pb-[92rpx]">
+            <order-card
+              v-for="order in orders"
+              :key="order.id"
+              :order="order"
+              @click="goToOrderDetail(order)"
+              @urge="urgeOrder"
+              @confirm-pickup="confirmPickup"
+              @reorder="reorder"
+            />
+
+            <view v-if="orders.length === 0" class="py-[80rpx] text-center">
+              <text class="text-[26rpx] text-ink-soft">{{ ordersError ?? '暂无订单记录' }}</text>
+            </view>
+          </view>
+        </scroll-view>
       </swiper-item>
     </swiper>
 
