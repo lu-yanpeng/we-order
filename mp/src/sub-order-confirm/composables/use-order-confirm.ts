@@ -3,20 +3,23 @@
  *
  * 职责：
  * 1. 只读购物车 cart store（AD-8：写入权限唯一归 useCart）
- * 2. 管理就餐方式与备注偏好状态（FR-7 / FR-8）
- * 3. 派生包装费、商品合计、总件数、应付金额与 ETA 文案
- * 4. 模拟支付状态机：验证中 → 成功（FR-10）；支付成功时构建订单记录经 API 层写入本地存储
+ * 2. 经 API 层加载门店信息（AD-1）
+ * 3. 管理就餐方式与备注偏好状态（FR-7 / FR-8）
+ * 4. 派生包装费、商品合计、总件数、应付金额与 ETA 文案
+ * 5. 模拟支付状态机：验证中 → 成功（FR-10）；支付成功时构建订单记录经 API 层写入本地存储
  *
  * 遵循 AD-1：运行时响应式状态（Pinia store）由 Composable 直接读写；
- *              订单持久化经由 api/orders。
+ *              门店信息与订单持久化经由 api/。
  * 遵循 AD-6：购物车作为跨页面共享状态使用 Pinia。
  */
 import { computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useCartStore } from '@/stores/cart'
 import { createOrder } from '@/api/orders'
+import { fetchStore } from '@/api/store'
 import { calcPackagingFee } from '@/utils/price'
 import type { DiningMode, Order } from '@/types/order'
+import type { Store } from '@/types/store'
 
 /** 模拟支付阶段（FR-10） */
 type PaymentPhase = 'idle' | 'verifying' | 'success'
@@ -35,6 +38,8 @@ export function useOrderConfirm() {
   const diningMode = ref<DiningMode>('dinein')
   /** 备注偏好，随订单一并保存到本地订单记录（FR-8） */
   const notes = ref('')
+  /** 门店信息（Phase 1 固定 Mock 门店） */
+  const store = ref<Store | null>(null)
 
   /** 包装费：外带 ¥2，堂食免收 */
   const packagingFee = computed(() => calcPackagingFee(diningMode.value))
@@ -47,6 +52,11 @@ export function useOrderConfirm() {
 
   function selectDiningMode(mode: DiningMode) {
     diningMode.value = mode
+  }
+
+  /** 加载门店信息 */
+  async function initStore() {
+    store.value = await fetchStore()
   }
 
   /** 模拟支付阶段（FR-10）：idle → verifying → success */
@@ -93,12 +103,14 @@ export function useOrderConfirm() {
     items,
     diningMode,
     notes,
+    store,
     totalPrice,
     totalCount,
     packagingFee,
     payAmount,
     etaText,
     selectDiningMode,
+    initStore,
     paymentPhase,
     paying,
     startPay,

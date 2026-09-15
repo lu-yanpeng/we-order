@@ -29,6 +29,11 @@ export async function fetchOrders(): Promise<Order[]> {
   return loadOrders()
 }
 
+/** 按订单编号获取单个订单，不存在时返回 undefined */
+export async function fetchOrderById(id: string): Promise<Order | undefined> {
+  return loadOrders().find((order) => order.id === id)
+}
+
 /** 创建订单：插入列表顶部并写入存储 */
 export async function createOrder(order: Order): Promise<void> {
   saveOrders([order, ...loadOrders()])
