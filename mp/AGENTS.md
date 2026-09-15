@@ -74,6 +74,26 @@ defineOptions({
 
 关于自己创建的组件，如何接收并设置样式，可以参考 [bottom-bar](mp/src/components/bottom-bar/index.vue)
 
+## 微信API
+
+### showLoading
+
+showLoading会因为页面跳转而触发onHide钩子，会自动把当前页面的loading销毁，不用手动hideLoading。官方文档没有相关说明，但是通过和微信小程序文档里面的AI对话，可以知道这一信息。
+
+```ts
+const goto = () => {
+  uni.showLoading({
+    title: '跳转中...',
+    mask: true,
+  })
+  // order页面出现时，loading会因为当前页面触发onHide而自动销毁
+  // 不需要手动调用hideLoading
+  uni.navigateTo({
+    url: '/pages/order/index'
+  })
+}
+```
+
 ## 可参考文档
 
 以下文档按需读取

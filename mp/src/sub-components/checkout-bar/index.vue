@@ -50,6 +50,7 @@ const clearDialogCancelBtn = {
 const instance = getCurrentInstance()
 
 onMounted(() => {
+  // 关闭首页加购时开启的 loading，见 pages/home/composables/use-checkout-bar.ts
   uni.hideLoading()
 
   nextTick(() => {
