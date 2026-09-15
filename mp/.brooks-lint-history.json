@@ -1,0 +1,9 @@
+[
+  {
+    "date": "2026-09-15",
+    "mode": "Architecture Audit",
+    "score": 71,
+    "findings": { "critical": 0, "warning": 4, "suggestion": 9 },
+    "scope": "mp/src (33 .vue/.ts + 2 .d.ts; 主包 + sub-order-confirm / sub-order-detail / sub-components 三个分包)"
+  }
+]
