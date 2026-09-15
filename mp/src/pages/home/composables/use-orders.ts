@@ -34,16 +34,15 @@ export function useOrders() {
 
   /**
    * 点击卡片 → 进入订单详情页（FR-13）。
-   * 点击时立即显示 loading，覆盖「跳转 + 分包下载 + 详情页首屏渲染」全程；
-   * loading 由详情页 onReady 取消（与结算页模式同构）。
-   *
-   * TODO: 首次加购时 useCheckoutBar 会挂 5 秒兜底 timer（到点 hideLoading），
-   * 若在这期间点卡片，会把这里的 loading 提前关掉，待处理。
+   * 防连点靠 navigatingToDetail 标记。
    */
   const goToOrderDetail = (order: Order) => {
     if (navigatingToDetail.value) return
     navigatingToDetail.value = true
-    uni.showLoading({ title: '加载中...', mask: true })
+    uni.showLoading({
+      title: '加载中',
+      mask: true,
+    })
     uni.navigateTo({
       url: `/sub-order-detail/order-detail/index?id=${order.id}`,
       success: () => {
@@ -51,8 +50,6 @@ export function useOrders() {
       },
       fail: () => {
         navigatingToDetail.value = false
-        // 跳转失败兜底：关闭 loading，避免卡死
-        uni.hideLoading()
       },
     })
   }

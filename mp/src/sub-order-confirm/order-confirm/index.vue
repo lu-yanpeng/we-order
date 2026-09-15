@@ -6,11 +6,8 @@
  * 业务逻辑封装在 useOrderConfirm composable（AD-3）。
  * 备注为纯 UI 输入状态，保留在页面内。
  * 「立即支付」为纯前端模拟支付（FR-10）：成功后清空购物车并返回首页订单 tab。
- *
- * loading 由 useCheckoutBar.goToCheckout 显示，页面首屏渲染完成后在此取消。
  */
 import { onUnmounted, ref, watch } from 'vue'
-import { onReady } from '@dcloudio/uni-app'
 import BottomBar from '@/components/bottom-bar/index.vue'
 import { useOrderConfirm } from '@/sub-order-confirm/composables/use-order-confirm'
 import { useCart } from '@/composables/use-cart'
@@ -53,10 +50,6 @@ watch(paymentPhase, (phase) => {
 
 onUnmounted(() => {
   if (payDoneTimer) clearTimeout(payDoneTimer)
-})
-
-onReady(() => {
-  uni.hideLoading()
 })
 </script>
 
