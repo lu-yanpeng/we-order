@@ -3,14 +3,10 @@
  * 确认订单页
  *
  * 数据来自购物车 cart store（跨页面共享状态，FR-9/AD-6），
- * 业务逻辑封装在 useOrderConfirm composable（AD-3）。
- * 备注为纯 UI 输入状态，保留在页面内。
- * 「立即支付」为纯前端模拟支付（FR-10）：成功后清空购物车并返回首页订单 tab。
- *
- * loading 由 useCheckoutBar.goToCheckout 显示，页面首屏渲染完成后在此取消。
+ * 业务逻辑与状态封装在 useOrderConfirm composable（AD-3）。
+ * 「立即支付」为纯前端模拟支付（FR-10）：成功后生成订单记录、清空购物车并返回首页订单 tab。
  */
-import { onUnmounted, ref, watch } from 'vue'
-import { onReady } from '@dcloudio/uni-app'
+import { onMounted, onUnmounted, watch } from 'vue'
 import BottomBar from '@/components/bottom-bar/index.vue'
 import { useOrderConfirm } from '@/sub-order-confirm/composables/use-order-confirm'
 import { useCart } from '@/composables/use-cart'
@@ -25,11 +21,14 @@ defineOptions({
 const {
   items,
   diningMode,
+  notes,
+  store,
   totalCount: totalQty,
   packagingFee,
   payAmount,
   etaText,
   selectDiningMode,
+  initStore,
   paymentPhase,
   paying,
   startPay,
@@ -37,7 +36,8 @@ const {
 
 const { clearCart } = useCart()
 
-const notes = ref('')
+/** 门店信息经 API 层加载（AD-1），页面挂载时读取一次 */
+onMounted(initStore)
 
 /** 支付成功展示 1.5s 后的收尾定时器（清空购物车 + 返回首页订单 tab），页面卸载时清理 */
 let payDoneTimer: ReturnType<typeof setTimeout> | null = null
@@ -53,10 +53,6 @@ watch(paymentPhase, (phase) => {
 
 onUnmounted(() => {
   if (payDoneTimer) clearTimeout(payDoneTimer)
-})
-
-onReady(() => {
-  uni.hideLoading()
 })
 </script>
 
@@ -91,8 +87,8 @@ onReady(() => {
           </view>
 
           <view class="flex flex-col gap-[6rpx]">
-            <text class="font-bold text-[26rpx] text-ink">星巴克 啡快自提店</text>
-            <text class="text-[20rpx] text-ink-soft">北京市朝阳区创意产业园 A 座 1 层</text>
+            <text class="font-bold text-[26rpx] text-ink">{{ store?.name }}</text>
+            <text class="text-[20rpx] text-ink-soft">{{ store?.address }}</text>
             <text class="mt-[4rpx] font-semibold text-[22rpx] text-gold">{{ etaText }}</text>
           </view>
         </view>
@@ -160,7 +156,7 @@ onReady(() => {
           <view class="notes-container flex flex-col gap-[12rpx]">
             <text class="font-semibold text-[22rpx] text-ink">备注偏好</text>
             <t-textarea
-              v-model="notes"
+              v-model:value="notes"
               :autosize="true"
               :maxlength="30"
               placeholder="输入备注"

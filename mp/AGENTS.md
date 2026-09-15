@@ -74,6 +74,33 @@ defineOptions({
 
 关于自己创建的组件，如何接收并设置样式，可以参考 [bottom-bar](mp/src/components/bottom-bar/index.vue)
 
+## 微信API
+
+### showLoading
+
+showLoading会因为navigateTo页面跳转而触发onHide钩子，会自动把当前页面的loading隐藏，不用手动hideLoading。也就是新页面不会有上一个页面的loading效果。
+但是返回的时候又会显示这个没有关闭的loading。可以在navigateTo的complete钩子中手动关闭loading。官方文档没有相关说明，但是通过和微信小程序文档里面的AI对话，可以知道这一信息。
+
+注意，loading是全局单例，任意地方调用hideLoading都会把其他地方的loading取消掉。
+
+```ts
+const goto = () => {
+  uni.showLoading({
+    title: '跳转中...',
+    mask: true,
+  })
+  // order页面出现时，loading会因为当前页面触发onHide而自动隐藏
+  // 也就是order页面不会有loading效果
+  // 但是返回上个页面时还是会看到loading，可以在complete中手动关闭
+  uni.navigateTo({
+    url: '/pages/order/index',
+    complete: () => {
+      uni.hideLoading()
+    }
+  })
+}
+```
+
 ## 可参考文档
 
 以下文档按需读取

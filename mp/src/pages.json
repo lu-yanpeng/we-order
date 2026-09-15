@@ -26,7 +26,10 @@
       "root": "sub-order-detail",
       "pages": [
         {
-          "path": "order-detail/index"
+          "path": "order-detail/index",
+          "style": {
+            "navigationBarTitleText": "订单详情"
+          }
         }
       ]
     },

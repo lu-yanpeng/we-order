@@ -70,5 +70,14 @@ export const useCartStore = defineStore('cart', () => {
     items.value = []
   }
 
-  return { items, totalCount, totalPrice, setItems, addItem, removeItem, updateQuantity, clearCart }
+  return {
+    items,
+    totalCount,
+    totalPrice,
+    setItems,
+    addItem,
+    removeItem,
+    updateQuantity,
+    clearCart,
+  }
 })

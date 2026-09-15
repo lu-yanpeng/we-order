@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { getCurrentInstance, nextTick, onMounted, ref } from 'vue'
+import { getCurrentInstance, nextTick, onMounted, ref, watch } from 'vue'
 import type { CartItem } from '@/types/product'
 import MyStepper from '@/components/stepper/index.vue'
 import BottomBar from '@/components/bottom-bar/index.vue'
@@ -25,10 +25,14 @@ const emit = defineEmits<{
   'update-qty': [item: CartItem, qty: number]
   checkout: []
   'height-change': [height: number]
+  ready: []
 }>()
 
+/** 购物车面板显隐受控：再来一单需要从外部命令展开（use-checkout-bar） */
+const detailVisible = defineModel<boolean>('detailVisible', { default: false })
+
 const barHeight = ref(0)
-const cartDetailVisible = ref(false)
+const cartDetailMounted = ref(false)
 const cartDetailAnimated = ref(false)
 const clearDialogVisible = ref(false)
 const slideUpReady = ref(false)
@@ -50,6 +54,7 @@ const clearDialogCancelBtn = {
 const instance = getCurrentInstance()
 
 onMounted(() => {
+  // 关闭页面侧触发的 loading，见 composables/use-checkout-bar.ts
   uni.hideLoading()
 
   nextTick(() => {
@@ -64,10 +69,13 @@ onMounted(() => {
       })
       .exec()
 
-    // 收起：先移除 active class 播放 CSS 过渡动画，动画结束后隐藏 DOM
-    // 延时（250ms）与 .cart-detail-panel 的 CSS transition 时长保持一致
     setTimeout(() => {
       slideUpReady.value = true
+      // 滑入过渡（300ms，见 .checkout-bar-root 的 transition）结束后再通知页面：
+      // 面板在结算栏内部展开，两者同时播放动画会互相打架
+      setTimeout(() => {
+        emit('ready')
+      }, 300)
     }, 50)
   })
 })
@@ -81,28 +89,45 @@ const handleConfirmClear = () => {
   emit('clear-cart')
 }
 
+/** 两段式过渡的定时器：新指令到来时取消未执行的旧阶段，避免两个动画打架 */
+let detailTransitionTimer: ReturnType<typeof setTimeout> | undefined
+
+/** 面板显隐受控：指令变化时播放两段式过渡（先挂载 DOM / 先移除 active class） */
+watch(
+  detailVisible,
+  (visible) => {
+    // 每次播放动画前先清空之前动画状态，防止手速太快出现BUG
+    clearTimeout(detailTransitionTimer)
+    if (visible) {
+      // 展开：先挂载 DOM，下一帧添加 active class 触发 CSS transition
+      // 人话就是先让小程序把面板节点绘制在屏幕上，20ms后播放展开动画，否则直接播放动画可能会瞬移
+      // 因为translateY(100%)的原因，即使面板已经绘制了也看不见
+      // 等待20ms后修改cartDetailAnimated，开始播放展开动画
+      cartDetailMounted.value = true
+      detailTransitionTimer = setTimeout(() => {
+        cartDetailAnimated.value = true
+        // 20ms约等于一帧动画的时间，这是一个经验值，真机上已验证可行
+      }, 20)
+    } else {
+      // 组件挂载时初始值为 false，此时无需播放收起动画
+      if (!cartDetailMounted.value) return
+      // 收起：先移除 active class 播放 CSS 过渡动画，动画结束后隐藏 DOM
+      // 延时（250ms）与 .cart-detail-panel 的 CSS transition 时长保持一致
+      cartDetailAnimated.value = false
+      detailTransitionTimer = setTimeout(() => {
+        cartDetailMounted.value = false
+      }, 250)
+    }
+  },
+  { immediate: true },
+)
+
 const toggleCartDetail = () => {
-  if (cartDetailVisible.value) {
-    closeCartDetail()
-  } else {
-    openCartDetail()
-  }
-}
-const openCartDetail = () => {
-  cartDetailVisible.value = true
-  // 展开：先挂载 DOM，下一帧添加 active class 触发 CSS transition
-  setTimeout(() => {
-    cartDetailAnimated.value = true
-  }, 20)
+  detailVisible.value = !detailVisible.value
 }
 
 const closeCartDetail = () => {
-  cartDetailAnimated.value = false
-  // 收起：先移除 active class 播放 CSS 过渡动画，动画结束后隐藏 DOM
-  // 延时（250ms）与 .cart-detail-panel 的 CSS transition 时长保持一致
-  setTimeout(() => {
-    cartDetailVisible.value = false
-  }, 250)
+  detailVisible.value = false
 }
 </script>
 
@@ -154,7 +179,7 @@ const closeCartDetail = () => {
     </bottom-bar>
 
     <view
-      v-show="cartDetailVisible"
+      v-show="cartDetailMounted"
       class="cart-detail-overlay fixed top-0 right-0 left-0 z-650"
       :class="{ 'cart-detail-overlay--active': cartDetailAnimated }"
       :style="{ bottom: barHeight + 'px' }"
@@ -162,7 +187,7 @@ const closeCartDetail = () => {
     />
 
     <view
-      v-show="cartDetailVisible"
+      v-show="cartDetailMounted"
       class="cart-detail-panel fixed right-0 left-0 z-651 flex max-h-[60vh] flex-col overflow-hidden rounded-t-[32rpx] bg-surface-card"
       :class="{ 'cart-detail-panel--active': cartDetailAnimated }"
       :style="{ bottom: barHeight + 'px' }"

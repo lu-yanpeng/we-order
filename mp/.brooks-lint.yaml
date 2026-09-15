@@ -1,0 +1,137 @@
+# We-Order mp 子项目 — brooks-lint 项目配置
+# custom_risks 映射 ../docs/phase-1/ARCHITECTURE-SPINE.md 的 Invariants & Rules（AD-1~AD-9）与一致性约定
+version: 1
+
+custom_risks:
+  C1:
+    name: "AD-1 数据流方向"
+    question: "页面与组件的所有外部数据读写是否都经由 Composable → api/ 层？"
+    symptoms:
+      - "pages/ 或 components/ 直接 import api/、mock/，或直接读写 localStorage / uni.getStorage*"
+      - "Composable 绕过 api/ 直接读取 mock JSON 或 localStorage"
+      - "api/ 模块持有运行时响应式状态（ref / reactive 等）"
+      - "pages/ 或 components/ 直接写入 Pinia store"
+    severity:
+      warning: "个别页面或组件绕过数据入口直接访问数据源"
+      critical: "多模块绕过 api/ 层读写数据源，Phase 3 迁移需要全局返工"
+
+  C2:
+    name: "AD-2 模块依赖方向"
+    question: "依赖是否严格沿 pages/ → composables/ → api/ → mock/ 单向流动？"
+    symptoms:
+      - "components/ 引入 pages/、composables/ 或 stores/"
+      - "api/ 引入 pages/、composables/、stores/、components/ 等上层模块"
+      - "mock/ 被 api/ 以外的模块引用"
+      - "stores/ 被 composables/ 以外的模块引用"
+      - "存在循环依赖（如 composables 与 stores 互引）"
+    severity:
+      warning: "个别模块存在轻度跨层引用"
+      critical: "出现循环依赖或下层模块反向依赖上层，破坏单向依赖链"
+
+  C3:
+    name: "AD-3 页面与逻辑分离"
+    question: "pages/ 文件是否只做编排布局，业务逻辑是否都在 Composable 中？"
+    symptoms:
+      - "页面文件内出现数据加载、写入或业务规则判断（如库存为 0 禁止加购）"
+      - "页面直接管理数据源相关状态，而非读取 composable 返回值"
+      - "单页面同时管理 3 个以上独立逻辑区域的 state（items / searchQuery / filter / modalVisible 混杂）"
+    severity:
+      suggestion: "页面内残留少量可下沉的派生计算"
+      warning: "页面承载了本应属于 composable 的数据或业务逻辑"
+      critical: "业务逻辑在页面文件中集中实现，composable 层未承担职责"
+
+  C4:
+    name: "AD-4 结算栏占位组件加载策略"
+    question: "结算栏是否按占位组件策略按需加载，并符合 FR-5 / FR-14 的触发规则？"
+    symptoms:
+      - "pages.json 未配置 componentPlaceholder，或占位组件在分包未下载时渲染了内容"
+      - "购物车已有数据时进入应用未触发分包下载，或结算栏未从底部滑入"
+      - "首次加购未触发分包下载"
+      - "分包下载完成后结算栏仍可被销毁，未保持永久可见"
+      - "再来一单未触发分包下载，或未自动展开购物车面板"
+    severity:
+      suggestion: "占位渲染细节与约定有细小出入"
+      warning: "个别触发路径（首次加购 / 再来一单）未按约定触发分包下载"
+      critical: "占位组件机制未生效或下载后结算栏被销毁，FR-5 / FR-14 行为失效"
+
+  C5:
+    name: "AD-5 组件归属规则"
+    question: "组件是否先放使用页面目录，仅在第二个页面复用时才提升到全局 components/？"
+    symptoms:
+      - "components/ 下的组件实际只被一个页面使用（过早提升）"
+      - "多个页面目录存在功能重复的组件，却未提升复用"
+    severity:
+      suggestion: "单个组件存在过早或延迟提升"
+      warning: "components/ 明显膨胀，多个单页面组件被提前提升"
+
+  C6:
+    name: "AD-6 Pinia 使用范围"
+    question: "Pinia 是否只承载跨组件 / 跨页面共享状态，页面内数据是否留在 Composable？"
+    symptoms:
+      - "store 中定义了仅一个页面使用的状态（搜索词、筛选条件、UI 显隐等）"
+      - "页面内临时数据被写入 Pinia 而非 composable 内 ref()"
+      - "跨页面共享状态放在 composable 本地 ref 中，导致页面间不同步"
+    severity:
+      suggestion: "store 中存在一两个页面局部状态字段"
+      warning: "store 状态边界混乱，页面局部数据与共享数据混放"
+
+  C7:
+    name: "AD-7 异常处理规则"
+    question: "每个 Composable 是否自行处理异常（返回 error 状态 / toast 阻断）？"
+    symptoms:
+      - "数据加载失败无 error 状态或用户无可见反馈"
+      - "业务校验失败（如空购物车结算）未通过 uni.showToast 阻断操作"
+      - "出现全局错误拦截器或统一错误格式（Phase 1 约定不建立）"
+      - "composable 抛出未处理异常导致页面白屏"
+    severity:
+      suggestion: "个别次要分支缺少错误处理"
+      warning: "关键数据加载或业务校验路径缺少异常处理"
+      critical: "异常导致页面崩溃或用户操作无任何反馈"
+
+  C8:
+    name: "AD-8 Pinia Store 写入口唯一"
+    question: "每个 Pinia store 是否只由一个 Composable 持有写权限？"
+    symptoms:
+      - "同一 store 的写入（action / $patch / 直接改 state）分散在多个 composable"
+      - "页面或组件直接调用 store action 或修改 store 状态"
+    severity:
+      suggestion: "存在对 store 的轻微越权写入"
+      warning: "同一 store 有多个写入方，状态一致性依赖调用顺序"
+      critical: "多模块并发写入同一 store，产生竞争条件或状态不同步"
+
+  C9:
+    name: "AD-9 Composable 归属规则"
+    question: "composable 归属是否符合 AD-9（页面包内优先，跨包复用才提升到根 composables/）？"
+    symptoms:
+      - "仅被单个主包页面使用的 composable 未放在 pages/<page>/composables/"
+      - "仅被单个分包页面使用的 composable 未放在 sub-<pkg>/composables/（含细分到页面目录）"
+      - "分包内复用的 composable 被提升到根 composables/"
+      - "主包引用分包目录中的 JS（微信分包硬约束）"
+      - "仅分包使用的 JS 位于主包目录树（微信质检报错：主包不应存在主包未使用的 JS 文件）"
+    severity:
+      suggestion: "归属层级与 AD-9 略有偏差，无包体影响"
+      warning: "页面专属 composable 被过早提升，根 composables/ 膨胀"
+      critical: "主包引用分包代码或分包代码进入主包目录树，触发微信质检报错"
+
+  C10:
+    name: "命名与文件组织约定"
+    question: "文件 / 目录 / 组件命名是否 kebab-case，组件是否按目录 + index.vue 组织，SFC 区块顺序是否为 script → template → style？"
+    symptoms:
+      - "文件或目录使用 PascalCase / camelCase（组件标签除外）"
+      - "组件未放在同名目录下，或根组件未命名为 index.vue"
+      - "SFC 区块顺序不是 <script> → <template> → <style>"
+      - "共享业务类型未定义在 types/ 中"
+    severity:
+      suggestion: "个别文件命名、区块顺序或类型位置与约定不符"
+      warning: "命名 / 组织约定在多个模块中系统性偏离"
+
+  C11:
+    name: "Mock 与工具函数约定"
+    question: "Mock 是否经 Composable 异步加载（不静态 import），价格计算是否为 utils/ 中的纯函数？"
+    symptoms:
+      - "mock JSON 被静态 import 到页面或组件（应经 composable 异步加载以模拟网络延迟）"
+      - "mock 数据进入组件前经过中间转换层"
+      - "价格计算未放在 utils/，或依赖 Vue 响应式系统"
+    severity:
+      suggestion: "个别 mock 引用方式或计算实现偏离约定"
+      warning: "mock 被静态引入，或价格计算散落在组件 / composable 中"

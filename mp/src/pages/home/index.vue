@@ -3,17 +3,21 @@
  * 首页 — 点餐与订单双 Tab 页面
  *
  * 遵循 AD-3：页面仅负责组件编排和布局，
- * 业务逻辑由 useProducts / useSpecSheet / useCart / useHomeTabs / useCheckoutBar 五个 Composable 承载。
+ * 业务逻辑由 useProducts / useSpecSheet / useOrders / useCart / useReorder / useCheckoutBar / useHomeTabs 七个 Composable 承载。
  */
 import { onMounted } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
 import type { Product, CartItem } from '@/types/product'
 import { useProducts } from './composables/use-products'
 import { useSpecSheet } from './composables/use-spec-sheet'
+import { useOrders } from './composables/use-orders'
 import { useCart } from '@/composables/use-cart'
-import { useCheckoutBar } from './composables/use-checkout-bar'
+import { useReorder } from '@/composables/use-reorder'
+import { useCheckoutBar } from '@/composables/use-checkout-bar'
 import { useHomeTabs } from '@/composables/use-home-tabs'
 import ProductCard from './components/product-card/index.vue'
 import SpecSheet from './components/spec-sheet/index.vue'
+import OrderCard from './components/order-card/index.vue'
 import CheckoutBar from '@/sub-components/checkout-bar/index.vue'
 
 const {
@@ -54,14 +58,27 @@ const {
 
 const {
   checkoutBarVisible,
+  cartDetailVisible,
   initCheckoutBar,
   showCheckoutBar,
+  onBarReady,
   goToCheckout,
   sidebarHeight,
   onBarHeightChange,
 } = useCheckoutBar(cartItems)
 
 const { activeTab, swiperIndex, onTabChange, onSwiperChange } = useHomeTabs()
+
+const {
+  orders,
+  error: ordersError,
+  initOrders,
+  goToOrderDetail,
+  urgeOrder,
+  confirmPickup,
+} = useOrders()
+
+const { reorder } = useReorder()
 
 /** 点击商品加号 → 打开规格弹窗 */
 const handleAddToCart = (product: Product) => {
@@ -76,8 +93,6 @@ const handleSpecConfirm = () => {
   const item: CartItem = {
     productId: product.id,
     productName: product.name,
-    productDesc: product.desc,
-    basePrice: product.price,
     selections: { ...selections },
     quantity: count.value,
     unitPrice: unitPrice.value,
@@ -104,10 +119,15 @@ const handleCheckout = () => {
   goToCheckout()
 }
 
-// initProducts 由页面 onMounted 调用（数据加载属于页面级初始化编排）
+// initProducts / initCheckoutBar 由页面 onMounted 调用（数据加载属于页面级初始化编排）
 onMounted(() => {
   initProducts()
   initCheckoutBar()
+})
+
+// 订单列表在页面每次显示时重新加载：支付写入新订单后返回首页不会重新挂载页面，需要主动刷新
+onShow(() => {
+  initOrders()
 })
 </script>
 
@@ -177,6 +197,7 @@ onMounted(() => {
 
         <checkout-bar
           v-if="checkoutBarVisible"
+          v-model:detail-visible="cartDetailVisible"
           :items="cartItems"
           :total-count="cartTotalCount"
           :total-price="cartTotalPrice"
@@ -184,12 +205,32 @@ onMounted(() => {
           @update-qty="handleUpdateQty"
           @checkout="handleCheckout"
           @height-change="onBarHeightChange"
+          @ready="onBarReady"
         />
       </swiper-item>
       <swiper-item>
-        <view class="flex h-full items-center justify-center">
-          <text class="text-sb-text-soft text-base">订单 - 待开发</text>
-        </view>
+        <scroll-view
+          class="h-full bg-surface-page"
+          scroll-y
+          :enhanced="true"
+          :show-scrollbar="false"
+        >
+          <view class="px-[32rpx] pt-[32rpx] pb-[92rpx]">
+            <order-card
+              v-for="order in orders"
+              :key="order.id"
+              :order="order"
+              @click="goToOrderDetail(order)"
+              @urge="urgeOrder"
+              @confirm-pickup="confirmPickup"
+              @reorder="reorder(order)"
+            />
+
+            <view v-if="orders.length === 0" class="py-[80rpx] text-center">
+              <text class="text-[26rpx] text-ink-soft">{{ ordersError ?? '暂无订单记录' }}</text>
+            </view>
+          </view>
+        </scroll-view>
       </swiper-item>
     </swiper>
 
