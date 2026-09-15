@@ -13,7 +13,7 @@ import { useSpecSheet } from './composables/use-spec-sheet'
 import { useOrders } from './composables/use-orders'
 import { useCart } from '@/composables/use-cart'
 import { useReorder } from '@/composables/use-reorder'
-import { useCheckoutBar } from './composables/use-checkout-bar'
+import { useCheckoutBar } from '@/composables/use-checkout-bar'
 import { useHomeTabs } from '@/composables/use-home-tabs'
 import ProductCard from './components/product-card/index.vue'
 import SpecSheet from './components/spec-sheet/index.vue'
@@ -58,8 +58,10 @@ const {
 
 const {
   checkoutBarVisible,
+  cartDetailVisible,
   initCheckoutBar,
   showCheckoutBar,
+  onBarReady,
   goToCheckout,
   sidebarHeight,
   onBarHeightChange,
@@ -195,6 +197,7 @@ onShow(() => {
 
         <checkout-bar
           v-if="checkoutBarVisible"
+          v-model:detail-visible="cartDetailVisible"
           :items="cartItems"
           :total-count="cartTotalCount"
           :total-price="cartTotalPrice"
@@ -202,6 +205,7 @@ onShow(() => {
           @update-qty="handleUpdateQty"
           @checkout="handleCheckout"
           @height-change="onBarHeightChange"
+          @ready="onBarReady"
         />
       </swiper-item>
       <swiper-item>
