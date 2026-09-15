@@ -36,11 +36,11 @@ export function useOrders() {
    * 点击卡片 → 进入订单详情页（FR-13）。
    * 防连点靠 navigatingToDetail 标记。
    */
-  const goToOrderDetail = (order: Order) => {
+  const goToOrderDetail = async (order: Order) => {
     if (navigatingToDetail.value) return
     navigatingToDetail.value = true
-    uni.showLoading({
-      title: '加载中',
+    await uni.showLoading({
+      title: '加载中...',
       mask: true,
     })
     uni.navigateTo({
@@ -50,6 +50,9 @@ export function useOrders() {
       },
       fail: () => {
         navigatingToDetail.value = false
+      },
+      complete: () => {
+        uni.hideLoading()
       },
     })
   }

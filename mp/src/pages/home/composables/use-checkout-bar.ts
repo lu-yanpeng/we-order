@@ -47,11 +47,11 @@ export function useCheckoutBar(items: Ref<CartItem[]>) {
    * 空车时静默忽略（本人已确认，有意不弹 toast，UI 上按钮已置灰禁用）。
    * success 时重置 checkingOut，保证从结算页返回后可以再次跳转。
    */
-  function goToCheckout() {
+  async function goToCheckout() {
     if (checkingOut.value) return
     if (items.value.length === 0) return
     checkingOut.value = true
-    uni.showLoading({
+    await uni.showLoading({
       title: '加载中...',
       mask: true,
     })
@@ -62,6 +62,9 @@ export function useCheckoutBar(items: Ref<CartItem[]>) {
       },
       fail: () => {
         checkingOut.value = false
+      },
+      complete: () => {
+        uni.hideLoading()
       },
     })
   }

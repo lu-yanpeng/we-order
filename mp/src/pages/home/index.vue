@@ -6,6 +6,7 @@
  * 业务逻辑由 useProducts / useSpecSheet / useCart / useHomeTabs / useCheckoutBar 五个 Composable 承载。
  */
 import { onMounted } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
 import type { Product, CartItem } from '@/types/product'
 import { useProducts } from './composables/use-products'
 import { useSpecSheet } from './composables/use-spec-sheet'
@@ -116,11 +117,15 @@ const handleCheckout = () => {
   goToCheckout()
 }
 
-// initProducts 由页面 onMounted 调用（数据加载属于页面级初始化编排）
+// initProducts / initCheckoutBar 由页面 onMounted 调用（数据加载属于页面级初始化编排）
 onMounted(() => {
   initProducts()
-  initOrders()
   initCheckoutBar()
+})
+
+// 订单列表在页面每次显示时重新加载：支付写入新订单后返回首页不会重新挂载页面，需要主动刷新
+onShow(() => {
+  initOrders()
 })
 </script>
 
