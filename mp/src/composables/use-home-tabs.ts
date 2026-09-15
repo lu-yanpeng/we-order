@@ -13,40 +13,44 @@ export const HOME_TAB_SWITCH_EVENT = 'home-tab-switch'
 export function useHomeTabs() {
   /** 当前激活的 Tab 值 */
   const activeTab = ref('menu')
-  /** 当前 swiper 索引 */
+  /**
+   * 当前 swiper 索引。
+   * 手滑 swiper 不会回写 current，此值必须由 change 事件修正成真实位置：
+   * 一旦它是脏的，之后切到同一个索引时 setData 值没变化，swiper 就不会动。
+   */
   const swiperIndex = ref(0)
+
+  /** Tab 值与 swiper 索引必须成对更新，统一从这里写 */
+  const syncTab = (index: number) => {
+    swiperIndex.value = index
+    activeTab.value = index === 0 ? 'menu' : 'orders'
+  }
 
   /** Tab 切换 → 同步 swiper */
   const onTabChange = (e: { value: string | number }) => {
-    activeTab.value = String(e.value)
-    swiperIndex.value = e.value === 'menu' ? 0 : 1
+    syncTab(e.value === 'menu' ? 0 : 1)
   }
 
-  /** Swiper 滑动 → 同步 Tab */
+  /** Swiper 滑动 → 同步 Tab，并把索引修正为真实位置 */
   const onSwiperChange = (e: { detail: { current: number } }) => {
-    activeTab.value = e.detail.current === 0 ? 'menu' : 'orders'
+    syncTab(e.detail.current)
   }
 
   /** 跨页面 tab 切换（如支付成功后切到订单 tab） */
   const handleTabSwitch = (tab: string) => {
-    if (tab === 'orders') {
-      activeTab.value = 'orders'
-      swiperIndex.value = 1
-    } else if (tab === 'menu') {
-      activeTab.value = 'menu'
-      swiperIndex.value = 0
-    }
+    if (tab === 'orders') syncTab(1)
+    else if (tab === 'menu') syncTab(0)
   }
 
   onMounted(() => {
     uni.$on(HOME_TAB_SWITCH_EVENT, handleTabSwitch)
 
-    // TDesign Tabs 组件首次渲染 workaround：重新挂载 Tab 以触发正确布局
+    // TDesign Tabs 组件首次渲染 workaround：先置空再还原，强制组件重新解析激活项
+    // 还原时取那一刻的最新值，避免把用户在等待期间的切换覆盖回去
     setTimeout(() => {
-      const current = activeTab.value
       activeTab.value = ''
       nextTick(() => {
-        activeTab.value = current
+        syncTab(swiperIndex.value)
       })
     }, 100)
   })
