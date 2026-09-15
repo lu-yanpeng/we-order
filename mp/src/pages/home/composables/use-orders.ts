@@ -3,7 +3,7 @@
  *
  * 职责：
  * 1. 通过 API 层加载订单列表
- * 2. 封装卡片操作：进入订单详情、催单、确认取杯、再来一单
+ * 2. 封装卡片操作：进入订单详情、催单、确认取杯（再来一单见 composables/use-reorder）
  *
  * 遵循 AD-1：外部数据（Mock）读取经由 API 层。
  * 遵循 AD-3：业务操作流程封装在此，页面仅做组件编排。
@@ -67,11 +67,6 @@ export function useOrders() {
     uni.showToast({ title: '确认取杯功能开发中', icon: 'none' })
   }
 
-  /** 再来一单（FR-14 待实现，仅占位提示） */
-  const reorder = () => {
-    uni.showToast({ title: '再来一单功能开发中', icon: 'none' })
-  }
-
   return {
     orders,
     error,
@@ -79,6 +74,5 @@ export function useOrders() {
     goToOrderDetail,
     urgeOrder,
     confirmPickup,
-    reorder,
   }
 }

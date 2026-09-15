@@ -3,7 +3,7 @@
  *
  * 职责：
  * 1. 经 API 层按 id 加载订单与门店信息（AD-1）
- * 2. 封装状态卡操作：催单、确认取餐、再来一单（Phase 1 仅轻提示，不做状态流转）
+ * 2. 封装状态卡操作：催单、确认取餐（Phase 1 仅轻提示，不做状态流转）
  *
  * 遵循 AD-7：订单不存在或加载失败时返回 error 状态供页面渲染。
  * 遵循 AD-9：分包专属 composable 放在分包目录内。
@@ -53,10 +53,5 @@ export function useOrderDetail() {
     uni.showToast({ title: '确认取餐功能开发中', icon: 'none' })
   }
 
-  /** 再来一单（FR-14 待实现，仅占位提示） */
-  const reorder = () => {
-    uni.showToast({ title: '再来一单功能开发中', icon: 'none' })
-  }
-
-  return { order, store, error, modeLabel, initOrderDetail, urgeOrder, confirmPickup, reorder }
+  return { order, store, error, modeLabel, initOrderDetail, urgeOrder, confirmPickup }
 }

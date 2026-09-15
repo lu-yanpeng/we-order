@@ -3,17 +3,20 @@
  * 订单详情页（FR-13）
  *
  * 订单经 api/orders 按 id 读取，门店信息经 api/store 读取（AD-1），
- * 业务逻辑与状态封装在 useOrderDetail composable（AD-3）。
+ * 业务逻辑由 useOrderDetail（数据加载与状态卡操作）与 useReorder（再来一单）承载（AD-3）。
  * 三种状态共用同一套卡片，仅顶部状态卡不同：
  * 制作中显示催单，待取餐显示取杯号与确认取餐，已完成显示再来一单。
  */
 import { computed } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { useOrderDetail } from '@/sub-order-detail/composables/use-order-detail'
+import { useReorder } from '@/composables/use-reorder'
 import type { OrderStatus } from '@/types/order'
 
-const { order, store, error, modeLabel, initOrderDetail, urgeOrder, confirmPickup, reorder } =
+const { order, store, error, modeLabel, initOrderDetail, urgeOrder, confirmPickup } =
   useOrderDetail()
+
+const { reorder } = useReorder()
 
 /** 状态卡文案与状态色（FR-13：制作中-蓝 / 待取餐-金 / 已完成-绿） */
 const STATUS_VIEW: Record<OrderStatus, { title: string; titleClass: string; desc: string }> = {
@@ -90,7 +93,7 @@ onLoad((query) => {
           <view
             v-else-if="order.status === 'completed'"
             class="flex h-[76rpx] w-full items-center justify-center rounded-button border border-green-accent"
-            @click="reorder"
+            @click="reorder(order)"
           >
             <text class="leading-[1] font-bold text-[26rpx] text-green-accent">再来一单</text>
           </view>

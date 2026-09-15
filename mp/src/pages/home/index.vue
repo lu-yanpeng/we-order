@@ -3,7 +3,7 @@
  * 首页 — 点餐与订单双 Tab 页面
  *
  * 遵循 AD-3：页面仅负责组件编排和布局，
- * 业务逻辑由 useProducts / useSpecSheet / useCart / useHomeTabs / useCheckoutBar 五个 Composable 承载。
+ * 业务逻辑由 useProducts / useSpecSheet / useOrders / useCart / useReorder / useCheckoutBar / useHomeTabs 七个 Composable 承载。
  */
 import { onMounted } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
@@ -12,6 +12,7 @@ import { useProducts } from './composables/use-products'
 import { useSpecSheet } from './composables/use-spec-sheet'
 import { useOrders } from './composables/use-orders'
 import { useCart } from '@/composables/use-cart'
+import { useReorder } from '@/composables/use-reorder'
 import { useCheckoutBar } from './composables/use-checkout-bar'
 import { useHomeTabs } from '@/composables/use-home-tabs'
 import ProductCard from './components/product-card/index.vue'
@@ -73,8 +74,9 @@ const {
   goToOrderDetail,
   urgeOrder,
   confirmPickup,
-  reorder,
 } = useOrders()
+
+const { reorder } = useReorder()
 
 /** 点击商品加号 → 打开规格弹窗 */
 const handleAddToCart = (product: Product) => {
@@ -89,8 +91,6 @@ const handleSpecConfirm = () => {
   const item: CartItem = {
     productId: product.id,
     productName: product.name,
-    productDesc: product.desc,
-    basePrice: product.price,
     selections: { ...selections },
     quantity: count.value,
     unitPrice: unitPrice.value,
@@ -219,7 +219,7 @@ onShow(() => {
               @click="goToOrderDetail(order)"
               @urge="urgeOrder"
               @confirm-pickup="confirmPickup"
-              @reorder="reorder"
+              @reorder="reorder(order)"
             />
 
             <view v-if="orders.length === 0" class="py-[80rpx] text-center">

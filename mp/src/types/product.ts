@@ -48,8 +48,7 @@ export interface Category {
 export interface CartItem {
   productId: string
   productName: string
-  productDesc: string
-  basePrice: number
+  /** 规格选项：与 productId 一起唯一确定一个 SKU */
   selections: Record<string, string | string[]>
   quantity: number
   unitPrice: number

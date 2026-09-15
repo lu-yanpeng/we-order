@@ -16,6 +16,8 @@ export interface OrderItem {
   productName: string
   /** 规格摘要，如「大杯 Grande / 冰饮推荐 / 燕麦奶 / 1份浓缩」 */
   specSummary: string
+  /** 规格选项快照：与 productId 一起唯一确定 SKU，用于再来一单还原（FR-14） */
+  selections: Record<string, string | string[]>
   /** 单价（基础价 + 规格加价） */
   unitPrice: number
   quantity: number

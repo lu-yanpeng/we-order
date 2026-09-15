@@ -66,9 +66,37 @@ export const useCartStore = defineStore('cart', () => {
     }
   }
 
+  /**
+   * 并入商品（FR-14 再来一单）：
+   * SKU 完全相同则用传入的数量覆盖购物车中的数量（不累加），其余商品保持不变。
+   */
+  function mergeItems(newItems: CartItem[]) {
+    for (const item of newItems) {
+      const key = selectionsKey(item.selections)
+      const existing = items.value.find(
+        (i) => i.productId === item.productId && selectionsKey(i.selections) === key,
+      )
+      if (existing) {
+        existing.quantity = item.quantity
+      } else {
+        items.value.push({ ...item })
+      }
+    }
+  }
+
   function clearCart() {
     items.value = []
   }
 
-  return { items, totalCount, totalPrice, setItems, addItem, removeItem, updateQuantity, clearCart }
+  return {
+    items,
+    totalCount,
+    totalPrice,
+    setItems,
+    addItem,
+    mergeItems,
+    removeItem,
+    updateQuantity,
+    clearCart,
+  }
 })

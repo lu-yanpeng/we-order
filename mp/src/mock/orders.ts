@@ -12,6 +12,7 @@
  * 规格摘要文案使用项目自身规格标签，与 utils/price.ts 的 buildSpecSummary 输出格式一致。
  * 注：前 3 条商品 id 沿用原型的 p3/p6/p4，与 mock/products.ts 的商品目录不一一对应；
  * 后 2 条为补充的已完成订单（原型只有 3 条），商品取自 mock/products.ts 目录，用于订单列表滚动测试。
+ * selections 为规格选项快照（选项 id 取自 mock/products.ts 的规格组），用于再来一单还原同一 SKU（FR-14）。
  */
 import type { Order } from '@/types/order'
 
@@ -25,6 +26,7 @@ export const mockOrders: Order[] = [
         productId: 'p3',
         productName: '春日限定樱花拿铁',
         specSummary: '超大杯 Venti / 冰饮推荐 / 燕麦奶 / 2份浓缩 / 焦糖淋酱',
+        selections: { size: 'venti', temp: 'ice', milk: 'oat', addons: ['caramel'] },
         unitPrice: 48,
         quantity: 1,
       },
@@ -44,6 +46,7 @@ export const mockOrders: Order[] = [
         productId: 'p6',
         productName: '抹茶星冰乐',
         specSummary: '大杯 Grande / 冰饮推荐 / 燕麦奶 / 1份浓缩 / 可可碎片',
+        selections: { size: 'grande', temp: 'ice', milk: 'oat', addons: ['chips'] },
         unitPrice: 42,
         quantity: 1,
       },
@@ -63,6 +66,7 @@ export const mockOrders: Order[] = [
         productId: 'p4',
         productName: '美式咖啡',
         specSummary: '中杯 Tall / 冰饮推荐 / 全脂牛奶 / 1份浓缩',
+        selections: { size: 'tall', temp: 'ice', milk: 'whole' },
         unitPrice: 27,
         quantity: 1,
       },
@@ -82,6 +86,7 @@ export const mockOrders: Order[] = [
         productId: 'prod-005',
         productName: '焦糖玛奇朵',
         specSummary: '大杯 Grande / 热饮 / 燕麦奶 / 2份浓缩',
+        selections: { size: 'grande', temp: 'hot', milk: 'oat' },
         unitPrice: 40,
         quantity: 2,
       },
@@ -101,6 +106,7 @@ export const mockOrders: Order[] = [
         productId: 'prod-008',
         productName: '冷萃冰咖啡',
         specSummary: '大杯 Grande / 冰饮推荐 / 少冰',
+        selections: { size: 'grande', temp: 'ice', ice_level: 'less_ice' },
         unitPrice: 39,
         quantity: 1,
       },

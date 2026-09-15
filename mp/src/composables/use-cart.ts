@@ -49,6 +49,11 @@ export function useCart() {
     store.addItem(item)
   }
 
+  /** 并入一批商品（FR-14 再来一单）：SKU 已存在则覆盖数量，不累加 */
+  function mergeItems(newItems: CartItem[]) {
+    store.mergeItems(newItems)
+  }
+
   function clearCart() {
     store.clearCart()
   }
@@ -66,6 +71,7 @@ export function useCart() {
     totalCount,
     totalPrice,
     addItem,
+    mergeItems,
     clearCart,
     setItemQuantity,
   }

@@ -74,6 +74,7 @@ export function useOrderConfirm() {
         productId: item.productId,
         productName: item.productName,
         specSummary: item.specSummary,
+        selections: item.selections,
         unitPrice: item.unitPrice,
         quantity: item.quantity,
       })),
