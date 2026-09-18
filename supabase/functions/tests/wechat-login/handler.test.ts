@@ -2,7 +2,7 @@ import { assertEquals } from "jsr:@std/assert@^1.0.0";
 
 import { createWechatLoginHandler, type WechatLoginConfig } from "../../wechat-login/handler.ts";
 import type { FetchLike } from "../../wechat-login/wechat.ts";
-import { DERIVED_USER_ID, fakePlatform, PLATFORM_URL, SERVICE_KEY, WECHAT_OPENID } from "./fake-platform.ts";
+import { DERIVED_USER_ID, fakePlatform, PLATFORM_URL, SERVICE_KEY, TEST_TOKEN_HASH } from "./fake-platform.ts";
 
 const ENDPOINT = "http://127.0.0.1:54321/functions/v1/wechat-login";
 const APP_ID = "wx-test-app";
@@ -22,29 +22,43 @@ function post(body: unknown): Request {
   });
 }
 
-Deno.test("首次登录：换取身份并返回 openid 与 user_id", async () => {
+Deno.test("首次登录：换取身份并签发一次性令牌", async () => {
   const platform = fakePlatform();
   const handler = createWechatLoginHandler({ ...CONFIG, fetchFn: platform.fetchFn });
 
   const response = await handler(post({ code: "code-1" }));
 
   assertEquals(response.status, 200);
-  assertEquals(await response.json(), { openid: WECHAT_OPENID, user_id: DERIVED_USER_ID });
+  // 响应只有令牌：openid / user_id 是服务端内部信息，不下发
+  assertEquals(await response.json(), { token_hash: TEST_TOKEN_HASH });
+  assertEquals(platform.callsTo("/auth/v1/admin/users").length, 1);
+  assertEquals(platform.callsTo("/auth/v1/admin/generate_link").length, 1);
 });
 
-Deno.test("再次登录：复用既有映射，不调建用户接口", async () => {
+Deno.test("再次登录：复用既有映射，不调建用户接口，仍签发新令牌", async () => {
   const platform = fakePlatform({ resolved: DERIVED_USER_ID });
   const handler = createWechatLoginHandler({ ...CONFIG, fetchFn: platform.fetchFn });
 
   const response = await handler(post({ code: "code-1" }));
 
   assertEquals(response.status, 200);
-  assertEquals(await response.json(), { openid: WECHAT_OPENID, user_id: DERIVED_USER_ID });
+  assertEquals(await response.json(), { token_hash: TEST_TOKEN_HASH });
   assertEquals(platform.callsTo("/auth/v1/admin/users").length, 0);
+  assertEquals(platform.callsTo("/auth/v1/admin/generate_link").length, 1);
 });
 
 Deno.test("身份建立失败：500 unknown（不泄露内部细节）", async () => {
   const platform = fakePlatform({ createUser: { status: 500, body: { message: "boom" } } });
+  const handler = createWechatLoginHandler({ ...CONFIG, fetchFn: platform.fetchFn });
+
+  const response = await handler(post({ code: "code-1" }));
+
+  assertEquals(response.status, 500);
+  assertEquals(await response.json(), { code: "unknown", message: "登录服务暂时不可用" });
+});
+
+Deno.test("生成令牌失败：500 unknown，不返回半截结果", async () => {
+  const platform = fakePlatform({ generateLink: { status: 500, body: { message: "boom" } } });
   const handler = createWechatLoginHandler({ ...CONFIG, fetchFn: platform.fetchFn });
 
   const response = await handler(post({ code: "code-1" }));

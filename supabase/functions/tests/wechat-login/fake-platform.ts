@@ -5,6 +5,8 @@ export const SERVICE_KEY = "service-role-key";
 export const WECHAT_OPENID = "o-test-openid";
 /** 由 o-test-openid 派生的用户 id（钉住：改动派生规则会让既有映射对不上，必须是有意为之） */
 export const DERIVED_USER_ID = "3ca3964a-bd2c-504f-afb7-69a38b4e061d";
+/** generate_link 默认返回的一次性登录令牌（形状取平台新版的 properties 嵌套） */
+export const TEST_TOKEN_HASH = "test-hashed-token";
 
 export type RecordedCall = { url: string; body: unknown };
 
@@ -17,9 +19,11 @@ export type FakePlatformOptions = {
   claimed?: string | null;
   /** 建用户接口的返回，默认 200 */
   createUser?: { status: number; body?: unknown };
+  /** 生成一次性登录令牌接口的返回，默认 200 且带 TEST_TOKEN_HASH */
+  generateLink?: { status: number; body?: unknown };
 };
 
-/** 把微信接口、平台 Admin API、两个身份 RPC 都按 URL 路由的假 fetch（其余请求 404） */
+/** 把微信接口、平台 Admin API（建用户 / 生成登录令牌）、两个身份 RPC 都按 URL 路由的假 fetch（其余请求 404） */
 export function fakePlatform(options: FakePlatformOptions = {}) {
   const calls: RecordedCall[] = [];
   const fetchFn: FetchLike = (input, init) => {
@@ -38,6 +42,11 @@ export function fakePlatform(options: FakePlatformOptions = {}) {
     if (url === `${PLATFORM_URL}/auth/v1/admin/users`) {
       const response = options.createUser ?? { status: 200 };
       return Promise.resolve(Response.json(response.body ?? { id: DERIVED_USER_ID }, { status: response.status }));
+    }
+    if (url === `${PLATFORM_URL}/auth/v1/admin/generate_link`) {
+      const response = options.generateLink ?? { status: 200 };
+      const body = response.body ?? { properties: { hashed_token: TEST_TOKEN_HASH } };
+      return Promise.resolve(Response.json(body, { status: response.status }));
     }
     return Promise.resolve(new Response("not found", { status: 404 }));
   };

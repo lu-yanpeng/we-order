@@ -1,4 +1,4 @@
-import type { FetchLike } from "./wechat.ts";
+import { request, type PlatformConfig } from "./platform.ts";
 
 /**
  * 由 openid 派生用户 id 的固定命名空间（uuid v5）。
@@ -29,12 +29,6 @@ export async function deriveUserId(openid: string): Promise<string> {
   bytes[8] = (bytes[8] & 0x3f) | 0x80; // RFC 4122 变体
   return formatUuid(bytes);
 }
-
-export type PlatformConfig = {
-  supabaseUrl: string;
-  serviceRoleKey: string;
-  fetchFn?: FetchLike;
-};
 
 export type EnsureIdentityResult = { ok: true; userId: string } | { ok: false };
 
@@ -113,18 +107,6 @@ async function callRpc<T>(name: string, args: Record<string, unknown>, config: P
     throw new Error(`rpc ${name} failed with ${response.status}`);
   }
   return (await response.json()) as T;
-}
-
-function request(config: PlatformConfig, url: string, init: RequestInit): Promise<Response> {
-  const fetchFn = config.fetchFn ?? fetch;
-  return fetchFn(url, {
-    ...init,
-    headers: {
-      apikey: config.serviceRoleKey,
-      Authorization: `Bearer ${config.serviceRoleKey}`,
-      "Content-Type": "application/json",
-    },
-  });
 }
 
 function isUserId(value: unknown): value is string {

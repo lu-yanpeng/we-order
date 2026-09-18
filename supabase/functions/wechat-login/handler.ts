@@ -1,5 +1,6 @@
 import { errorResponse } from "./errors.ts";
-import { ensureIdentity } from "./identity.ts";
+import { ensureIdentity, syntheticEmail } from "./identity.ts";
+import { issueLoginToken } from "./session.ts";
 import { exchangeCode, type FetchLike } from "./wechat.ts";
 
 export type WechatLoginConfig = {
@@ -54,7 +55,16 @@ export function createWechatLoginHandler(config: WechatLoginConfig) {
         return errorResponse("unknown");
       }
 
-      return Response.json({ openid: result.openid, user_id: identity.userId });
+      const token = await issueLoginToken(syntheticEmail(result.openid), {
+        supabaseUrl: config.supabaseUrl,
+        serviceRoleKey: config.serviceRoleKey,
+        fetchFn: config.fetchFn,
+      });
+      if (!token.ok) {
+        return errorResponse("unknown");
+      }
+
+      return Response.json({ token_hash: token.tokenHash });
     } catch {
       // 兜底：未预料到的异常只回类别，不泄露堆栈或数据库细节
       return errorResponse("unknown");
