@@ -9,6 +9,7 @@
 | `database/20_stores.test.sql` | 门店：RLS 已启用、未认证可读、客户端不可写 |
 | `database/30_storage.test.sql` | 图片桶：公开桶、`storage.objects` 零策略、未认证读不到对象、客户端不可写 |
 | `database/40_menu_view.test.sql` | `menu` 视图：过滤（下架 / 售罄 / 空分类）、排序、嵌套形状、字段名 |
+| `database/50_wechat_identities.test.sql` | 身份映射：内部表只有约定的四列、RLS 零策略、客户端角色零授权、两个 RPC 只对 `service_role`、claim 并发收敛（不覆盖归属）、最近登录时间推进、唯一与外部约束 |
 
 说明：
 

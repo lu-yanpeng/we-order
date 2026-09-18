@@ -1,10 +1,13 @@
 import { errorResponse } from "./errors.ts";
+import { ensureIdentity } from "./identity.ts";
 import { exchangeCode, type FetchLike } from "./wechat.ts";
 
 export type WechatLoginConfig = {
   appId?: string;
   appSecret?: string;
   apiBase?: string;
+  supabaseUrl?: string;
+  serviceRoleKey?: string;
   fetchFn?: FetchLike;
 };
 
@@ -28,14 +31,30 @@ export function createWechatLoginHandler(config: WechatLoginConfig) {
         return errorResponse("invalid_app_secret");
       }
 
+      if (!config.supabaseUrl || !config.serviceRoleKey) {
+        return errorResponse("unknown");
+      }
+
       const result = await exchangeCode(code, {
         appId: config.appId,
         appSecret: config.appSecret,
         apiBase: config.apiBase,
         fetchFn: config.fetchFn,
       });
+      if (!result.ok) {
+        return errorResponse(result.code);
+      }
 
-      return result.ok ? Response.json({ openid: result.openid }) : errorResponse(result.code);
+      const identity = await ensureIdentity(result.openid, {
+        supabaseUrl: config.supabaseUrl,
+        serviceRoleKey: config.serviceRoleKey,
+        fetchFn: config.fetchFn,
+      });
+      if (!identity.ok) {
+        return errorResponse("unknown");
+      }
+
+      return Response.json({ openid: result.openid, user_id: identity.userId });
     } catch {
       // 兜底：未预料到的异常只回类别，不泄露堆栈或数据库细节
       return errorResponse("unknown");
