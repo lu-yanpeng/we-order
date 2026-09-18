@@ -381,6 +381,10 @@ inspector_port = 8083
 # The Deno major version to use.
 deno_version = 2
 
+[functions.wechat-login]
+# 登录时客户端尚无会话：关闭平台前置 JWT 校验，输入由函数内自行校验（AD-16）
+verify_jwt = false
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 

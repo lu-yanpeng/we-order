@@ -6,3 +6,6 @@
 .env.keys
 .env.local
 .env.*.local
+
+# 本地函数密钥（functions/.env 等），绝不入仓
+.env
