@@ -2,7 +2,16 @@ import { assertEquals } from "jsr:@std/assert@^1.0.0";
 
 import { createWechatLoginHandler, type WechatLoginConfig } from "../../wechat-login/handler.ts";
 import type { FetchLike } from "../../wechat-login/wechat.ts";
-import { DERIVED_USER_ID, fakePlatform, PLATFORM_URL, SERVICE_KEY, TEST_TOKEN_HASH } from "./fake-platform.ts";
+import {
+  ANON_KEY,
+  DERIVED_USER_ID,
+  fakePlatform,
+  PLATFORM_URL,
+  SERVICE_KEY,
+  TEST_ACCESS_TOKEN,
+  TEST_EXPIRES_IN,
+  TEST_REFRESH_TOKEN,
+} from "./fake-platform.ts";
 
 const ENDPOINT = "http://127.0.0.1:54321/functions/v1/wechat-login";
 const APP_ID = "wx-test-app";
@@ -12,6 +21,7 @@ const CONFIG: WechatLoginConfig = {
   appSecret: APP_SECRET,
   supabaseUrl: PLATFORM_URL,
   serviceRoleKey: SERVICE_KEY,
+  anonKey: ANON_KEY,
 };
 
 function post(body: unknown): Request {
@@ -22,27 +32,32 @@ function post(body: unknown): Request {
   });
 }
 
-Deno.test("首次登录：换取身份并签发一次性令牌", async () => {
+Deno.test("首次登录：换取身份并直接返回可用会话", async () => {
   const platform = fakePlatform();
   const handler = createWechatLoginHandler({ ...CONFIG, fetchFn: platform.fetchFn });
 
   const response = await handler(post({ code: "code-1" }));
 
   assertEquals(response.status, 200);
-  // 响应只有令牌：openid / user_id 是服务端内部信息，不下发
-  assertEquals(await response.json(), { token_hash: TEST_TOKEN_HASH });
+  // 响应只有会话材料：openid / user_id 是服务端内部信息，一次性令牌也不出服务端
+  assertEquals(await response.json(), {
+    access_token: TEST_ACCESS_TOKEN,
+    refresh_token: TEST_REFRESH_TOKEN,
+    expires_in: TEST_EXPIRES_IN,
+  });
   assertEquals(platform.callsTo("/auth/v1/admin/users").length, 1);
   assertEquals(platform.callsTo("/auth/v1/admin/generate_link").length, 1);
+  assertEquals(platform.callsTo("/auth/v1/verify").length, 1);
 });
 
-Deno.test("再次登录：复用既有映射，不调建用户接口，仍签发新令牌", async () => {
+Deno.test("再次登录：复用既有映射，不调建用户接口，仍签发新会话", async () => {
   const platform = fakePlatform({ resolved: DERIVED_USER_ID });
   const handler = createWechatLoginHandler({ ...CONFIG, fetchFn: platform.fetchFn });
 
   const response = await handler(post({ code: "code-1" }));
 
   assertEquals(response.status, 200);
-  assertEquals(await response.json(), { token_hash: TEST_TOKEN_HASH });
+  assertEquals((await response.json()).access_token, TEST_ACCESS_TOKEN);
   assertEquals(platform.callsTo("/auth/v1/admin/users").length, 0);
   assertEquals(platform.callsTo("/auth/v1/admin/generate_link").length, 1);
 });
@@ -68,13 +83,41 @@ Deno.test("生成令牌失败：500 unknown，不返回半截结果", async () =
   assertEquals(await response.json(), { code: "unknown", message: "登录服务暂时不可用" });
 });
 
-Deno.test("缺少平台配置：500 unknown", async () => {
-  const handler = createWechatLoginHandler({ appId: APP_ID, appSecret: APP_SECRET });
+Deno.test("兑换会话失败：500 unknown，不返回半截会话", async () => {
+  const platform = fakePlatform({ verify: { status: 403, body: { error_code: "otp_expired" } } });
+  const handler = createWechatLoginHandler({ ...CONFIG, fetchFn: platform.fetchFn });
+
+  const response = await handler(post({ code: "code-1" }));
+
+  assertEquals(response.status, 500);
+  assertEquals(await response.json(), { code: "unknown", message: "登录服务暂时不可用" });
+});
+
+Deno.test("会话材料不完整：500 unknown，不把残缺会话下发", async () => {
+  const platform = fakePlatform({ verify: { status: 200, body: { access_token: TEST_ACCESS_TOKEN } } });
+  const handler = createWechatLoginHandler({ ...CONFIG, fetchFn: platform.fetchFn });
 
   const response = await handler(post({ code: "code-1" }));
 
   assertEquals(response.status, 500);
   assertEquals((await response.json()).code, "unknown");
+});
+
+Deno.test("缺少平台配置：500 unknown", async (t) => {
+  const cases: Array<[string, WechatLoginConfig]> = [
+    ["三个都没有", {}],
+    ["缺服务端密钥", { supabaseUrl: PLATFORM_URL, anonKey: ANON_KEY }],
+    ["缺发布密钥", { supabaseUrl: PLATFORM_URL, serviceRoleKey: SERVICE_KEY }],
+  ];
+
+  for (const [name, config] of cases) {
+    await t.step(name, async () => {
+      const handler = createWechatLoginHandler({ appId: APP_ID, appSecret: APP_SECRET, ...config });
+      const response = await handler(post({ code: "code-1" }));
+      assertEquals(response.status, 500);
+      assertEquals((await response.json()).code, "unknown");
+    });
+  }
 });
 
 Deno.test("凭证无效：微信 40029 → 400 invalid_code", async () => {
@@ -154,22 +197,28 @@ Deno.test("响应不泄露密钥，也不透传微信原文", async () => {
   assertEquals(Object.keys(JSON.parse(text)).sort(), ["code", "message"]);
 });
 
-Deno.test("平台调用都带服务端密钥（apikey + Authorization）", async () => {
-  const seen: Headers[] = [];
+Deno.test("平台调用的密钥：Admin API 与 RPC 用服务端密钥，兑换会话用发布密钥", async () => {
+  const seen: Array<{ url: string; headers: Headers }> = [];
   const platform = fakePlatform();
   const fetchFn: FetchLike = (input, init) => {
     if (!String(input).startsWith("https://api.weixin.qq.com")) {
       // 不同子客户端交给 fetch 的可能是普通对象或 Headers 实例，统一归一化后再断言
-      seen.push(new Headers(init?.headers));
+      seen.push({ url: String(input), headers: new Headers(init?.headers) });
     }
     return platform.fetchFn(input, init);
   };
 
   await createWechatLoginHandler({ ...CONFIG, fetchFn })(post({ code: "code-1" }));
 
-  assertEquals(seen.length > 0, true);
-  for (const headers of seen) {
-    assertEquals(headers.get("apikey"), SERVICE_KEY);
-    assertEquals(headers.get("Authorization"), `Bearer ${SERVICE_KEY}`);
+  const verifyCalls = seen.filter((call) => call.url.endsWith("/auth/v1/verify"));
+  assertEquals(verifyCalls.length, 1);
+  assertEquals(verifyCalls[0].headers.get("apikey"), ANON_KEY);
+  assertEquals(verifyCalls[0].headers.get("Authorization"), `Bearer ${ANON_KEY}`);
+
+  const serverCalls = seen.filter((call) => !call.url.endsWith("/auth/v1/verify"));
+  assertEquals(serverCalls.length > 0, true);
+  for (const call of serverCalls) {
+    assertEquals(call.headers.get("apikey"), SERVICE_KEY);
+    assertEquals(call.headers.get("Authorization"), `Bearer ${SERVICE_KEY}`);
   }
 });

@@ -3,13 +3,21 @@ import type { FetchLike } from "../../wechat-login/wechat.ts";
 
 export const PLATFORM_URL = "http://platform.test";
 export const SERVICE_KEY = "service-role-key";
+export const ANON_KEY = "publishable-key";
 export const WECHAT_OPENID = "o-test-openid";
 /** 由 o-test-openid 派生的用户 id（钉住：改动派生规则会让既有映射对不上，必须是有意为之） */
 export const DERIVED_USER_ID = "3ca3964a-bd2c-504f-afb7-69a38b4e061d";
 /** generate_link 返回的一次性令牌（假响应取平台真实的平铺形状，由官方 SDK 归一化到 properties） */
 export const TEST_TOKEN_HASH = "test-hashed-token";
+/** verify 换来的会话材料（真实响应除这三个字段外还带 user / token_type，函数不下发） */
+export const TEST_ACCESS_TOKEN = "test-access-token";
+export const TEST_REFRESH_TOKEN = "test-refresh-token";
+export const TEST_EXPIRES_IN = 3600;
 
 export type RecordedCall = { url: string; body: unknown };
+
+/** 平台响应：status + body */
+export type FakeResponse = { status: number; body?: unknown };
 
 export type FakePlatformOptions = {
   /** 微信 jscode2session 的返回，默认 {"openid": WECHAT_OPENID} */
@@ -19,19 +27,23 @@ export type FakePlatformOptions = {
   /** claim RPC 的返回，默认 DERIVED_USER_ID */
   claimed?: string | null;
   /** 建用户接口的返回，默认 200 */
-  createUser?: { status: number; body?: unknown };
+  createUser?: FakeResponse;
   /** 生成一次性登录令牌接口的返回，默认 200 且带 TEST_TOKEN_HASH */
-  generateLink?: { status: number; body?: unknown };
+  generateLink?: FakeResponse;
+  /** 兑换会话接口的返回，默认 200 且带一套完整会话材料；传数组时按调用顺序消费、用完重复最后一个 */
+  verify?: FakeResponse | FakeResponse[];
 };
 
 /** 建一个走假 fetch 的平台客户端：与函数内部同一条构造路径 */
-export function fakeClient(fetchFn: FetchLike) {
-  return createPlatformClient({ supabaseUrl: PLATFORM_URL, serviceRoleKey: SERVICE_KEY, fetchFn });
+export function fakeClient(fetchFn: FetchLike, key = SERVICE_KEY) {
+  return createPlatformClient({ supabaseUrl: PLATFORM_URL, key, fetchFn });
 }
 
-/** 把微信接口、平台 Admin API（建用户 / 生成登录令牌）、两个身份 RPC 都按 URL 路由的假 fetch（其余请求 404） */
+/** 把微信接口、平台 Admin API（建用户 / 生成登录令牌 / 兑换会话）、两个身份 RPC 都按 URL 路由的假 fetch（其余请求 404） */
 export function fakePlatform(options: FakePlatformOptions = {}) {
   const calls: RecordedCall[] = [];
+  let verifyCalls = 0;
+
   const fetchFn: FetchLike = (input, init) => {
     const url = String(input);
     calls.push({ url, body: init?.body === undefined ? null : JSON.parse(String(init.body)) });
@@ -59,6 +71,19 @@ export function fakePlatform(options: FakePlatformOptions = {}) {
       };
       return Promise.resolve(Response.json(body, { status: response.status }));
     }
+    if (url.startsWith(`${PLATFORM_URL}/auth/v1/verify`)) {
+      const response = verifyResponse(options.verify, verifyCalls);
+      verifyCalls += 1;
+      const body = response.body ?? {
+        access_token: TEST_ACCESS_TOKEN,
+        refresh_token: TEST_REFRESH_TOKEN,
+        expires_in: TEST_EXPIRES_IN,
+        expires_at: 1893456000,
+        token_type: "bearer",
+        user: { id: DERIVED_USER_ID },
+      };
+      return Promise.resolve(Response.json(body, { status: response.status }));
+    }
     return Promise.resolve(new Response("not found", { status: 404 }));
   };
 
@@ -67,4 +92,11 @@ export function fakePlatform(options: FakePlatformOptions = {}) {
     calls,
     callsTo: (suffix: string) => calls.filter((call) => call.url.endsWith(suffix)),
   };
+}
+
+function verifyResponse(option: FakePlatformOptions["verify"], callIndex: number): FakeResponse {
+  if (Array.isArray(option)) {
+    return option[Math.min(callIndex, option.length - 1)];
+  }
+  return option ?? { status: 200 };
 }

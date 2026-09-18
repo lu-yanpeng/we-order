@@ -3,7 +3,7 @@ import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 import type { Database } from "../../types/database.types.ts";
 import { errorResponse } from "./errors.ts";
 import { ensureIdentity, syntheticEmail } from "./identity.ts";
-import { issueLoginToken } from "./session.ts";
+import { issueSession } from "./session.ts";
 import { exchangeCode, type FetchLike } from "./wechat.ts";
 
 export type WechatLoginConfig = {
@@ -12,19 +12,20 @@ export type WechatLoginConfig = {
   apiBase?: string;
   supabaseUrl?: string;
   serviceRoleKey?: string;
+  anonKey?: string;
   fetchFn?: FetchLike;
 };
 
-/** 平台客户端配置：配置校验通过后才有这个形状 */
-type PlatformConfig = {
+/** 建平台客户端用的配置：地址 + 密钥（服务端密钥或发布密钥） */
+type PlatformClientConfig = {
   supabaseUrl: string;
-  serviceRoleKey: string;
+  key: string;
   fetchFn?: FetchLike;
 };
 
-/** 建平台客户端（service role）。官方 SDK 的入口只有这一处；自定义 fetch 仅供测试注入。 */
-export function createPlatformClient(config: PlatformConfig): SupabaseClient<Database> {
-  return createClient<Database>(config.supabaseUrl, config.serviceRoleKey, {
+/** 建平台客户端。官方 SDK 的入口只有这一处；自定义 fetch 仅供测试注入。 */
+export function createPlatformClient(config: PlatformClientConfig): SupabaseClient<Database> {
+  return createClient<Database>(config.supabaseUrl, config.key, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
     global: config.fetchFn ? { fetch: config.fetchFn } : undefined,
   });
@@ -50,7 +51,7 @@ export function createWechatLoginHandler(config: WechatLoginConfig) {
         return errorResponse("invalid_app_secret");
       }
 
-      if (!config.supabaseUrl || !config.serviceRoleKey) {
+      if (!config.supabaseUrl || !config.serviceRoleKey || !config.anonKey) {
         return errorResponse("unknown");
       }
 
@@ -64,23 +65,28 @@ export function createWechatLoginHandler(config: WechatLoginConfig) {
         return errorResponse(result.code);
       }
 
-      const client = createPlatformClient({
-        supabaseUrl: config.supabaseUrl,
-        serviceRoleKey: config.serviceRoleKey,
+      const platformUrl = config.supabaseUrl;
+      const admin = createPlatformClient({
+        supabaseUrl: platformUrl,
+        key: config.serviceRoleKey,
         fetchFn: config.fetchFn,
       });
 
-      const identity = await ensureIdentity(result.openid, client);
+      const identity = await ensureIdentity(result.openid, admin);
       if (!identity.ok) {
         return errorResponse("unknown");
       }
 
-      const token = await issueLoginToken(syntheticEmail(result.openid), client);
-      if (!token.ok) {
+      // 兑换用发布密钥：它就是客户端本来会用的那个身份，不是服务端密钥
+      const anon = createPlatformClient({ supabaseUrl: platformUrl, key: config.anonKey, fetchFn: config.fetchFn });
+
+      const issued = await issueSession(syntheticEmail(result.openid), { admin, anon });
+      if (!issued.ok) {
         return errorResponse("unknown");
       }
 
-      return Response.json({ token_hash: token.tokenHash });
+      // 响应含刷新凭证：不下发 openid / user_id，也不打日志
+      return Response.json(issued.session);
     } catch {
       // 兜底：未预料到的异常只回类别，不泄露堆栈或数据库细节
       return errorResponse("unknown");
