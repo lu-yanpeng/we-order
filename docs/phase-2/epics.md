@@ -1,9 +1,9 @@
 ---
 stepsCompleted: [1, 2, 3, 4]
 inputDocuments:
-  - _bmad-output/planning-artifacts/prds/prd-we-order-architecture-2026-09-16/prd.md
-  - _bmad-output/planning-artifacts/architecture/architecture-we-order-architecture-2026-09-16/ARCHITECTURE-SPINE.md
-  - _bmad-output/planning-artifacts/prds/prd-we-order-architecture-2026-09-16/addendum.md
+  - ./prd.md
+  - ./ARCHITECTURE-SPINE.md
+  - ./addendum.md
 ---
 
 # We-Order 点餐小程序 · Phase 2（Supabase 后端）— Epic 分解
