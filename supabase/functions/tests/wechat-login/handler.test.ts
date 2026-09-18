@@ -48,7 +48,8 @@ Deno.test("再次登录：复用既有映射，不调建用户接口，仍签发
 });
 
 Deno.test("身份建立失败：500 unknown（不泄露内部细节）", async () => {
-  const platform = fakePlatform({ createUser: { status: 500, body: { message: "boom" } } });
+  // 401 这类错误不可能是「撞车」（5xx 会继续交给 claim 定胜负），直接整体失败
+  const platform = fakePlatform({ createUser: { status: 401, body: { code: 401, msg: "Invalid API key" } } });
   const handler = createWechatLoginHandler({ ...CONFIG, fetchFn: platform.fetchFn });
 
   const response = await handler(post({ code: "code-1" }));
@@ -154,11 +155,12 @@ Deno.test("响应不泄露密钥，也不透传微信原文", async () => {
 });
 
 Deno.test("平台调用都带服务端密钥（apikey + Authorization）", async () => {
-  const seen: Array<Record<string, string>> = [];
+  const seen: Headers[] = [];
   const platform = fakePlatform();
   const fetchFn: FetchLike = (input, init) => {
     if (!String(input).startsWith("https://api.weixin.qq.com")) {
-      seen.push(init?.headers as Record<string, string>);
+      // 不同子客户端交给 fetch 的可能是普通对象或 Headers 实例，统一归一化后再断言
+      seen.push(new Headers(init?.headers));
     }
     return platform.fetchFn(input, init);
   };
@@ -167,7 +169,7 @@ Deno.test("平台调用都带服务端密钥（apikey + Authorization）", async
 
   assertEquals(seen.length > 0, true);
   for (const headers of seen) {
-    assertEquals(headers.apikey, SERVICE_KEY);
-    assertEquals(headers.Authorization, `Bearer ${SERVICE_KEY}`);
+    assertEquals(headers.get("apikey"), SERVICE_KEY);
+    assertEquals(headers.get("Authorization"), `Bearer ${SERVICE_KEY}`);
   }
 });

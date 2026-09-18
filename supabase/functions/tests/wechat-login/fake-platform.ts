@@ -1,3 +1,4 @@
+import { createPlatformClient } from "../../wechat-login/handler.ts";
 import type { FetchLike } from "../../wechat-login/wechat.ts";
 
 export const PLATFORM_URL = "http://platform.test";
@@ -5,7 +6,7 @@ export const SERVICE_KEY = "service-role-key";
 export const WECHAT_OPENID = "o-test-openid";
 /** 由 o-test-openid 派生的用户 id（钉住：改动派生规则会让既有映射对不上，必须是有意为之） */
 export const DERIVED_USER_ID = "3ca3964a-bd2c-504f-afb7-69a38b4e061d";
-/** generate_link 默认返回的一次性登录令牌（形状取平台新版的 properties 嵌套） */
+/** generate_link 返回的一次性令牌（假响应取平台真实的平铺形状，由官方 SDK 归一化到 properties） */
 export const TEST_TOKEN_HASH = "test-hashed-token";
 
 export type RecordedCall = { url: string; body: unknown };
@@ -22,6 +23,11 @@ export type FakePlatformOptions = {
   /** 生成一次性登录令牌接口的返回，默认 200 且带 TEST_TOKEN_HASH */
   generateLink?: { status: number; body?: unknown };
 };
+
+/** 建一个走假 fetch 的平台客户端：与函数内部同一条构造路径 */
+export function fakeClient(fetchFn: FetchLike) {
+  return createPlatformClient({ supabaseUrl: PLATFORM_URL, serviceRoleKey: SERVICE_KEY, fetchFn });
+}
 
 /** 把微信接口、平台 Admin API（建用户 / 生成登录令牌）、两个身份 RPC 都按 URL 路由的假 fetch（其余请求 404） */
 export function fakePlatform(options: FakePlatformOptions = {}) {
@@ -45,7 +51,12 @@ export function fakePlatform(options: FakePlatformOptions = {}) {
     }
     if (url === `${PLATFORM_URL}/auth/v1/admin/generate_link`) {
       const response = options.generateLink ?? { status: 200 };
-      const body = response.body ?? { properties: { hashed_token: TEST_TOKEN_HASH } };
+      const body = response.body ?? {
+        action_link: `http://platform.test/auth/v1/verify?token=${TEST_TOKEN_HASH}&type=magiclink`,
+        email_otp: "123456",
+        hashed_token: TEST_TOKEN_HASH,
+        verification_type: "magiclink",
+      };
       return Promise.resolve(Response.json(body, { status: response.status }));
     }
     return Promise.resolve(new Response("not found", { status: 404 }));

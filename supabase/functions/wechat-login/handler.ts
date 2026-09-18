@@ -1,3 +1,6 @@
+import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
+
+import type { Database } from "../../types/database.types.ts";
 import { errorResponse } from "./errors.ts";
 import { ensureIdentity, syntheticEmail } from "./identity.ts";
 import { issueLoginToken } from "./session.ts";
@@ -11,6 +14,21 @@ export type WechatLoginConfig = {
   serviceRoleKey?: string;
   fetchFn?: FetchLike;
 };
+
+/** 平台客户端配置：配置校验通过后才有这个形状 */
+type PlatformConfig = {
+  supabaseUrl: string;
+  serviceRoleKey: string;
+  fetchFn?: FetchLike;
+};
+
+/** 建平台客户端（service role）。官方 SDK 的入口只有这一处；自定义 fetch 仅供测试注入。 */
+export function createPlatformClient(config: PlatformConfig): SupabaseClient<Database> {
+  return createClient<Database>(config.supabaseUrl, config.serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    global: config.fetchFn ? { fetch: config.fetchFn } : undefined,
+  });
+}
 
 /** 调用本函数时客户端尚无会话，输入由函数内自行校验（AD-16）。 */
 export function createWechatLoginHandler(config: WechatLoginConfig) {
@@ -46,20 +64,18 @@ export function createWechatLoginHandler(config: WechatLoginConfig) {
         return errorResponse(result.code);
       }
 
-      const identity = await ensureIdentity(result.openid, {
+      const client = createPlatformClient({
         supabaseUrl: config.supabaseUrl,
         serviceRoleKey: config.serviceRoleKey,
         fetchFn: config.fetchFn,
       });
+
+      const identity = await ensureIdentity(result.openid, client);
       if (!identity.ok) {
         return errorResponse("unknown");
       }
 
-      const token = await issueLoginToken(syntheticEmail(result.openid), {
-        supabaseUrl: config.supabaseUrl,
-        serviceRoleKey: config.serviceRoleKey,
-        fetchFn: config.fetchFn,
-      });
+      const token = await issueLoginToken(syntheticEmail(result.openid), client);
       if (!token.ok) {
         return errorResponse("unknown");
       }
