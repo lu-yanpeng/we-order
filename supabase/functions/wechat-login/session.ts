@@ -24,12 +24,30 @@ export type IssueSessionResult = { ok: true; session: LoginSession } | { ok: fal
 const VERIFY_TYPE = "email";
 
 /**
- * 生成 + 兑换的重发上限。
+ * 生成令牌 + 兑换会话的重发上限。
  *
- * 平台的「一次性登录令牌」是每用户一个槽位：再生成一张会让前一张作废（实测：连发三张只有最后
- * 一张能兑换，其余 403 otp_expired）。同一 openid 的并发登录会互相顶掉，所以兑换被明确拒绝时重发。
- * 每轮至少有一个请求胜出，重发到与并发数相当即可收敛；超出上限的极端并发仍会失败，
- * 由客户端重试整条登录链路（不在此处无限重发）。
+ * 为什么一个本来「跑一次就完事」的请求会被逼着重来：
+ * 令牌不是「印一张交给你」就归你了——它被写在平台的 auth.one_time_tokens 表里，而这张表上有一条
+ * 唯一约束 (user_id, token_type)：**同一个用户、同一种令牌同时只能有一份**（不同类型的令牌可以
+ * 共存；我们用的 magiclink 落在 recovery_token 这一种，实测确认）。所以同一个账号同时只有一张
+ * 有效的登录令牌：生成新的一张，旧的那张当场作废（实测：旧令牌再去兑换得到 403 otp_expired）。
+ *
+ * 于是同一个 openid 只要有两个登录请求重叠，就会互相顶掉（前端可以理解成：两个异步流程往同一个
+ * 变量里写值，谁最后写谁的值算数——但先写的那个手里还攥着已经被覆盖的旧值）：
+ *
+ *   请求 A：生成 T_A（表里 = T_A）→ …… 一次网络往返 …… → 兑换 T_A → 被拒（表里已经是 T_B）
+ *   请求 B：　　　生成 T_B（表里 = T_B）→ 兑换 T_B → 成功
+ *
+ * A 没做错任何事，只是它手里的令牌在兑换之前被别人换掉了；作废的令牌换不回来，
+ * 唯一的补救是回开头重新生成一张再去兑换——这就是 issueSession 里那个循环。
+ *
+ * 为什么是 3 次：每一轮至少有一个请求能成功（全局最后生成令牌的那个一定换得到），失败的那些进
+ * 下一轮，所以正常节奏下同一账号的 N 个并发登录最多 N 轮都能成功；e2e 实测 3 个并发全部拿到会话。
+ * 3 覆盖的是现实里会出现的量级（同一账号 2～3 个请求重叠）。再大的极端交错仍可能失败——那种情况
+ * 直接报错，由客户端重试整条登录链路（循环必须有终点，不能无限重发）。
+ *
+ * 注意：「一种类型只有一份」是实测出来的平台实现细节，官方文档没有承诺。哪天平台改了行为，
+ * 这段重试最多是永远不触发，不会出错。
  */
 const SESSION_ISSUE_ATTEMPTS = 3;
 
@@ -39,6 +57,9 @@ const SESSION_ISSUE_ATTEMPTS = 3;
  * 走官方 Admin API 的 generateLink（type=magiclink）：只生成令牌、不发邮件；令牌「只能用一次、
  * 有过期时间」由平台机制保证。令牌不离开服务端，兑换由 exchangeLoginToken 在函数内完成；
  * 本函数不自签任何 JWT（AD-16）。
+ *
+ * 副作用要留意：生成的令牌写进平台的 auth.one_time_tokens 表（同一用户、同一类型只能有一份），
+ * 上一次生成的同类令牌就此作废——这是 issueSession 需要重发的根因，详见 SESSION_ISSUE_ATTEMPTS。
  */
 export async function issueLoginToken(email: string, client: SupabaseClient<Database>): Promise<IssueLoginTokenResult> {
   try {
@@ -60,8 +81,11 @@ export async function issueLoginToken(email: string, client: SupabaseClient<Data
  * 请求带发布密钥——它就是客户端本来会用的那个身份，不是服务端密钥。
  * 会话仍由平台签发，不存在任何自签 JWT（AD-16）。
  *
- * 返回的 rejected 区分两种失败：平台明确拒绝这张令牌（有 HTTP 状态码，例如并发登录把它顶掉后的
- * 403 otp_expired）值得重发；平台不可达或响应不可用则重发没有意义。
+ * rejected 用来区分两种失败，只有第一种值得重发：
+ *   - true：平台明确拒绝了这张令牌（HTTP 4xx / 5xx）。最常见的是 403 otp_expired，也就是这张令牌
+ *     已经被并发的另一次登录顶掉了（原理见 SESSION_ISSUE_ATTEMPTS）。补救办法是重新生成一张。
+ *   - false：请求压根没送到，或平台的响应不完整（缺字段、字段类型不对）。重发只是让用户多等一遍，
+ *     所以调用方应该直接失败。
  */
 export async function exchangeLoginToken(
   tokenHash: string,
@@ -80,7 +104,13 @@ export async function exchangeLoginToken(
   }
 }
 
-/** 签发会话：生成令牌并立刻兑换；被并发登录顶掉时重发（见 SESSION_ISSUE_ATTEMPTS） */
+/**
+ * 签发会话 = 生成一张令牌 + 立刻拿它兑换。
+ *
+ * 兑换被平台明确拒绝时回开头重来（多半是这张令牌被并发的另一次登录顶掉了），最多
+ * SESSION_ISSUE_ATTEMPTS 轮；其余失败直接返回。为什么需要重发、为什么是 3 次，都写在
+ * SESSION_ISSUE_ATTEMPTS 上面。
+ */
 export async function issueSession(
   email: string,
   clients: { admin: SupabaseClient<Database>; anon: SupabaseClient<Database> },
@@ -88,6 +118,7 @@ export async function issueSession(
   for (let attempt = 0; attempt < SESSION_ISSUE_ATTEMPTS; attempt += 1) {
     const token = await issueLoginToken(email, clients.admin);
     if (!token.ok) {
+      // 连令牌都没生成出来，重发没有意义
       return { ok: false };
     }
 
@@ -96,8 +127,10 @@ export async function issueSession(
       return { ok: true, session: exchanged.session };
     }
     if (!exchanged.rejected) {
+      // 平台没明确拒绝（不可达 / 响应不可用）：重发只是让用户多等一遍
       return { ok: false };
     }
+    // 走到这里 = 手里这张令牌被顶掉了，下一轮重新生成一张
   }
 
   return { ok: false };
