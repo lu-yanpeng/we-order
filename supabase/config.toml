@@ -370,6 +370,11 @@ authorization_url_path = "/oauth/consent"
 # Allow dynamic client registration
 allow_dynamic_registration = false
 
+# 登录边缘函数：调用时尚无会话，关闭平台前置 JWT 校验，输入由函数自行校验（AR-5）。
+# 本地密钥放 supabase/functions/.env（不入仓），变量名见 functions/.env.example。
+[functions.wechat-login]
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.

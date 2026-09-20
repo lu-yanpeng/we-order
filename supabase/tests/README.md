@@ -1,6 +1,6 @@
 # supabase/tests
 
-一条命令跑全部：`supabase test db`（本地栈需已启动）。用 pgTAP，不引入其他 helper。
+数据库测试（pgTAP）。一条命令跑全部：`supabase test db`（本地栈需已启动）。边缘函数的测试不在这里，见 `functions/tests/`。
 
 | 文件 | 覆盖 |
 | --- | --- |

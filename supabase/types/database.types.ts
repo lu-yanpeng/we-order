@@ -228,6 +228,17 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
+      login_error_code:
+        | "invalid_app_id"
+        | "invalid_app_secret"
+        | "invalid_code"
+        | "code_expired_or_used"
+        | "invalid_request"
+        | "risky_user_blocked"
+        | "rate_limited"
+        | "wechat_unavailable"
+        | "unknown"
+        | "network_unreachable"
       product_availability: "on_sale" | "sold_out" | "delisted"
     }
     CompositeTypes: {
@@ -359,6 +370,18 @@ export const Constants = {
   },
   public: {
     Enums: {
+      login_error_code: [
+        "invalid_app_id",
+        "invalid_app_secret",
+        "invalid_code",
+        "code_expired_or_used",
+        "invalid_request",
+        "risky_user_blocked",
+        "rate_limited",
+        "wechat_unavailable",
+        "unknown",
+        "network_unreachable",
+      ],
       product_availability: ["on_sale", "sold_out", "delisted"],
     },
   },
