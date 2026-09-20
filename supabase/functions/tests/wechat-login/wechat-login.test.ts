@@ -1,4 +1,4 @@
-// Story 2.1 边缘函数测试：离线、注入假 fetch，不需要网络与真实微信凭证。
+// Story 2.1 / 2.2 边缘函数测试：离线、注入假 fetch 与假身份解析，不需要网络与真实微信凭证。
 // 运行：cd supabase && deno task test（等价于 deno test supabase/functions/tests/）
 // 类别断言以数据库类型 login_error_code 为准；文案不是契约，故只断言类别与状态码。
 
@@ -16,6 +16,11 @@ type FakePlan = {
   payload?: unknown;
   body?: string;
   status?: number;
+  throws?: boolean;
+};
+
+type FakeIdentityPlan = {
+  userId?: string;
   throws?: boolean;
 };
 
@@ -41,6 +46,22 @@ function fakeFetch(plan: FakePlan = {}) {
   return { fetchFn, calls };
 }
 
+/** 假身份解析：默认成功；throws 时抛一个带「内部细节」的错误，供泄露断言使用。 */
+function fakeIdentity(plan: FakeIdentityPlan = {}) {
+  const calls: string[] = [];
+  const resolveIdentity = (openid: string) => {
+    calls.push(openid);
+    if (plan.throws) {
+      return Promise.reject(new Error("internal-db-detail"));
+    }
+    return Promise.resolve({
+      userId: plan.userId ?? "user-1",
+      email: `wx-${openid}@wechat.local`,
+    });
+  };
+  return { resolveIdentity, calls };
+}
+
 function postRequest(body: string): Request {
   return new Request(FUNCTION_URL, {
     method: "POST",
@@ -49,23 +70,34 @@ function postRequest(body: string): Request {
   });
 }
 
-async function callLogin(body: unknown, plan?: FakePlan) {
+async function callLogin(
+  body: unknown,
+  plan?: FakePlan,
+  identityPlan?: FakeIdentityPlan,
+) {
   const { fetchFn, calls } = fakeFetch(plan);
+  const identity = fakeIdentity(identityPlan);
   const deps: WechatLoginDeps = {
     appId: APP_ID,
     appSecret: APP_SECRET,
     fetchFn,
+    resolveIdentity: identity.resolveIdentity,
   };
   const request = postRequest(
     typeof body === "string" ? body : JSON.stringify(body),
   );
   const response = await handleRequest(request, deps);
   const payload = await response.json();
-  return { status: response.status, payload, calls };
+  return {
+    status: response.status,
+    payload,
+    calls,
+    identityCalls: identity.calls,
+  };
 }
 
-Deno.test("成功：只返回 openid，不外带 session_key", async () => {
-  const { status, payload } = await callLogin(
+Deno.test("成功：只返回 openid，不外带 session_key；身份解析被调用一次", async () => {
+  const { status, payload, identityCalls } = await callLogin(
     { code: "code-ok" },
     {
       payload: {
@@ -77,6 +109,7 @@ Deno.test("成功：只返回 openid，不外带 session_key", async () => {
   );
   assert.equal(status, 200);
   assert.deepEqual(payload, { openid: "openid-1" });
+  assert.deepEqual(identityCalls, ["openid-1"]);
 });
 
 Deno.test("请求形状：打微信官方地址，四个参数齐全", async () => {
@@ -111,7 +144,7 @@ const wechatErrcodeCases: Array<{
 
 for (const { errcode, expectedCode, expectedStatus } of wechatErrcodeCases) {
   Deno.test(`微信错误码 ${errcode} → ${expectedCode}（HTTP ${expectedStatus}）`, async () => {
-    const { status, payload } = await callLogin(
+    const { status, payload, identityCalls } = await callLogin(
       { code: "code-ok" },
       { payload: { errcode, errmsg: "wechat says no" } },
     );
@@ -122,6 +155,7 @@ for (const { errcode, expectedCode, expectedStatus } of wechatErrcodeCases) {
       !JSON.stringify(payload).includes(APP_SECRET),
       "响应体不得出现 AppSecret",
     );
+    assert.equal(identityCalls.length, 0, "换取失败时不应解析身份");
   });
 }
 
@@ -151,26 +185,44 @@ Deno.test("微信返回 HTTP 5xx → wechat_unavailable（503）", async () => {
   assert.equal(payload.code, "wechat_unavailable");
 });
 
-Deno.test("入参不合法 → invalid_request（400），且不调用微信", async () => {
+Deno.test("身份解析失败 → identity_failed（500），且不泄露内部细节", async () => {
+  const { status, payload } = await callLogin(
+    { code: "code-ok" },
+    { payload: { openid: "openid-1" } },
+    { throws: true },
+  );
+  assert.equal(status, 500);
+  assert.equal(payload.code, "identity_failed");
+  assert.equal(typeof payload.message, "string");
+  assert.ok(
+    !JSON.stringify(payload).includes("internal-db-detail"),
+    "响应体不得出现内部错误细节",
+  );
+});
+
+Deno.test("入参不合法 → invalid_request（400），且不调用微信与身份解析", async () => {
   const bodies: unknown[] = ["not-json", {}, { code: "" }, { code: "   " }, {
     code: 123,
   }, []];
   for (const body of bodies) {
-    const { status, payload, calls } = await callLogin(body);
+    const { status, payload, calls, identityCalls } = await callLogin(body);
     const label = `body=${JSON.stringify(body)}`;
     assert.equal(status, 400, label);
     assert.equal(payload.code, "invalid_request", label);
     assert.equal(calls.length, 0, `${label}：入参不合法时不应调用微信`);
+    assert.equal(identityCalls.length, 0, `${label}：入参不合法时不应解析身份`);
   }
 });
 
 Deno.test("非 POST → 405 invalid_request", async () => {
   const { fetchFn } = fakeFetch();
+  const { resolveIdentity } = fakeIdentity();
   const request = new Request(FUNCTION_URL, { method: "GET" });
   const response = await handleRequest(request, {
     appId: APP_ID,
     appSecret: APP_SECRET,
     fetchFn,
+    resolveIdentity,
   });
   assert.equal(response.status, 405);
   assert.equal((await response.json()).code, "invalid_request");
@@ -178,12 +230,14 @@ Deno.test("非 POST → 405 invalid_request", async () => {
 
 Deno.test("服务端缺配置 → 500 unknown，且不调用微信", async () => {
   const { fetchFn, calls } = fakeFetch();
+  const { resolveIdentity } = fakeIdentity();
   const response = await handleRequest(
     postRequest(JSON.stringify({ code: "code-ok" })),
     {
       appId: "",
       appSecret: APP_SECRET,
       fetchFn,
+      resolveIdentity,
     },
   );
   assert.equal(response.status, 500);

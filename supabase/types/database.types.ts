@@ -213,6 +213,27 @@ export type Database = {
         }
         Relationships: []
       }
+      wechat_identities: {
+        Row: {
+          created_at: string
+          last_login_at: string
+          openid: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          last_login_at?: string
+          openid: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          last_login_at?: string
+          openid?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       menu: {
@@ -225,7 +246,10 @@ export type Database = {
       }
     }
     Functions: {
-      [_ in never]: never
+      record_wechat_login: {
+        Args: { p_openid: string; p_user_id: string }
+        Returns: string
+      }
     }
     Enums: {
       login_error_code:
@@ -239,6 +263,7 @@ export type Database = {
         | "wechat_unavailable"
         | "unknown"
         | "network_unreachable"
+        | "identity_failed"
       product_availability: "on_sale" | "sold_out" | "delisted"
     }
     CompositeTypes: {
@@ -381,6 +406,7 @@ export const Constants = {
         "wechat_unavailable",
         "unknown",
         "network_unreachable",
+        "identity_failed",
       ],
       product_availability: ["on_sale", "sold_out", "delisted"],
     },

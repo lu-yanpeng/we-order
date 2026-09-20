@@ -1,13 +1,16 @@
-// HTTP 层：校验入参、调微信换取、按平台标准错误载荷形状返回（AD-12 / AD-22）。
+// HTTP 层：校验入参、调微信换取、解析身份，按平台标准错误载荷形状返回（AD-12 / AD-22）。
 // 形状为 { code, message }：code 是稳定契约（login_error_code 类别），message 只是给人看的文案。
 // message 中不得出现 AppSecret、服务端密钥、堆栈或数据库细节。
 
+import type { WechatIdentity } from "./identity.ts";
 import { code2Session, type LoginErrorCode } from "./wechat.ts";
 
 export type WechatLoginDeps = {
   appId: string;
   appSecret: string;
   fetchFn: typeof fetch;
+  /** Story 2.2：把 openid 解析为平台用户与身份映射；失败抛错，由本层归为 identity_failed。 */
+  resolveIdentity: (openid: string) => Promise<WechatIdentity>;
 };
 
 const errorStatus: Record<LoginErrorCode, number> = {
@@ -21,6 +24,7 @@ const errorStatus: Record<LoginErrorCode, number> = {
   wechat_unavailable: 503,
   unknown: 502,
   network_unreachable: 500, // 不由本函数产生；仅为类型完备保留
+  identity_failed: 500, // 身份解析失败：服务端内部故障，调用方只能重试
 };
 
 const errorMessages: Record<LoginErrorCode, string> = {
@@ -34,6 +38,7 @@ const errorMessages: Record<LoginErrorCode, string> = {
   wechat_unavailable: "Could not get a valid response from WeChat",
   unknown: "WeChat returned an unrecognized error",
   network_unreachable: "Network unreachable",
+  identity_failed: "Could not establish the user identity",
 };
 
 function jsonResponse(body: unknown, status: number): Response {
@@ -81,9 +86,21 @@ export async function handleRequest(
     );
   }
 
-  const result = await code2Session({ ...deps, code });
+  const result = await code2Session({
+    appId: deps.appId,
+    appSecret: deps.appSecret,
+    code,
+    fetchFn: deps.fetchFn,
+  });
   if (!result.ok) {
     return errorResponse(result.code);
+  }
+
+  try {
+    await deps.resolveIdentity(result.openid);
+  } catch {
+    // 身份解析失败属服务端内部故障：只给稳定类别，不带任何内部细节（NFR3、FR-P2-5）
+    return errorResponse("identity_failed");
   }
   return jsonResponse({ openid: result.openid }, 200);
 }

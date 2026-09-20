@@ -1,5 +1,6 @@
 {
   "tasks": {
-    "test": "deno test functions/tests/"
+    "test": "deno test functions/tests/",
+    "verify:identity": "deno run -A scripts/verify-wechat-identity.ts"
   }
 }
