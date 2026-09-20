@@ -246,6 +246,7 @@ export type Database = {
       }
     }
     Functions: {
+      find_user_by_email: { Args: { p_email: string }; Returns: string }
       record_wechat_login: {
         Args: { p_openid: string; p_user_id: string }
         Returns: string
@@ -264,6 +265,7 @@ export type Database = {
         | "unknown"
         | "network_unreachable"
         | "identity_failed"
+        | "session_failed"
       product_availability: "on_sale" | "sold_out" | "delisted"
     }
     CompositeTypes: {
@@ -407,6 +409,7 @@ export const Constants = {
         "unknown",
         "network_unreachable",
         "identity_failed",
+        "session_failed",
       ],
       product_availability: ["on_sale", "sold_out", "delisted"],
     },

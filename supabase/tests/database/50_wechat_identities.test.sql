@@ -3,7 +3,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(26);
+select plan(35);
 
 -- 结构：RLS 启用、不携带任何策略（没有策略的表对客户端完全不可达）
 select ok(
@@ -24,10 +24,14 @@ select is(
   'wechat_identities 只存 openid、user_id 与两个时间戳'
 );
 
--- 登录失败类别含身份解析失败（Story 2.2 新增）
+-- 登录失败类别含身份解析失败与会话签发失败（Story 2.2 / 2.3 新增）
 select ok(
   'identity_failed' = any (enum_range(null::public.login_error_code)::text[]),
   'login_error_code 含 identity_failed 类别'
+);
+select ok(
+  'session_failed' = any (enum_range(null::public.login_error_code)::text[]),
+  'login_error_code 含 session_failed 类别'
 );
 
 -- 未认证：完全不可达
@@ -137,6 +141,43 @@ select ok(
 select ok(
   has_function_privilege('service_role', 'public.record_wechat_login(text, uuid)', 'EXECUTE'),
   '服务端密钥可执行 record_wechat_login'
+);
+
+-- find_user_by_email：只读查询，客户端完全不可执行（Story 2.2 身份解析辅助；AD-21）
+select ok(
+  (select prosecdef from pg_proc where oid = 'public.find_user_by_email(text)'::regprocedure),
+  'find_user_by_email 是 security definer'
+);
+select ok(
+  (select 'search_path=""' = any(coalesce(proconfig, '{}')) from pg_proc
+    where oid = 'public.find_user_by_email(text)'::regprocedure),
+  'find_user_by_email 使用空 search_path'
+);
+select ok(
+  not has_function_privilege('anon', 'public.find_user_by_email(text)', 'EXECUTE'),
+  '未认证不能执行 find_user_by_email'
+);
+select ok(
+  not has_function_privilege('authenticated', 'public.find_user_by_email(text)', 'EXECUTE'),
+  '已登录身份不能执行 find_user_by_email'
+);
+select ok(
+  has_function_privilege('service_role', 'public.find_user_by_email(text)', 'EXECUTE'),
+  '服务端密钥可执行 find_user_by_email'
+);
+select is(
+  public.find_user_by_email('fixture-1@wechat.local'),
+  '00000000-0000-0000-0000-000000000001'::uuid,
+  '按 email 查到平台用户'
+);
+select is(
+  public.find_user_by_email('FIXTURE-1@WECHAT.LOCAL'),
+  '00000000-0000-0000-0000-000000000001'::uuid,
+  'email 大小写不敏感'
+);
+select ok(
+  public.find_user_by_email('nobody@wechat.local') is null,
+  '不存在的 email 返回空值'
 );
 select is(
   public.record_wechat_login('openid-a', '00000000-0000-0000-0000-000000000002'),

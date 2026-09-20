@@ -1,8 +1,10 @@
-// HTTP 层：校验入参、调微信换取、解析身份，按平台标准错误载荷形状返回（AD-12 / AD-22）。
-// 形状为 { code, message }：code 是稳定契约（login_error_code 类别），message 只是给人看的文案。
+// HTTP 层：校验入参、调微信换取、解析身份、签发会话（AD-12 / AD-22）。
+// 成功返回平台会话本体（2xx）；失败返回 { code, message }：code 是稳定契约
+// （login_error_code 类别），message 只是给人看的文案。
 // message 中不得出现 AppSecret、服务端密钥、堆栈或数据库细节。
 
 import type { WechatIdentity } from "./identity.ts";
+import type { LoginSession } from "./session.ts";
 import { code2Session, type LoginErrorCode } from "./wechat.ts";
 
 export type WechatLoginDeps = {
@@ -11,6 +13,8 @@ export type WechatLoginDeps = {
   fetchFn: typeof fetch;
   /** Story 2.2：把 openid 解析为平台用户与身份映射；失败抛错，由本层归为 identity_failed。 */
   resolveIdentity: (openid: string) => Promise<WechatIdentity>;
+  /** Story 2.3：为已确定的身份签发平台会话；失败抛错，由本层归为 session_failed。 */
+  issueSession: (identity: WechatIdentity) => Promise<LoginSession>;
 };
 
 const errorStatus: Record<LoginErrorCode, number> = {
@@ -25,6 +29,7 @@ const errorStatus: Record<LoginErrorCode, number> = {
   unknown: 502,
   network_unreachable: 500, // 不由本函数产生；仅为类型完备保留
   identity_failed: 500, // 身份解析失败：服务端内部故障，调用方只能重试
+  session_failed: 500, // 会话签发失败：服务端内部故障，调用方只能重试
 };
 
 const errorMessages: Record<LoginErrorCode, string> = {
@@ -39,6 +44,7 @@ const errorMessages: Record<LoginErrorCode, string> = {
   unknown: "WeChat returned an unrecognized error",
   network_unreachable: "Network unreachable",
   identity_failed: "Could not establish the user identity",
+  session_failed: "Could not establish a session",
 };
 
 function jsonResponse(body: unknown, status: number): Response {
@@ -86,6 +92,7 @@ export async function handleRequest(
     );
   }
 
+  // 1. fetch 微信接口获取openid
   const result = await code2Session({
     appId: deps.appId,
     appSecret: deps.appSecret,
@@ -96,11 +103,21 @@ export async function handleRequest(
     return errorResponse(result.code);
   }
 
+  // 2. 核心代码。创建auth.users和对应的wechat_identities
+  let identity: WechatIdentity;
   try {
-    await deps.resolveIdentity(result.openid);
+    identity = await deps.resolveIdentity(result.openid);
   } catch {
     // 身份解析失败属服务端内部故障：只给稳定类别，不带任何内部细节（NFR3、FR-P2-5）
     return errorResponse("identity_failed");
   }
-  return jsonResponse({ openid: result.openid }, 200);
+
+  // 3. 给当前用户派发token
+  try {
+    const session = await deps.issueSession(identity);
+    return jsonResponse(session, 200);
+  } catch {
+    // 会话签发失败同上；失败不会留下半登录状态，客户端重试即可（FR-P2-3）
+    return errorResponse("session_failed");
+  }
 }

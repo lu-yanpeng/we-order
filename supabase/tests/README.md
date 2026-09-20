@@ -9,7 +9,7 @@
 | `database/20_stores.test.sql` | 门店：RLS 已启用、未认证可读、客户端不可写 |
 | `database/30_storage.test.sql` | 图片桶：公开桶、`storage.objects` 零策略、未认证读不到对象、客户端不可写 |
 | `database/40_menu_view.test.sql` | `menu` 视图：过滤（下架 / 售罄 / 空分类）、排序、嵌套形状、字段名 |
-| `database/50_wechat_identities.test.sql` | 身份映射：RLS 启用且零策略、客户端完全不可达、列集合只有 openid/user_id/时间戳、openid 唯一、user_id 唯一、外键与级联、枚举含 `identity_failed`、`record_wechat_login` 的权限与幂等 |
+| `database/50_wechat_identities.test.sql` | 身份映射：RLS 启用且零策略、客户端完全不可达、列集合只有 openid/user_id/时间戳、openid 唯一、user_id 唯一、外键与级联、枚举含 `identity_failed` 与 `session_failed`、`record_wechat_login` 与 `find_user_by_email` 的权限/安全属性/幂等与查询行为 |
 
 说明：
 
