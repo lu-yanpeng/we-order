@@ -52,6 +52,122 @@ export type Database = {
         }
         Relationships: []
       }
+      order_items: {
+        Row: {
+          id: string
+          order_id: string
+          product_id: string
+          product_name: string
+          quantity: number
+          selections: Json
+          spec_summary: string
+          unit_price: number
+        }
+        Insert: {
+          id?: string
+          order_id: string
+          product_id: string
+          product_name: string
+          quantity: number
+          selections?: Json
+          spec_summary: string
+          unit_price: number
+        }
+        Update: {
+          id?: string
+          order_id?: string
+          product_id?: string
+          product_name?: string
+          quantity?: number
+          selections?: Json
+          spec_summary?: string
+          unit_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orders: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          dining_mode: Database["public"]["Enums"]["dining_mode"]
+          id: string
+          idempotency_key: string
+          notes: string
+          order_number: string
+          packaging_fee: number
+          pickup_code: string | null
+          ready_at: string
+          status: Database["public"]["Enums"]["order_status"]
+          store_address: string
+          store_id: string
+          store_name: string
+          store_phone: string
+          total_amount: number
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          dining_mode: Database["public"]["Enums"]["dining_mode"]
+          id?: string
+          idempotency_key: string
+          notes?: string
+          order_number: string
+          packaging_fee: number
+          pickup_code?: string | null
+          ready_at: string
+          status?: Database["public"]["Enums"]["order_status"]
+          store_address: string
+          store_id: string
+          store_name: string
+          store_phone: string
+          total_amount: number
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          dining_mode?: Database["public"]["Enums"]["dining_mode"]
+          id?: string
+          idempotency_key?: string
+          notes?: string
+          order_number?: string
+          packaging_fee?: number
+          pickup_code?: string | null
+          ready_at?: string
+          status?: Database["public"]["Enums"]["order_status"]
+          store_address?: string
+          store_id?: string
+          store_name?: string
+          store_phone?: string
+          total_amount?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orders_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       product_spec_groups: {
         Row: {
           group_id: string
@@ -253,6 +369,7 @@ export type Database = {
       }
     }
     Enums: {
+      dining_mode: "dinein" | "takeout"
       login_error_code:
         | "invalid_app_id"
         | "invalid_app_secret"
@@ -266,6 +383,7 @@ export type Database = {
         | "network_unreachable"
         | "identity_failed"
         | "session_failed"
+      order_status: "cooking" | "pickup" | "completed"
       product_availability: "on_sale" | "sold_out" | "delisted"
     }
     CompositeTypes: {
@@ -397,6 +515,7 @@ export const Constants = {
   },
   public: {
     Enums: {
+      dining_mode: ["dinein", "takeout"],
       login_error_code: [
         "invalid_app_id",
         "invalid_app_secret",
@@ -411,6 +530,7 @@ export const Constants = {
         "identity_failed",
         "session_failed",
       ],
+      order_status: ["cooking", "pickup", "completed"],
       product_availability: ["on_sale", "sold_out", "delisted"],
     },
   },
