@@ -1,6 +1,12 @@
 {
   "pages": [
     {
+      "path": "pages/auth-check/index",
+      "style": {
+        "navigationBarTitleText": "身份链路验证"
+      }
+    },
+    {
       "path": "pages/home/index",
       "style": {
         "navigationBarTitleText": "经典点单",
