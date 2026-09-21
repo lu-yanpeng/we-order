@@ -362,6 +362,30 @@ export type Database = {
       }
     }
     Functions: {
+      build_spec_summary: { Args: { p_labels: string[] }; Returns: string }
+      calculate_line_amount: {
+        Args: { p_quantity: number; p_unit_price: number }
+        Returns: number
+      }
+      calculate_order_total: {
+        Args: {
+          p_dining_mode: Database["public"]["Enums"]["dining_mode"]
+          p_line_amounts: number[]
+          p_takeout_fee: number
+        }
+        Returns: number
+      }
+      calculate_packaging_fee: {
+        Args: {
+          p_dining_mode: Database["public"]["Enums"]["dining_mode"]
+          p_takeout_fee: number
+        }
+        Returns: number
+      }
+      calculate_unit_price: {
+        Args: { p_base_price: number; p_price_extras: number[] }
+        Returns: number
+      }
       find_user_by_email: { Args: { p_email: string }; Returns: string }
       record_wechat_login: {
         Args: { p_openid: string; p_user_id: string }
