@@ -311,21 +311,30 @@ export type Database = {
           id: string
           name: string
           phone: string
+          ready_delay_seconds: number
+          takeout_packaging_fee: number
           timezone: string
+          urge_lead_seconds: number
         }
         Insert: {
           address: string
           id?: string
           name: string
           phone: string
+          ready_delay_seconds?: number
+          takeout_packaging_fee?: number
           timezone: string
+          urge_lead_seconds?: number
         }
         Update: {
           address?: string
           id?: string
           name?: string
           phone?: string
+          ready_delay_seconds?: number
+          takeout_packaging_fee?: number
           timezone?: string
+          urge_lead_seconds?: number
         }
         Relationships: []
       }
@@ -386,7 +395,23 @@ export type Database = {
         Args: { p_base_price: number; p_price_extras: number[] }
         Returns: number
       }
+      create_order: {
+        Args: {
+          p_dining_mode: Database["public"]["Enums"]["dining_mode"]
+          p_idempotency_key: string
+          p_items: Json
+          p_notes: string
+        }
+        Returns: Json
+      }
       find_user_by_email: { Args: { p_email: string }; Returns: string }
+      order_result_json: {
+        Args: {
+          p_order: Database["public"]["Tables"]["orders"]["Row"]
+          p_timezone: string
+        }
+        Returns: Json
+      }
       record_wechat_login: {
         Args: { p_openid: string; p_user_id: string }
         Returns: string
@@ -407,6 +432,13 @@ export type Database = {
         | "network_unreachable"
         | "identity_failed"
         | "session_failed"
+      order_error_code:
+        | "invalid_request"
+        | "invalid_quantity"
+        | "invalid_selection"
+        | "product_unavailable"
+        | "not_authenticated"
+        | "store_unavailable"
       order_status: "cooking" | "pickup" | "completed"
       product_availability: "on_sale" | "sold_out" | "delisted"
     }
@@ -553,6 +585,14 @@ export const Constants = {
         "network_unreachable",
         "identity_failed",
         "session_failed",
+      ],
+      order_error_code: [
+        "invalid_request",
+        "invalid_quantity",
+        "invalid_selection",
+        "product_unavailable",
+        "not_authenticated",
+        "store_unavailable",
       ],
       order_status: ["cooking", "pickup", "completed"],
       product_availability: ["on_sale", "sold_out", "delisted"],

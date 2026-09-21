@@ -16,7 +16,7 @@ comment on type public.dining_mode is
 
 create table public.orders (
   id uuid primary key default gen_random_uuid(),
-  order_number text not null unique check (order_number ~ '^SG[0-9]{8}$'),
+  order_number text not null unique check (order_number ~ '^[0-9]{18}$'),
   user_id uuid not null references auth.users (id) on delete cascade,
   store_id uuid not null references public.stores (id),
   store_name text not null,
@@ -40,7 +40,7 @@ create table public.orders (
 comment on table public.orders is
   '订单主表：归属只在 user_id（AD-4）；写路径只有服务端函数（AD-2）；读取只用副本字段，不 join 目录表取当前值（AD-9）';
 comment on column public.orders.order_number is
-  '对外订单号：SG + 8 位数字，服务端生成，全局唯一（唯一约束 + 冲突重试，FR-P2-9）';
+  '对外订单号：18 位纯数字（门店本地时间 YYYYMMDDHHmmss + 4 位随机数），服务端生成，全局唯一（唯一约束 + 冲突重试，FR-P2-9）';
 comment on column public.orders.user_id is
   '归属唯一表达点：RPC 谓词与 RLS 策略都必须等价于 user_id = auth.uid()（AD-3、AD-4）';
 comment on column public.orders.store_id is

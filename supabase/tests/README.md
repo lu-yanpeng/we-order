@@ -12,9 +12,10 @@
 | `database/50_wechat_identities.test.sql` | 身份映射：RLS 启用且零策略、客户端完全不可达、列集合只有 openid/user_id/时间戳、openid 唯一、user_id 唯一、外键与级联、枚举含 `identity_failed` 与 `session_failed`、`record_wechat_login` 与 `find_user_by_email` 的权限/安全属性/幂等与查询行为 |
 | `database/60_orders.test.sql` | 订单结构与写路径封闭：两张表 RLS 启用且只有一条本人 SELECT 策略、客户端（未认证与已登录）对两张表的 insert/update/delete 全部被拒、列集合（明细无归属字段）、金额与时间列类型、状态与取杯号/完成时间联动、幂等唯一域 (user_id, idempotency_key)、订单号唯一、明细级联删除 |
 | `database/70_amounts.test.sql` | 金额纯计算函数：单价/行小计/包装费（费率为入参）/总额/规格摘要的规则与精度、声明为 immutable 且不提权、无表访问（用无表权限的对照角色调用成功作证明）、anon/authenticated 不可执行 |
+| `database/80_create_order.test.sql` | 下单服务端函数：参数无金额/用户入口、只授权已登录身份、客户端对订单与明细仍不可写、金额重算（单价=基础价+加价，总额=小计+包装费）、规格选择严格校验与快照、订单号 18 位、门店快照与推进时刻取自配置、非法输入整单拒绝不落数据、幂等重放、门店唯一性 |
 
 说明：
 
 - 测试自带数据（事务内清空目录表再插入样例，结束回滚），不依赖种子，也不依赖手工准备的数据——`supabase db reset --no-seed` 后直接跑同样通过。
-- 模拟身份只用角色切换（`set local role anon` / `authenticated`），不含 JWT claim 注入；需要按用户身份断言的测试（Epic 5）届时以实现时的官方文档为准。
+- 模拟身份用角色切换（`set local role anon` / `authenticated`）加 `request.jwt.claims` 注入（Story 3.3 起按用户身份断言）；注入写法本身是实现细节、不写入契约，契约是测试结果（AD-19）。
 - 断言描述都带对象名，失败时输出形如 `# Failed test 1: "未认证不能写入 categories"`，可定位到具体策略或对象。
