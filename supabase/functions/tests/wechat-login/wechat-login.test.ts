@@ -6,6 +6,7 @@
 import assert from "node:assert/strict";
 import {
   handleRequest,
+  type LoginFailureLog,
   type WechatLoginDeps,
 } from "../../wechat-login/handler.ts";
 import type { LoginSession } from "../../wechat-login/session.ts";
@@ -100,6 +101,26 @@ function postRequest(body: string): Request {
   });
 }
 
+/** 断言恰好一条失败日志：类别、状态、阶段、请求标识齐备，且不泄露 AppSecret */
+function assertFailureLog(
+  logs: LoginFailureLog[],
+  expected: { code: string; status: number; stage: string },
+  requestId: string | null,
+): void {
+  assert.equal(logs.length, 1, "失败应恰好记一条日志");
+  const [record] = logs;
+  assert.equal(record.event, "wechat_login_failed");
+  assert.equal(record.code, expected.code);
+  assert.equal(record.status, expected.status);
+  assert.equal(record.stage, expected.stage);
+  assert.ok(record.requestId !== "", "日志应带请求标识");
+  assert.equal(record.requestId, requestId, "日志请求标识与响应头一致");
+  assert.ok(
+    !JSON.stringify(record).includes(APP_SECRET),
+    "日志不得出现 AppSecret",
+  );
+}
+
 async function callLogin(
   body: unknown,
   plan?: FakePlan,
@@ -109,12 +130,14 @@ async function callLogin(
   const { fetchFn, calls } = fakeFetch(plan);
   const identity = fakeIdentity(identityPlan);
   const session = fakeSession(sessionPlan);
+  const logs: LoginFailureLog[] = [];
   const deps: WechatLoginDeps = {
     appId: APP_ID,
     appSecret: APP_SECRET,
     fetchFn,
     resolveIdentity: identity.resolveIdentity,
     issueSession: session.issueSession,
+    log: (record) => logs.push(record),
   };
   const request = postRequest(
     typeof body === "string" ? body : JSON.stringify(body),
@@ -124,6 +147,8 @@ async function callLogin(
   return {
     status: response.status,
     payload,
+    requestId: response.headers.get("x-request-id"),
+    logs,
     calls,
     identityCalls: identity.calls,
     sessionCalls: session.calls,
@@ -131,18 +156,24 @@ async function callLogin(
 }
 
 Deno.test("成功：返回平台会话（两凭证 + 过期信息 + 主体），openid 与内部细节不外泄", async () => {
-  const { status, payload, identityCalls, sessionCalls } = await callLogin(
-    { code: "code-ok" },
-    {
-      payload: {
-        openid: "openid-1",
-        session_key: "must-not-leak",
-        unionid: "union-1",
+  const { status, payload, requestId, logs, identityCalls, sessionCalls } =
+    await callLogin(
+      { code: "code-ok" },
+      {
+        payload: {
+          openid: "openid-1",
+          session_key: "must-not-leak",
+          unionid: "union-1",
+        },
       },
-    },
-  );
+    );
   assert.equal(status, 200);
   assert.deepEqual(payload, sessionFor("user-1"));
+  assert.equal(logs.length, 0, "成功不记失败日志");
+  assert.ok(
+    typeof requestId === "string" && requestId !== "",
+    "成功响应也带请求标识",
+  );
   assert.deepEqual(identityCalls, ["openid-1"]);
   assert.deepEqual(sessionCalls, [{
     userId: "user-1",
@@ -190,13 +221,19 @@ const wechatErrcodeCases: Array<{
 
 for (const { errcode, expectedCode, expectedStatus } of wechatErrcodeCases) {
   Deno.test(`微信错误码 ${errcode} → ${expectedCode}（HTTP ${expectedStatus}）`, async () => {
-    const { status, payload, identityCalls, sessionCalls } = await callLogin(
-      { code: "code-ok" },
-      { payload: { errcode, errmsg: "wechat says no" } },
-    );
+    const { status, payload, requestId, logs, identityCalls, sessionCalls } =
+      await callLogin(
+        { code: "code-ok" },
+        { payload: { errcode, errmsg: "wechat says no" } },
+      );
     assert.equal(status, expectedStatus);
     assert.equal(payload.code, expectedCode);
     assert.equal(typeof payload.message, "string");
+    assertFailureLog(
+      logs,
+      { code: expectedCode, status: expectedStatus, stage: "wechat" },
+      requestId,
+    );
     assert.ok(
       !JSON.stringify(payload).includes(APP_SECRET),
       "响应体不得出现 AppSecret",
@@ -233,7 +270,7 @@ Deno.test("微信返回 HTTP 5xx → wechat_unavailable（503）", async () => {
 });
 
 Deno.test("身份解析失败 → identity_failed（500），且不泄露内部细节", async () => {
-  const { status, payload, sessionCalls } = await callLogin(
+  const { status, payload, requestId, logs, sessionCalls } = await callLogin(
     { code: "code-ok" },
     { payload: { openid: "openid-1" } },
     { throws: true },
@@ -241,6 +278,11 @@ Deno.test("身份解析失败 → identity_failed（500），且不泄露内部�
   assert.equal(status, 500);
   assert.equal(payload.code, "identity_failed");
   assert.equal(typeof payload.message, "string");
+  assertFailureLog(
+    logs,
+    { code: "identity_failed", status: 500, stage: "identity" },
+    requestId,
+  );
   assert.ok(
     !JSON.stringify(payload).includes("internal-db-detail"),
     "响应体不得出现内部错误细节",
@@ -249,7 +291,7 @@ Deno.test("身份解析失败 → identity_failed（500），且不泄露内部�
 });
 
 Deno.test("会话签发失败 → session_failed（500），且不泄露内部细节", async () => {
-  const { status, payload, sessionCalls } = await callLogin(
+  const { status, payload, requestId, logs, sessionCalls } = await callLogin(
     { code: "code-ok" },
     { payload: { openid: "openid-1" } },
     {},
@@ -259,6 +301,11 @@ Deno.test("会话签发失败 → session_failed（500），且不泄露内部�
   assert.equal(payload.code, "session_failed");
   assert.equal(typeof payload.message, "string");
   assert.equal(sessionCalls.length, 1, "身份确定后应尝试签发会话");
+  assertFailureLog(
+    logs,
+    { code: "session_failed", status: 500, stage: "session" },
+    requestId,
+  );
   assert.ok(
     !JSON.stringify(payload).includes("internal-session-detail"),
     "响应体不得出现内部错误细节",
@@ -270,11 +317,16 @@ Deno.test("入参不合法 → invalid_request（400），且不调用微信、�
     code: 123,
   }, []];
   for (const body of bodies) {
-    const { status, payload, calls, identityCalls, sessionCalls } =
+    const { status, payload, requestId, logs, calls, identityCalls, sessionCalls } =
       await callLogin(body);
     const label = `body=${JSON.stringify(body)}`;
     assert.equal(status, 400, label);
     assert.equal(payload.code, "invalid_request", label);
+    assertFailureLog(
+      logs,
+      { code: "invalid_request", status: 400, stage: "request" },
+      requestId,
+    );
     assert.equal(calls.length, 0, `${label}：入参不合法时不应调用微信`);
     assert.equal(identityCalls.length, 0, `${label}：入参不合法时不应解析身份`);
     assert.equal(sessionCalls.length, 0, `${label}：入参不合法时不应签发会话`);
@@ -285,6 +337,7 @@ Deno.test("非 POST → 405 invalid_request", async () => {
   const { fetchFn } = fakeFetch();
   const { resolveIdentity } = fakeIdentity();
   const { issueSession } = fakeSession();
+  const logs: LoginFailureLog[] = [];
   const request = new Request(FUNCTION_URL, { method: "GET" });
   const response = await handleRequest(request, {
     appId: APP_ID,
@@ -292,15 +345,22 @@ Deno.test("非 POST → 405 invalid_request", async () => {
     fetchFn,
     resolveIdentity,
     issueSession,
+    log: (record) => logs.push(record),
   });
   assert.equal(response.status, 405);
   assert.equal((await response.json()).code, "invalid_request");
+  assertFailureLog(
+    logs,
+    { code: "invalid_request", status: 405, stage: "request" },
+    response.headers.get("x-request-id"),
+  );
 });
 
 Deno.test("服务端缺配置 → 500 unknown，且不调用微信", async () => {
   const { fetchFn, calls } = fakeFetch();
   const { resolveIdentity } = fakeIdentity();
   const { issueSession } = fakeSession();
+  const logs: LoginFailureLog[] = [];
   const response = await handleRequest(
     postRequest(JSON.stringify({ code: "code-ok" })),
     {
@@ -309,10 +369,16 @@ Deno.test("服务端缺配置 → 500 unknown，且不调用微信", async () =>
       fetchFn,
       resolveIdentity,
       issueSession,
+      log: (record) => logs.push(record),
     },
   );
   assert.equal(response.status, 500);
   const payload = await response.json();
   assert.equal(payload.code, "unknown");
+  assertFailureLog(
+    logs,
+    { code: "unknown", status: 500, stage: "config" },
+    response.headers.get("x-request-id"),
+  );
   assert.equal(calls.length, 0);
 });

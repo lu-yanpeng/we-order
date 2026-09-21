@@ -77,6 +77,32 @@ Content-Type: application/json
 失败不留下半登录状态：身份映射与平台用户要么已建立、要么没有；重试会复用同一身份。
 错误响应不含 AppSecret、服务端密钥、堆栈或数据库细节。
 
+## 请求标识与日志（NFR3、Story 2.6）
+
+- 每个请求生成请求标识（UUID），所有响应（含成功）随响应头 `x-request-id` 返回；
+  客户端把它挂在 `AuthError.requestId` 上，失败提示可带上它用于对账。
+- 每个非 2xx 输出一行结构化日志（只含类别与请求标识，不含密钥、堆栈、数据库细节）：
+
+  ```json
+  {"event":"wechat_login_failed","requestId":"...","code":"rate_limited","status":429,"stage":"wechat"}
+  ```
+
+  `stage` 取 `request` / `config` / `wechat` / `identity` / `session`，用于定位失败发生在哪一步。
+- 本地查看：`docker logs -f supabase_edge_runtime_we-order`；云端在平台日志面板看同一形状的记录。
+- 覆盖范围：只有**请求到达服务端之后**的失败才有记录（换取失败、身份失败、会话失败）；
+  客户端发不出请求（`network_unreachable`）时服务端什么也收不到，不会有记录。
+- 手动验证一条真实记录（本地栈在跑）：
+
+  ```bash
+  curl -i -X POST http://127.0.0.1:54321/functions/v1/wechat-login \
+    -H 'Content-Type: application/json' -d '{"code":"verify-invalid-code"}'
+  # → 400 {"code":"invalid_code",...}，响应头 x-request-id: <uuid>
+  docker logs --tail 20 supabase_edge_runtime_we-order | grep wechat_login_failed
+  # → {"event":"wechat_login_failed","requestId":"<同一个 uuid>","code":"invalid_code","status":400,"stage":"wechat"}
+  ```
+
+  注意：`supabase stop` / `start` 会重建容器，旧日志随容器消失，验证要在同一次启动内完成。
+
 并发说明：同一身份的两个登录同时进行时，平台会让后生成的一次性令牌作废先生成的，
 先发请求可能得到一次可重试的 `session_failed`。这是平台的有意设计，服务端不做重试，
 客户端重试即可。

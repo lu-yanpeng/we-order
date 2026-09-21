@@ -11,7 +11,8 @@ import { supabaseRequest } from './http'
 import { ensureSession } from './session'
 
 export { AuthError } from './http'
-export type { AuthErrorCode } from './http'
+export { authErrorMessage } from './errors'
+export type { LoginErrorCode } from './errors'
 
 /** 会话主体（平台用户）；只含 id，平台完整 user 对象不外传 */
 export type SessionUser = { id: string }

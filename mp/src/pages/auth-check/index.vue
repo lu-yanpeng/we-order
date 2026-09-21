@@ -1,13 +1,14 @@
 <script setup lang="ts">
 /**
- * 身份链路验证页（Story 2.4 / 2.5 的临时入口，Phase 2 结束后整个目录删除）
+ * 身份链路验证页（Story 2.4 / 2.5 / 2.6 的临时入口，Phase 2 结束后整个目录删除）
  *
  * 页面只做编排与展示：调用与状态在 useAuthCheck，登录链路与会话在 api/auth。
  * 本页是 Phase 2 的客户端验证入口，全部验证都在这里完成。
  */
 import { useAuthCheck } from './composables/use-auth-check'
 
-const { verifying, verifyingConcurrent, results, verify, verifyConcurrent } = useAuthCheck()
+const { verifying, verifyingConcurrent, results, verify, verifyConcurrent, selfCheck } =
+  useAuthCheck()
 </script>
 
 <template>
@@ -15,7 +16,8 @@ const { verifying, verifyingConcurrent, results, verify, verifyConcurrent } = us
     <view class="flex flex-col gap-[8rpx]">
       <text class="font-semibold text-[32rpx] text-ink">身份链路验证（临时页面）</text>
       <text class="text-[22rpx] text-ink-soft">
-        验证静默登录、会话恢复、透明续期、单飞与回退重登；步骤见 mp/src/api/auth/README.md。
+        验证静默登录、会话恢复、透明续期、单飞、回退重登与失败文案；步骤见
+        mp/src/api/auth/README.md。
       </text>
     </view>
 
@@ -24,6 +26,7 @@ const { verifying, verifyingConcurrent, results, verify, verifyConcurrent } = us
       <t-button block :loading="verifyingConcurrent" @click="verifyConcurrent">
         并发验证 ×3
       </t-button>
+      <t-button block @click="selfCheck"> 三类失败文案自检 </t-button>
     </view>
 
     <scroll-view

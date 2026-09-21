@@ -29,5 +29,7 @@ Deno.serve((req) =>
     fetchFn: fetch,
     resolveIdentity: (openid) => resolveWechatIdentity(openid, serviceClient),
     issueSession,
+    // 关键失败日志：类别 + 请求标识；不含密钥、堆栈或数据库细节（NFR3、Story 2.6）
+    log: (record) => console.error(JSON.stringify(record)),
   })
 );
