@@ -1,15 +1,16 @@
--- 推进机制与取杯号分配（Story 4.1；FR-P2-11；AD-6、AD-7、AD-10、AD-13、AD-21）
+-- 推进机制（Story 4.1/4.2）与取杯号的「下单时分配、一经分配不可变」（Story 4.4；FR-P2-11；AD-6、AD-7、AD-10、AD-13、AD-21）
 -- 分工（避免重复）：
+--   * 下单时的发号（取号与建单同一条 INSERT、发号日期、计数器）在 80_create_order.test.sql 断言；
 --   * orders / order_items 的基础结构与客户端写路径封闭在 60_orders.test.sql；
---   * 非法迁移的跨故事收口与并发行为在 Story 4.5：真并发单连接测不了，
---     按 FR-P2-19 以「实现方式说明 + 人工验证记录」作证据。
+--   * 非法迁移的跨故事收口与并发行为在 Story 4.6：真并发单连接测不了，
+--     按 FR-P2-19 以「实现方式说明 + 人工验证记录」作证据（scripts/verify-pickup-codes.ts）。
 -- 自带数据（事务内清空订单、门店与取杯号计数器后插入样例），结束回滚；不依赖种子。
 -- 断言描述都带对象名，失败时输出形如 "# Failed test 1: ..."，可定位到具体函数或约束。
 begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(67);
+select plan(69);
 
 -- ── 测试数据：两个门店、两个用户 ─────────────────────────────────────────────
 
@@ -31,6 +32,7 @@ values
    'authenticated', 'authenticated', 'advance-b@wechat.local', now());
 
 -- 引擎测试（user A / 门店 A）：两张待迁移 + 一张已待取餐（不该被推进改动）
+-- Story 4.4 起订单在下单时已带号：这里的号由样例直接写入，推进不读也不写它。
 insert into public.orders (
   order_number, user_id, store_id, store_name, store_address, store_phone,
   status, dining_mode, packaging_fee, total_amount, idempotency_key,
@@ -38,10 +40,10 @@ insert into public.orders (
 values
   ('202609030900000001', '00000000-0000-4000-8000-000000000b11', '00000000-0000-4000-8000-000000000a01',
    '推进测试门店', '测试地址 A', '000-00000001',
-   'cooking', 'takeout', 2.00, 32.00, 'engine-1', null, null, now() - interval '10 minutes', null),
+   'cooking', 'takeout', 2.00, 32.00, 'engine-1', 'C-0001', '2026-09-01', now() - interval '10 minutes', null),
   ('202609030900000002', '00000000-0000-4000-8000-000000000b11', '00000000-0000-4000-8000-000000000a01',
    '推进测试门店', '测试地址 A', '000-00000001',
-   'cooking', 'takeout', 2.00, 32.00, 'engine-2', null, null, now() - interval '10 minutes', null),
+   'cooking', 'takeout', 2.00, 32.00, 'engine-2', 'C-0002', '2026-09-01', now() - interval '10 minutes', null),
   ('202609030900000003', '00000000-0000-4000-8000-000000000b11', '00000000-0000-4000-8000-000000000a01',
    '推进测试门店', '测试地址 A', '000-00000001',
    'pickup', 'takeout', 2.00, 32.00, 'engine-3', 'A-0007',
@@ -55,20 +57,24 @@ insert into public.orders (
 values
   ('202609030900000011', '00000000-0000-4000-8000-000000000b11', '00000000-0000-4000-8000-000000000a01',
    '推进测试门店', '测试地址 A', '000-00000001',
-   'cooking', 'takeout', 2.00, 32.00, 'advance-a1', null, null, now() - interval '2 seconds', null),
+   'cooking', 'takeout', 2.00, 32.00, 'advance-a1', 'D-0001',
+   (now() at time zone 'Asia/Shanghai')::date, now() - interval '2 seconds', null),
   ('202609030900000012', '00000000-0000-4000-8000-000000000b11', '00000000-0000-4000-8000-000000000a01',
    '推进测试门店', '测试地址 A', '000-00000001',
-   'cooking', 'takeout', 2.00, 32.00, 'advance-a2', null, null, now() - interval '1 second', null),
+   'cooking', 'takeout', 2.00, 32.00, 'advance-a2', 'D-0002',
+   (now() at time zone 'Asia/Shanghai')::date, now() - interval '1 second', null),
   ('202609030900000013', '00000000-0000-4000-8000-000000000b11', '00000000-0000-4000-8000-000000000a01',
    '推进测试门店', '测试地址 A', '000-00000001',
-   'cooking', 'takeout', 2.00, 32.00, 'advance-a3', null, null, now() + interval '1 hour', null),
+   'cooking', 'takeout', 2.00, 32.00, 'advance-a3', 'D-0003',
+   (now() at time zone 'Asia/Shanghai')::date, now() + interval '1 hour', null),
   ('202609030900000014', '00000000-0000-4000-8000-000000000b11', '00000000-0000-4000-8000-000000000a01',
    '推进测试门店', '测试地址 A', '000-00000001',
    'pickup', 'takeout', 2.00, 32.00, 'advance-a4', 'A-0009',
    (now() at time zone 'Asia/Shanghai')::date, now() - interval '10 minutes', null),
   ('202609030900000015', '00000000-0000-4000-8000-000000000b12', '00000000-0000-4000-8000-000000000a02',
    '第二门店', '测试地址 B', '000-00000002',
-   'cooking', 'takeout', 2.00, 32.00, 'advance-b1', null, null, now() - interval '1 second', null);
+   'cooking', 'takeout', 2.00, 32.00, 'advance-b1', 'E-0001',
+   (now() at time zone 'Asia/Shanghai')::date, now() - interval '1 second', null);
 
 -- ── 结构：唯一域由列与约束表达（AD-7）───────────────────────────────────────
 
@@ -83,6 +89,14 @@ select is(
     where conrelid = 'public.orders'::regclass and conname = 'orders_pickup_code_unique'),
   'UNIQUE (store_id, pickup_code_date, pickup_code)',
   '取杯号唯一域是「门店 + 发号日期 + 取杯号」'
+);
+select is(
+  (select array_agg(attname::text order by attname) from pg_attribute
+    where attrelid = 'public.orders'::regclass
+      and attname in ('pickup_code', 'pickup_code_date')
+      and attnotnull),
+  array['pickup_code', 'pickup_code_date'],
+  '取杯号与发号日期恒有值：两列都是 NOT NULL（Story 4.4）'
 );
 select is(
   (select array_agg(column_name::text order by column_name) from information_schema.columns
@@ -130,25 +144,25 @@ select ok(
 select ok(
   not has_function_privilege('anon', 'public.pickup_code_from_counter(integer)', 'EXECUTE')
   and not has_function_privilege('anon', 'public.allocate_pickup_code(uuid, date)', 'EXECUTE')
-  and not has_function_privilege('anon', 'public.transition_order(uuid, public.order_status, public.order_status, text, date, uuid)', 'EXECUTE')
+  and not has_function_privilege('anon', 'public.transition_order(uuid, public.order_status, public.order_status, uuid)', 'EXECUTE')
   and not has_function_privilege('anon', 'public.advance_due_orders(uuid)', 'EXECUTE')
   and not has_function_privilege('authenticated', 'public.pickup_code_from_counter(integer)', 'EXECUTE')
   and not has_function_privilege('authenticated', 'public.allocate_pickup_code(uuid, date)', 'EXECUTE')
-  and not has_function_privilege('authenticated', 'public.transition_order(uuid, public.order_status, public.order_status, text, date, uuid)', 'EXECUTE')
+  and not has_function_privilege('authenticated', 'public.transition_order(uuid, public.order_status, public.order_status, uuid)', 'EXECUTE')
   and not has_function_privilege('authenticated', 'public.advance_due_orders(uuid)', 'EXECUTE'),
   '推进机制对客户端不暴露：四个函数都不可被 anon/authenticated 执行'
 );
 select ok(
   (select bool_and(prosecdef) from pg_proc
     where oid in ('public.allocate_pickup_code(uuid, date)'::regprocedure,
-                  'public.transition_order(uuid, public.order_status, public.order_status, text, date, uuid)'::regprocedure,
+                  'public.transition_order(uuid, public.order_status, public.order_status, uuid)'::regprocedure,
                   'public.advance_due_orders(uuid)'::regprocedure)),
   '三个表访问函数都是 security definer'
 );
 select ok(
   (select bool_and('search_path=""' = any(coalesce(proconfig, '{}'))) from pg_proc
     where oid in ('public.allocate_pickup_code(uuid, date)'::regprocedure,
-                  'public.transition_order(uuid, public.order_status, public.order_status, text, date, uuid)'::regprocedure,
+                  'public.transition_order(uuid, public.order_status, public.order_status, uuid)'::regprocedure,
                   'public.advance_due_orders(uuid)'::regprocedure)),
   '三个表访问函数都使用空 search_path'
 );
@@ -277,8 +291,8 @@ select throws_ok(
        ('202609030900000025', '00000000-0000-4000-8000-000000000b11', '00000000-0000-4000-8000-000000000a01',
         '推进测试门店', '测试地址 A', '000-00000001',
         'pickup', 'takeout', 2.00, 32.00, 'uniq-5', 'B-0002', now()) $$,
-  '23514', null,
-  '取杯号必须与发号日期成对出现：有号无日期被拒'
+  '23502', null,
+  '有号无日期被拒：发号日期必填（Story 4.4）'
 );
 select throws_ok(
   $$ insert into public.orders (
@@ -289,16 +303,16 @@ select throws_ok(
        ('202609030900000026', '00000000-0000-4000-8000-000000000b11', '00000000-0000-4000-8000-000000000a01',
         '推进测试门店', '测试地址 A', '000-00000001',
         'pickup', 'takeout', 2.00, 32.00, 'uniq-6', '2026-01-01', now()) $$,
-  '23514', null,
-  '取杯号必须与发号日期成对出现：有日期无号被拒'
+  '23502', null,
+  '有日期无号被拒：取杯号必填（Story 4.4）'
 );
 
--- ── 迁移引擎：唯一写 status 的实现（AD-6）──────────────────────────────────
+-- ── 迁移引擎：唯一写 status 的实现，不携带发号参数（AD-6、AD-7）────────────
 
 select lives_ok(
   $$ select public.transition_order(
        (select id from public.orders where order_number = '202609030900000001'),
-       'cooking', 'pickup', 'A-0001', '2026-09-01') $$,
+       'cooking', 'pickup') $$,
   'transition_order 执行 cooking→pickup'
 );
 select ok(
@@ -309,20 +323,20 @@ select ok(
 select is(
   (select pickup_code || '/' || pickup_code_date::text
      from public.orders where order_number = '202609030900000001'),
-  'A-0001/2026-09-01',
-  '取杯号与发号日期在同一条 UPDATE 写入（不出现「待取餐无号」）'
+  'C-0001/2026-09-01',
+  '推进不改写取杯号与发号日期：号在下单时已定死（Story 4.4）'
 );
 select is(
   (select (public.transition_order(
       (select id from public.orders where order_number = '202609030900000001'),
-      'cooking', 'pickup', 'A-0099', '2026-09-02')).id),
+      'cooking', 'pickup')).id),
   null,
   '重复执行同一迁移返回空值：状态谓词不匹配'
 );
 select is(
   (select pickup_code from public.orders where order_number = '202609030900000001'),
-  'A-0001',
-  '重复执行不产生第二个取杯号'
+  'C-0001',
+  '重复执行不改写取杯号'
 );
 
 select lives_ok(
@@ -339,7 +353,7 @@ select ok(
 select is(
   (select pickup_code || '/' || pickup_code_date::text
      from public.orders where order_number = '202609030900000001'),
-  'A-0001/2026-09-01',
+  'C-0001/2026-09-01',
   '完成迁移不改写取杯号与发号日期'
 );
 
@@ -363,14 +377,14 @@ select is(
 select is(
   (select (public.transition_order(
       (select id from public.orders where order_number = '202609030900000003'),
-      'cooking', 'pickup', 'A-0099', '2026-09-02')).id),
+      'cooking', 'pickup')).id),
   null,
   '对已处于待取餐的订单执行推进：返回空值、不改状态'
 );
 select is(
   (select pickup_code from public.orders where order_number = '202609030900000003'),
   'A-0007',
-  '状态不匹配时不产生第二个取杯号'
+  '状态不匹配时不改写取杯号'
 );
 
 select throws_ok(
@@ -403,7 +417,7 @@ select is(
 select is(
   (select (public.transition_order(
       (select id from public.orders where order_number = '202609030900000002'),
-      'cooking', 'pickup', 'A-0002', '2026-09-01',
+      'cooking', 'pickup',
       p_user_id => '00000000-0000-4000-8000-000000000b12')).id),
   null,
   '归属谓词：非本人不能推进（返回空值，不泄露差异）'
@@ -411,40 +425,35 @@ select is(
 select is(
   (select (public.transition_order(
       (select id from public.orders where order_number = '202609030900000002'),
-      'cooking', 'pickup', 'A-0002', '2026-09-01',
+      'cooking', 'pickup',
       p_user_id => '00000000-0000-4000-8000-000000000b11')).status::text),
   'pickup',
   '归属谓词：本人可以推进'
 );
 select is(
   (select pickup_code from public.orders where order_number = '202609030900000002'),
-  'A-0002',
-  '归属匹配时取杯号与状态一起写入'
+  'C-0002',
+  '归属匹配时状态迁移仍不改写取杯号'
 );
 
 select is(
   (select proargnames::text from pg_proc
-    where oid = 'public.transition_order(uuid, public.order_status, public.order_status, text, date, uuid)'::regprocedure),
-  '{p_order_id,p_from,p_to,p_pickup_code,p_pickup_code_date,p_user_id}',
-  'transition_order 的参数形状固定（p_user_id 供确认取杯的归属校验）'
+    where oid = 'public.transition_order(uuid, public.order_status, public.order_status, uuid)'::regprocedure),
+  '{p_order_id,p_from,p_to,p_user_id}',
+  'transition_order 的参数形状固定：没有发号参数（p_user_id 供确认取杯的归属校验）'
+);
+select ok(
+  (select prosrc not ilike '%pickup_code%' from pg_proc
+    where oid = 'public.transition_order(uuid, public.order_status, public.order_status, uuid)'::regprocedure),
+  'transition_order 源码不含取杯号：结构上不可能改号（Story 4.4）'
 );
 
--- ── 推进入口：作用域、顺序、幂等（AD-6）────────────────────────────────────
+-- ── 推进入口：作用域、幂等，以及「推进不发号、不改号」（AD-6、AD-7）──────────
 
 select is(
   public.advance_due_orders('00000000-0000-4000-8000-000000000b11'),
   2,
   '读时推进：只推进该用户的到点订单，返回实际推进条数'
-);
-select is(
-  (select pickup_code from public.orders where order_number = '202609030900000011'),
-  'A-0001',
-  '先到点的订单先发号（按 ready_at 顺序）'
-);
-select is(
-  (select pickup_code from public.orders where order_number = '202609030900000012'),
-  'A-0002',
-  '到点订单依次取号，同日不重号'
 );
 select ok(
   (select status = 'pickup' and completed_at is null
@@ -452,12 +461,13 @@ select ok(
   '到点订单推进为待取餐、完成时间为空'
 );
 select is(
-  (select pickup_code_date from public.orders where order_number = '202609030900000011'),
-  (now() at time zone 'Asia/Shanghai')::date,
-  '发号日期取门店本地自然日（AD-10）'
+  (select pickup_code || '/' || pickup_code_date::text
+     from public.orders where order_number = '202609030900000011'),
+  'D-0001/' || (now() at time zone 'Asia/Shanghai')::date::text,
+  '推进不改写「下单时写入的号与发号日期」（Story 4.4）'
 );
 select ok(
-  (select status = 'cooking' and pickup_code is null
+  (select status = 'cooking' and pickup_code = 'D-0003'
      from public.orders where order_number = '202609030900000013'),
   '未到点订单不被推进：状态与取杯号都不变'
 );
@@ -472,11 +482,11 @@ select is(
   '作用域：其他用户的到点订单不在本次调用内'
 );
 select is(
-  (select counter from public.pickup_code_counters
+  (select count(*)::int from public.pickup_code_counters
     where store_id = '00000000-0000-4000-8000-000000000a01'
       and local_date = (now() at time zone 'Asia/Shanghai')::date),
-  2,
-  '推进消耗的正是「门店 + 当日」这一个计数器'
+  0,
+  '推进不消耗计数器：发号不再是推进的职责（Story 4.4）'
 );
 select is(
   public.advance_due_orders(),
@@ -484,16 +494,16 @@ select is(
   '兜底推进（不传用户）作用于全部到点订单'
 );
 select ok(
-  (select status = 'pickup' and pickup_code = 'A-0001'
+  (select status = 'pickup' and pickup_code = 'E-0001'
       and pickup_code_date = (now() at time zone 'Asia/Shanghai')::date
      from public.orders where order_number = '202609030900000015'),
-  '第二门店的当日计数独立，从 A-0001 开始'
+  '推进后状态变化，取杯号仍是下单时写入的 E-0001'
 );
 select is(public.advance_due_orders(), 0, '重复执行兜底推进：没有可推进的订单，返回 0');
 select is(
   (select pickup_code from public.orders where order_number = '202609030900000011'),
-  'A-0001',
-  '重复推进不产生第二个取杯号（幂等、可重跑）'
+  'D-0001',
+  '重复推进不改写取杯号（幂等、可重跑）'
 );
 select ok(
   (select prosrc not ilike '%interval%' from pg_proc
@@ -519,6 +529,21 @@ select is(
       and p.prosrc ilike '%set status%'),
   array['transition_order'],
   'orders.status 的写入仍只存在于 transition_order 一处（AD-6）'
+);
+select is(
+  (select array_agg(p.proname::text order by p.proname)
+     from pg_proc p
+     join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.prokind = 'f'
+      and p.prosrc ilike '%allocate_pickup_code%'),
+  array['create_order'],
+  '发号调用只存在于下单函数一处：推进不再发号（Story 4.4、AD-7）'
+);
+select ok(
+  (select prosrc not ilike '%pickup_code%' from pg_proc
+    where oid = 'public.advance_due_orders(uuid)'::regprocedure),
+  'advance_due_orders 源码不含取杯号：推进只做状态迁移（Story 4.4）'
 );
 
 select * from finish();

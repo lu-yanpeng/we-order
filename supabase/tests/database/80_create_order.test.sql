@@ -27,7 +27,7 @@ as $$
 $$;
 grant execute on function public.test_spec_items() to authenticated;
 
-select plan(89);
+select plan(93);
 
 -- ── 函数属性与权限：唯一写入口，参数无金额/用户入口 ─────────────────────────
 
@@ -294,10 +294,10 @@ select matches(
   '^[0-9]{18}$',
   '订单号是 18 位纯数字（门店本地时间 + 随机尾号，FR-P2-9）'
 );
-select is(
+select matches(
   (select public.create_order(public.test_spec_items(), 'takeout', '少冰', 'key-specs')->>'pickup_code'),
-  null,
-  '新订单的取杯号为空值而不是空串'
+  '^[A-Z]-[0-9]{4}$',
+  '新订单在下单时即取得取杯号：外形为字母前缀 + 四位数字（Story 4.4）'
 );
 select is(
   (select public.create_order(public.test_spec_items(), 'takeout', '少冰', 'key-specs')->>'total_amount'),
@@ -344,11 +344,30 @@ select is(
   'cooking',
   '新订单落库状态为 cooking'
 );
-select is(
-  (select pickup_code from public.orders),
-  null,
-  '新订单落库取杯号为空值'
+select matches(
+  (select pickup_code from public.orders where idempotency_key = 'key-specs'),
+  '^[A-Z]-[0-9]{4}$',
+  '新订单落库即带取杯号（下单即发号，Story 4.4）'
 );
+select is(
+  (select pickup_code_date from public.orders where idempotency_key = 'key-specs'),
+  (now() at time zone 'Asia/Shanghai')::date,
+  '发号日期取下单时刻的门店本地自然日（AD-10）'
+);
+
+-- 计数器是内部表（客户端不可读）：以下读操作以库所有者身份执行
+reset role;
+
+select is(
+  (select counter from public.pickup_code_counters
+    where store_id = '00000000-0000-4000-8000-00000000e001'
+      and local_date = (now() at time zone 'Asia/Shanghai')::date),
+  1,
+  '下单消耗「门店 + 当日」计数器一次：取号与建单在同一条 INSERT 内'
+);
+
+set local role authenticated;
+
 select is(
   (select notes from public.orders),
   '少冰',
@@ -490,10 +509,24 @@ select is(
   2,
   '不同幂等键产生两张订单'
 );
+select isnt(
+  (select pickup_code from public.orders where idempotency_key = 'key-specs'),
+  (select pickup_code from public.orders where idempotency_key = 'key-plain'),
+  '同一自然日内的两张订单取杯号不同（计数器依次发号，不重号）'
+);
+
+-- 计数器是内部表（客户端不可读）：以库所有者身份读
+reset role;
+
+select is(
+  (select counter from public.pickup_code_counters
+    where store_id = '00000000-0000-4000-8000-00000000e001'
+      and local_date = (now() at time zone 'Asia/Shanghai')::date),
+  2,
+  '计数器记录当日已发出的序号数'
+);
 
 -- ── 快照隔离：商品改名改价不影响历史订单（AD-9） ─────────────────────────────
-
-reset role;
 
 update public.products set name = '改名后的拿铁', price = 1.00
  where id = '00000000-0000-4000-8000-00000000e031';

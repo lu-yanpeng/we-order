@@ -5,7 +5,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(52);
+select plan(53);
 
 -- ── 结构：RLS 与策略 ───────────────────────────────────────────────────────
 
@@ -47,6 +47,14 @@ select is(
         'order_number', 'packaging_fee', 'pickup_code', 'pickup_code_date', 'ready_at', 'status',
         'store_address', 'store_id', 'store_name', 'store_phone', 'total_amount', 'user_id'],
   'orders 的列集合固定：归属、门店快照、金额、幂等标识与时间戳'
+);
+select is(
+  (select array_agg(attname::text order by attname) from pg_attribute
+    where attrelid = 'public.orders'::regclass
+      and attname in ('pickup_code', 'pickup_code_date')
+      and attnotnull),
+  array['pickup_code', 'pickup_code_date'],
+  '取杯号与发号日期都是 NOT NULL：不存在「有单无号」的中间态（Story 4.4）'
 );
 select is(
   (select array_agg(column_name::text order by column_name) from information_schema.columns
@@ -132,11 +140,12 @@ values ('00000000-0000-4000-8000-000000000f22', '00000000-0000-4000-8000-0000000
 select lives_ok(
   $$ insert into public.orders
        (order_number, user_id, store_id, store_name, store_address, store_phone,
-        dining_mode, packaging_fee, total_amount, idempotency_key, ready_at)
+        dining_mode, packaging_fee, total_amount, idempotency_key,
+        pickup_code, pickup_code_date, ready_at)
      values
        ('202609010900000001', '00000000-0000-4000-8000-000000000f11', '00000000-0000-4000-8000-000000000f01',
         '测试门店', '测试地址 1 号', '000-00000000',
-        'takeout', 2.00, 44.00, 'key-1', now()) $$,
+        'takeout', 2.00, 44.00, 'key-1', 'A-0001', '2026-09-01', now()) $$,
   '下层服务端函数可写入的订单形状：合法行写入成功'
 );
 select is(
@@ -146,8 +155,8 @@ select is(
 );
 select is(
   (select pickup_code from public.orders where order_number = '202609010900000001'),
-  null::text,
-  '未进入待取餐时取杯号为空值而不是空串'
+  'A-0001',
+  '制作中的订单也携带取杯号：发号在下单时完成（Story 4.4）'
 );
 select is(
   (select notes from public.orders where order_number = '202609010900000001'),
@@ -167,22 +176,23 @@ select lives_ok(
 select lives_ok(
   $$ insert into public.orders
        (order_number, user_id, store_id, store_name, store_address, store_phone,
-        dining_mode, packaging_fee, total_amount, notes, idempotency_key, ready_at)
+        dining_mode, packaging_fee, total_amount, notes, idempotency_key,
+        pickup_code, pickup_code_date, ready_at)
      values
        ('202609010900000003', '00000000-0000-4000-8000-000000000f12', '00000000-0000-4000-8000-000000000f01',
         '测试门店', '测试地址 1 号', '000-00000000',
-        'takeout', 2.00, 32.00, '不要糖', 'key-1', now()) $$,
+        'takeout', 2.00, 32.00, '不要糖', 'key-1', 'A-0003', '2026-09-01', now()) $$,
   '幂等标识按用户区分：其他用户可用同一标识'
 );
 select throws_ok(
   $$ insert into public.orders
        (order_number, user_id, store_id, store_name, store_address, store_phone,
-        status, dining_mode, packaging_fee, total_amount, idempotency_key, pickup_code, pickup_code_date, ready_at)
+        status, dining_mode, packaging_fee, total_amount, idempotency_key, pickup_code_date, ready_at)
      values
        ('202609010900000004', '00000000-0000-4000-8000-000000000f11', '00000000-0000-4000-8000-000000000f01',
         '测试门店', '测试地址 1 号', '000-00000000',
-        'cooking', 'takeout', 2.00, 32.00, 'key-4', 'A-0001', '2026-09-01', now()) $$,
-  '23514', null, '制作中的订单不能携带取杯号'
+        'cooking', 'takeout', 2.00, 32.00, 'key-4', '2026-09-01', now()) $$,
+  '23502', null, '订单缺少取杯号被拒绝：下单即发号、号必填（Story 4.4）'
 );
 select throws_ok(
   $$ insert into public.orders
@@ -192,7 +202,7 @@ select throws_ok(
        ('202609010900000005', '00000000-0000-4000-8000-000000000f11', '00000000-0000-4000-8000-000000000f01',
         '测试门店', '测试地址 1 号', '000-00000000',
         'pickup', 'takeout', 2.00, 32.00, 'key-5', now()) $$,
-  '23514', null, '待取餐的订单必须有取杯号'
+  '23502', null, '待取餐但缺少取杯号被拒绝：号必填（Story 4.4）'
 );
 select throws_ok(
   $$ insert into public.orders
@@ -207,11 +217,12 @@ select throws_ok(
 select throws_ok(
   $$ insert into public.orders
        (order_number, user_id, store_id, store_name, store_address, store_phone,
-        dining_mode, packaging_fee, total_amount, idempotency_key, ready_at, completed_at)
+        dining_mode, packaging_fee, total_amount, idempotency_key,
+        pickup_code, pickup_code_date, ready_at, completed_at)
      values
        ('202609010900000007', '00000000-0000-4000-8000-000000000f11', '00000000-0000-4000-8000-000000000f01',
         '测试门店', '测试地址 1 号', '000-00000000',
-        'takeout', 2.00, 32.00, 'key-7', now(), now()) $$,
+        'takeout', 2.00, 32.00, 'key-7', 'A-0007', '2026-09-01', now(), now()) $$,
   '23514', null, '制作中的订单不能有完成时间'
 );
 select throws_ok(
@@ -227,41 +238,45 @@ select throws_ok(
 select throws_ok(
   $$ insert into public.orders
        (order_number, user_id, store_id, store_name, store_address, store_phone,
-        dining_mode, packaging_fee, total_amount, idempotency_key, ready_at)
+        dining_mode, packaging_fee, total_amount, idempotency_key,
+        pickup_code, pickup_code_date, ready_at)
      values
        ('20260901090000001', '00000000-0000-4000-8000-000000000f11', '00000000-0000-4000-8000-000000000f01',
         '测试门店', '测试地址 1 号', '000-00000000',
-        'takeout', 2.00, 32.00, 'key-9', now()) $$,
+        'takeout', 2.00, 32.00, 'key-9', 'A-0009', '2026-09-01', now()) $$,
   '23514', null, '订单号必须是 18 位纯数字'
 );
 select throws_ok(
   $$ insert into public.orders
        (order_number, user_id, store_id, store_name, store_address, store_phone,
-        dining_mode, packaging_fee, total_amount, notes, idempotency_key, ready_at)
+        dining_mode, packaging_fee, total_amount, notes, idempotency_key,
+        pickup_code, pickup_code_date, ready_at)
      values
        ('202609010900000010', '00000000-0000-4000-8000-000000000f11', '00000000-0000-4000-8000-000000000f01',
         '测试门店', '测试地址 1 号', '000-00000000',
-        'takeout', 2.00, 32.00, '', 'key-10', now()) $$,
+        'takeout', 2.00, 32.00, '', 'key-10', 'A-0010', '2026-09-01', now()) $$,
   '23514', null, '备注不能是空串'
 );
 select throws_ok(
   $$ insert into public.orders
        (order_number, user_id, store_id, store_name, store_address, store_phone,
-        dining_mode, packaging_fee, total_amount, idempotency_key, ready_at)
+        dining_mode, packaging_fee, total_amount, idempotency_key,
+        pickup_code, pickup_code_date, ready_at)
      values
        ('202609010900000001', '00000000-0000-4000-8000-000000000f12', '00000000-0000-4000-8000-000000000f01',
         '测试门店', '测试地址 1 号', '000-00000000',
-        'takeout', 2.00, 32.00, 'key-11', now()) $$,
+        'takeout', 2.00, 32.00, 'key-11', 'A-0011', '2026-09-01', now()) $$,
   '23505', null, '订单号全局唯一'
 );
 select throws_ok(
   $$ insert into public.orders
        (order_number, user_id, store_id, store_name, store_address, store_phone,
-        dining_mode, packaging_fee, total_amount, idempotency_key, ready_at)
+        dining_mode, packaging_fee, total_amount, idempotency_key,
+        pickup_code, pickup_code_date, ready_at)
      values
        ('202609010900000012', '00000000-0000-4000-8000-000000000f11', '00000000-0000-4000-8000-000000000f01',
         '测试门店', '测试地址 1 号', '000-00000000',
-        'takeout', 2.00, 32.00, 'key-1', now()) $$,
+        'takeout', 2.00, 32.00, 'key-1', 'A-0012', '2026-09-01', now()) $$,
   '23505', null, '同一用户的幂等标识只能落一张订单（AD-11）'
 );
 select lives_ok(

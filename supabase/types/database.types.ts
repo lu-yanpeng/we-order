@@ -110,8 +110,8 @@ export type Database = {
           notes: string
           order_number: string
           packaging_fee: number
-          pickup_code: string | null
-          pickup_code_date: string | null
+          pickup_code: string
+          pickup_code_date: string
           ready_at: string
           status: Database["public"]["Enums"]["order_status"]
           store_address: string
@@ -130,8 +130,8 @@ export type Database = {
           notes?: string
           order_number: string
           packaging_fee: number
-          pickup_code?: string | null
-          pickup_code_date?: string | null
+          pickup_code: string
+          pickup_code_date: string
           ready_at: string
           status?: Database["public"]["Enums"]["order_status"]
           store_address: string
@@ -150,8 +150,8 @@ export type Database = {
           notes?: string
           order_number?: string
           packaging_fee?: number
-          pickup_code?: string | null
-          pickup_code_date?: string | null
+          pickup_code?: string
+          pickup_code_date?: string
           ready_at?: string
           status?: Database["public"]["Enums"]["order_status"]
           store_address?: string
@@ -455,8 +455,6 @@ export type Database = {
         Args: {
           p_from: Database["public"]["Enums"]["order_status"]
           p_order_id: string
-          p_pickup_code?: string
-          p_pickup_code_date?: string
           p_to: Database["public"]["Enums"]["order_status"]
           p_user_id?: string
         }
@@ -469,8 +467,8 @@ export type Database = {
           notes: string
           order_number: string
           packaging_fee: number
-          pickup_code: string | null
-          pickup_code_date: string | null
+          pickup_code: string
+          pickup_code_date: string
           ready_at: string
           status: Database["public"]["Enums"]["order_status"]
           store_address: string

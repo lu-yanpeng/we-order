@@ -29,6 +29,7 @@ grant execute on function public.test_catch_error(text) to authenticated;
 select plan(33);
 
 -- ── 测试数据：两个门店（提前量不同）、两个用户、各状态订单 ───────────────────
+-- Story 4.4 起订单在下单时已带号：样例直接写入号与发号日期，催单与推进都不改写它们。
 
 delete from public.order_items;
 delete from public.orders;
@@ -61,18 +62,21 @@ values
   ('00000000-0000-4000-8000-000000000e01', '202609030910000001',
    '00000000-0000-4000-8000-000000000d11', '00000000-0000-4000-8000-000000000c01',
    '催单测试门店', '测试地址 A', '000-00000001',
-   'cooking', 'takeout', 2.00, 32.00, 'urge-a-future', null, null, now() + interval '1 hour', null),
+   'cooking', 'takeout', 2.00, 32.00, 'urge-a-future', 'Z-0003',
+   (now() at time zone 'Asia/Shanghai')::date, now() + interval '1 hour', null),
   -- e02 原定 2 秒后（比提前量更早）：催单不得改动（取较早者）
   ('00000000-0000-4000-8000-000000000e02', '202609030910000002',
    '00000000-0000-4000-8000-000000000d11', '00000000-0000-4000-8000-000000000c01',
    '催单测试门店', '测试地址 A', '000-00000001',
-   'cooking', 'takeout', 2.00, 32.00, 'urge-a-soon', null, null, now() + interval '2 seconds', null),
+   'cooking', 'takeout', 2.00, 32.00, 'urge-a-soon', 'Z-0004',
+   (now() at time zone 'Asia/Shanghai')::date, now() + interval '2 seconds', null),
   -- e03 已到点但还没被扫到：催单不改动、也不报错；随后由推进机制接管
   ('00000000-0000-4000-8000-000000000e03', '202609030910000003',
    '00000000-0000-4000-8000-000000000d11', '00000000-0000-4000-8000-000000000c01',
    '催单测试门店', '测试地址 A', '000-00000001',
-   'cooking', 'takeout', 2.00, 32.00, 'urge-a-overdue', null, null, now() - interval '5 seconds', null),
-  -- e04 已待取餐：本人但状态不可催 → invalid_status（Z 前缀避开自动发号段）
+   'cooking', 'takeout', 2.00, 32.00, 'urge-a-overdue', 'Z-0005',
+   (now() at time zone 'Asia/Shanghai')::date, now() - interval '5 seconds', null),
+  -- e04 已待取餐：本人但状态不可催 → invalid_status
   ('00000000-0000-4000-8000-000000000e04', '202609030910000004',
    '00000000-0000-4000-8000-000000000d11', '00000000-0000-4000-8000-000000000c01',
    '催单测试门店', '测试地址 A', '000-00000001',
@@ -88,12 +92,14 @@ values
   ('00000000-0000-4000-8000-000000000e06', '202609030910000006',
    '00000000-0000-4000-8000-000000000d11', '00000000-0000-4000-8000-000000000c02',
    '第二门店', '测试地址 B', '000-00000002',
-   'cooking', 'takeout', 2.00, 32.00, 'urge-a-store2', null, null, now() + interval '1 hour', null),
+   'cooking', 'takeout', 2.00, 32.00, 'urge-a-store2', 'Z-0001',
+   (now() at time zone 'Asia/Shanghai')::date, now() + interval '1 hour', null),
   -- e07 用户 B 的订单：A 催它应得到与「不存在」相同的结果
   ('00000000-0000-4000-8000-000000000e07', '202609030910000007',
    '00000000-0000-4000-8000-000000000d12', '00000000-0000-4000-8000-000000000c01',
    '催单测试门店', '测试地址 A', '000-00000001',
-   'cooking', 'takeout', 2.00, 32.00, 'urge-b-other', null, null, now() + interval '1 hour', null);
+   'cooking', 'takeout', 2.00, 32.00, 'urge-b-other', 'Z-0006',
+   (now() at time zone 'Asia/Shanghai')::date, now() + interval '1 hour', null);
 
 -- ── 函数属性与权限：唯一催单入口，参数里没有时间/用户入口（AD-5、AD-21）─────
 
@@ -167,9 +173,9 @@ set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-000000000d11"}';
 select ok(
   (select r ->> 'order_number' = '202609030910000001'
       and r ->> 'status' = 'cooking'
-      and r ->> 'pickup_code' is null
+      and r ->> 'pickup_code' = 'Z-0003'
      from public.urge_order('00000000-0000-4000-8000-000000000e01') r),
-  '催单返回与下单共用的订单形状：同一张单、状态仍制作中、取杯号为空'
+  '催单返回与下单共用的订单形状：同一张单、状态仍制作中、取杯号不变'
 );
 select is(
   (select ready_at from public.orders where id = '00000000-0000-4000-8000-000000000e01'),
@@ -183,8 +189,8 @@ select is(
 );
 select is(
   (select pickup_code from public.orders where id = '00000000-0000-4000-8000-000000000e01'),
-  null,
-  '催单不分配取杯号'
+  'Z-0003',
+  '催单不改写取杯号：号在下单时已定死（Story 4.4）'
 );
 select ok(
   (select r ->> 'id' = '00000000-0000-4000-8000-000000000e01'
@@ -242,9 +248,10 @@ select is(
   '被催单的订单不会因为催单本身变成待取餐'
 );
 select ok(
-  (select status = 'pickup' and pickup_code is not null and pickup_code_date is not null
+  (select status = 'pickup' and pickup_code = 'Z-0005'
+      and pickup_code_date = (now() at time zone 'Asia/Shanghai')::date
      from public.orders where id = '00000000-0000-4000-8000-000000000e03'),
-  '已到点的订单由推进机制照常推进并分配取杯号'
+  '已到点的订单由推进机制照常推进：只改状态、不改写下单时的取杯号'
 );
 
 -- ── 拒绝语义：他人与不存在同结果；本人状态不可催给明确结果（AD-13）──────────

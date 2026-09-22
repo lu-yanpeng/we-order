@@ -4,6 +4,7 @@
     "verify:login": "deno run -A scripts/verify-login.ts",
     "verify:idempotency": "deno run -A scripts/verify-idempotency.ts",
     "verify:sweep": "deno run -A scripts/verify-sweep.ts",
-    "verify:urge": "deno run -A scripts/verify-urge.ts"
+    "verify:urge": "deno run -A scripts/verify-urge.ts",
+    "verify:pickup-codes": "deno run -A scripts/verify-pickup-codes.ts"
   }
 }

@@ -8,8 +8,9 @@
 //   1. 通过真实 HTTP + 真实会话调 create_order 下一单，随后本脚本不做任何写操作；
 //   2. 轮询用的是「裸表读」（PostgREST 直接 SELECT public.orders），不是订单读取函数——
 //      Phase 2 的读时推进只存在于服务端读取函数里（Story 5.1），裸表读不会触发推进；
-//   3. 订单在「到点 + 一个扫描周期」内自己变成「待取餐」并拿到取杯号，只可能来自 cron 兜底扫描
-//      （本地栈的 pg_cron 任务，见迁移 20260922130629_advance_due_orders_cron.sql）。
+//   3. 订单在「到点 + 一个扫描周期」内自己变成「待取餐」，只可能来自 cron 兜底扫描
+//      （本地栈的 pg_cron 任务，见迁移 20260922130629_advance_due_orders_cron.sql）；
+//      取杯号在下单时已拿到，推进只改状态、不改写它（Story 4.4）。
 //
 // 需要本地栈在跑（supabase start），且已应用迁移与种子（supabase db reset）。
 // 运行：cd supabase && deno task verify:sweep
@@ -210,8 +211,9 @@ try {
   if (createError !== null) throw createError;
   const order = asOrderResult(created);
   check(
-    order.status === "cooking" && order.pickup_code === null,
-    `下单瞬间是「制作中」且取杯号为空（订单号 ${order.order_number}）`,
+    order.status === "cooking" && order.pickup_code !== null &&
+      /^[A-Z]-[0-9]{4}$/.test(order.pickup_code),
+    `下单瞬间是「制作中」且已带取杯号（${order.pickup_code}，订单号 ${order.order_number}）`,
   );
 
   // 2) 只做裸表读轮询：不是订单读取函数，不会触发读时推进
@@ -251,10 +253,10 @@ try {
     );
   }
 
-  // 3) 断言：推进时刻之前不动，推进后号码齐备
+  // 3) 断言：推进时刻之前不动，推进后状态变化、取杯号原样
   check(
-    firstRow.status === "cooking" && firstRow.pickup_code === null,
-    "轮询起点仍是「制作中」（改状态的不是读取，裸表读不触发推进）",
+    firstRow.status === "cooking" && firstRow.pickup_code === order.pickup_code,
+    "轮询起点仍是「制作中」且取杯号不变（改状态的不是读取，裸表读不触发推进）",
   );
 
   const delaySeconds = Math.abs(
@@ -285,8 +287,8 @@ try {
   );
 
   check(
-    finalRow.pickup_code !== null && /^[A-Z]-[0-9]{4}$/.test(finalRow.pickup_code),
-    `取杯号外形正确（${finalRow.pickup_code}）`,
+    finalRow.pickup_code === order.pickup_code,
+    `推进不改写取杯号：仍是下单时的 ${finalRow.pickup_code}`,
   );
   check(
     finalRow.pickup_code_date === localDateIn(store.timezone),

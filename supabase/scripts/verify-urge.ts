@@ -213,8 +213,9 @@ try {
 
   const placedRow = await readOrderRow(user.client, order.id);
   check(
-    order.status === "cooking" && order.pickup_code === null,
-    `下单瞬间是「制作中」且取杯号为空（订单号 ${order.order_number}）`,
+    order.status === "cooking" && order.pickup_code !== null &&
+      /^[A-Z]-[0-9]{4}$/.test(order.pickup_code),
+    `下单瞬间是「制作中」且已带取杯号（${order.pickup_code}，订单号 ${order.order_number}）`,
   );
   check(
     Math.abs(
@@ -234,8 +235,8 @@ try {
   const urgedOrder = asOrderResult(urged);
   check(
     urgedOrder.id === order.id && urgedOrder.status === "cooking" &&
-      urgedOrder.pickup_code === null,
-    "催单返回与下单共用的订单形状：同一张单、状态仍制作中、取杯号为空",
+      urgedOrder.pickup_code === order.pickup_code,
+    "催单返回与下单共用的订单形状：同一张单、状态仍制作中、取杯号不变",
   );
 
   const urgedRow = await readOrderRow(user.client, order.id);
@@ -250,8 +251,8 @@ try {
     `提前到「催单时刻 + 门店配置的 ${store.urge_lead_seconds} 秒」（催单请求往返占用 ${urgeFinishedAt - urgeStartedAt} 毫秒）`,
   );
   check(
-    urgedRow.status === "cooking" && urgedRow.pickup_code === null,
-    "催单不改状态：订单没有直接变成待取餐",
+    urgedRow.status === "cooking" && urgedRow.pickup_code === order.pickup_code,
+    "催单不改状态、也不改写取杯号：订单没有直接变成待取餐",
   );
 
   // 3) 并发再催两次：都成功，且推进时刻完全不变
@@ -292,8 +293,8 @@ try {
     `推进发生在「到点 + 一个扫描周期」内（${(flipElapsedMs / 1_000).toFixed(1)} 秒 ≤ ${store.urge_lead_seconds + 15 + 6} 秒）`,
   );
   check(
-    finalRow.pickup_code !== null && /^[A-Z]-[0-9]{4}$/.test(finalRow.pickup_code),
-    `推进后取杯号外形正确（${finalRow.pickup_code}）`,
+    finalRow.pickup_code === order.pickup_code,
+    `推进不改写取杯号：仍是下单时的 ${finalRow.pickup_code}`,
   );
 
   // 5) 推进之后催单：本人但状态不可催 → 明确的 invalid_status
