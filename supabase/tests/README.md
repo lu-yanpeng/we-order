@@ -16,6 +16,7 @@
 | `database/85_idempotency.test.sql` | 重复提交防护：同一标识重放返回同一张订单（请求内容不同也一样）且不覆盖原内容、商品下架后重放仍成功、不同标识产生两张订单、标识与用户绑定（他人用同一标识只得到自己的新单、读不到对方订单）、被拒的请求不占用标识 |
 | `database/86_order_invariants.test.sql` | Story 3.5 的跨故事不变量：归属取自会话身份（请求里伪造的 `user_id` / `order_number` 被忽略）、落库金额用库内价目公式级交叉验算（明细单价 = 基础价 + 所选选项加价；订单头 = 明细小计之和 + 包装费）、混合清单与 null 就餐方式整单被拒且已有订单行数与金额不变、不存在「有单无明细」的行 |
 | `database/90_advance.test.sql` | 推进与取杯号（Story 4.1）：`pickup_code_date` 与唯一域约束 `(store_id, pickup_code_date, pickup_code)`、计数器表（RLS 启用、零策略、客户端完全不可读写）、序号 → 号码纯映射（`A-9999 → B-0001` 轮转与容量边界）、计数器按门店与自然日隔离、同日同店重号被唯一约束拒绝而跨日/跨店允许、`transition_order` 两条合法迁移与非法迁移拒绝、归属谓词、`advance_due_orders` 的作用域/顺序/幂等，以及「orders 的 UPDATE 只存在于 `transition_order` 一处」 |
+| `database/91_cron_sweep.test.sql` | 周期兜底扫描的声明（Story 4.2）：pg_cron 由迁移安装、恰好一条引用 `advance_due_orders` 的命名任务、周期 `15 seconds` 且启用、命令是不传参数的同一实现（= 全量兜底作用域）、注册在迁移应用的库、执行身份有权执行推进函数、cron schema 对客户端不可达 |
 
 说明：
 
@@ -23,11 +24,18 @@
 - 模拟身份用角色切换（`set local role anon` / `authenticated`）加 `request.jwt.claims` 注入（Story 3.3 起按用户身份断言）；注入写法本身是实现细节、不写入契约，契约是测试结果（AD-19）。
 - 断言描述都带对象名，失败时输出形如 `# Failed test 1: "未认证不能写入 categories"`，可定位到具体策略或对象。
 - `86_order_invariants.test.sql` 的金额断言是公式级而非硬编码期望值：辅助函数从规格选择快照还原选项 id、查 `spec_options.price_extra`，再调用 Story 3.2 的纯函数重算单价与总额。故意改错辅助函数会看到对应断言失败（已做过一次突变验证）。
+- 周期兜底扫描（Story 4.2）由迁移 `20260922130629_advance_due_orders_cron.sql` 声明：本地与云端都靠它重建，本地栈的 pg_cron 每 15 秒执行一次 `public.advance_due_orders()`（不传用户 = 全部到点订单）。**不要手工删除 `pickup_code_counters` 的行**：它是「下一个取杯号」的唯一来源，删掉会让新号撞上已存在订单的号，使之后每一次扫描都失败、订单永久卡在「制作中」。
+
+## Story 4.2 验收记录
+
+- 2026-09-22 本地栈（干净重建）：`supabase db reset`（重建库 + 种子）后 `supabase test db` 全绿——13 个文件 / 360 条断言（Story 4.2 前为 12 / 351，新增 `91_cron_sweep` 的 9 条）。重建后任务由迁移自动回来：`cron.job` 一条 `advance-due-orders`（`15 seconds`、`select public.advance_due_orders()`、`active`、注册在 `postgres` 库、执行身份 `postgres`），`cron.job_run_details` 每 15 秒一条 `succeeded`。
+- 2026-09-22 `deno task verify:sweep`：真 HTTP 下一单后**不做任何写操作、也不调用订单读取函数**，只做裸表读轮询；订单在下单后 22.2 秒被推进为「待取餐」并拿到 `A-0001`（到点 15 秒 + 一个扫描周期内），8 项断言全部通过。改状态的只可能是周期兜底扫描。
+- 类型契约无变化：`supabase gen types typescript --local` 与入仓的 `types/database.types.ts` 完全一致（cron 对象在 `public` 之外，不影响对外形状）。
 
 ## Story 4.1 验收记录
 
 - 2026-09-22 本地栈：`supabase db reset`（重建库 + 种子）后 `supabase test db` 全绿——12 个文件 / 351 条断言（Story 4.1 前为 11 / 285，新增 `90_advance` 的 66 条）。
-- 2026-09-22 人工演示（跨事务，模拟真实调用节奏）：经 `create_order` 下一单（门店 `ready_delay_seconds = 15`），下单瞬间为 `cooking`、取杯号为空、距到点 15 秒；等待 16 秒后执行一次 `advance_due_orders(用户)`，返回实际推进 1 条，订单变为 `pickup`、取杯号 `A-0001`、发号日期为门店本地自然日。演示在临时用户上完成并在结束时清理（订单随用户级联删除，留下的计数器行也已删除）。
+- 2026-09-22 人工演示（跨事务，模拟真实调用节奏）：经 `create_order` 下一单（门店 `ready_delay_seconds = 15`），下单瞬间为 `cooking`、取杯号为空、距到点 15 秒；等待 16 秒后执行一次 `advance_due_orders(用户)`，返回实际推进 1 条，订单变为 `pickup`、取杯号 `A-0001`、发号日期为门店本地自然日。演示在临时用户上完成并在结束时清理（订单随用户级联删除）。注：当时连计数器行一起删除了；按 Story 4.2 起的约定，`pickup_code_counters` 的行不再手工删除（理由见上方说明）。
 - 演示期间顺带验证了唯一约束的真实拦截：引擎测试里把 `A-0001` 手工写在当天日期上，与推进自动发号的 `A-0001` 相撞，插入被 `orders_pickup_code_unique` 拒绝——这正是「同日同店重号写不进去」的现场证据。
 
 ## Story 3.5 验收记录
@@ -37,10 +45,12 @@
 
 ## 本地链路验证（不在 `supabase test db` 内）
 
-并发行为单连接测不了，按 FR-P2-19 以「实现方式说明 + 人工验证记录」作为证据：
+并发与时间行为单连接测不了，按 FR-P2-19 以「实现方式说明 + 人工验证记录」作为证据：
 
 - `cd supabase && deno task verify:idempotency` → `scripts/verify-idempotency.ts`：5 个请求各自建立独立 TCP 连接、同时打本地 PostgREST 的 `create_order`（真实会话、真实 HTTP），断言全部成功且返回同一张订单、库里只有一张单。并发正确性由 `(user_id, idempotency_key)` 唯一约束兜住，「先查有没有」只是顺序重试的快速通道——脚本给赢家的请求 500 行明细把它的写入事务拉长到秒级，保证其余请求在它提交前到达并撞上唯一约束；断言还检查耗时最短的请求也等到了同一个事务，快速通道的几毫秒响应会立刻暴露。第二个用户用同一标识只得到自己的新单，且读不到对方订单。结束后清理测试用户。
+- `cd supabase && deno task verify:sweep` → `scripts/verify-sweep.ts`：真 HTTP 下一单，之后**不做任何写操作、也不调用订单读取函数**，只用「裸表读」（PostgREST 直接 SELECT `public.orders`）轮询，断言订单在「到点 + 一个扫描周期」内被周期任务自己推进。之所以能证明「无人读取也会推进」：Phase 2 的读时推进只存在于服务端读取函数里（Story 5.1），裸表读不会触发推进，改状态的只可能是 cron 兜底扫描。脚本还顺带断言「到点前一直保持制作中」（推进时长没有被绕过）与取杯号外形/发号日期。
 
 ### 验证记录
 
+- 2026-09-22 本地栈（干净重建后）：通过（`deno task verify:sweep` 8 项断言；订单 202609222115056950 在 22.2 秒后被兜底扫描推进，取杯号 `A-0001`、发号日期为门店本地自然日；期间只做裸表读轮询；测试用户已清理，取杯号计数器按约定保留）。
 - 2026-09-21 本地栈：通过（`deno task verify:idempotency` 16 项断言；5 个并发请求各自独立连接、约 1.8s 内全部返回同一张订单；库里该标识 1 张单、500 行明细；跨用户只拿到自己的单。另用临时插入计数器核对：5 个并发请求产生 5 次插入尝试，其中 4 个实际走到唯一约束的捕获分支，验证后已移除该临时对象。）

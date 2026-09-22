@@ -2,6 +2,7 @@
   "tasks": {
     "test": "deno test functions/tests/",
     "verify:login": "deno run -A scripts/verify-login.ts",
-    "verify:idempotency": "deno run -A scripts/verify-idempotency.ts"
+    "verify:idempotency": "deno run -A scripts/verify-idempotency.ts",
+    "verify:sweep": "deno run -A scripts/verify-sweep.ts"
   }
 }
