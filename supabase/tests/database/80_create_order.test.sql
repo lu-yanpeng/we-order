@@ -74,7 +74,7 @@ select is(
     where enumtypid = 'public.order_error_code'::regtype),
   array['invalid_request', 'invalid_quantity', 'invalid_selection',
         'product_unavailable', 'not_authenticated', 'store_unavailable',
-        'invalid_transition'],
+        'invalid_transition', 'order_not_found', 'invalid_status'],
   'order_error_code 的取值集合只有数据库里的这一份定义'
 );
 

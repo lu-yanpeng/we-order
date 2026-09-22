@@ -487,6 +487,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      urge_order: { Args: { p_order_id: string }; Returns: Json }
     }
     Enums: {
       dining_mode: "dinein" | "takeout"
@@ -511,6 +512,8 @@ export type Database = {
         | "not_authenticated"
         | "store_unavailable"
         | "invalid_transition"
+        | "order_not_found"
+        | "invalid_status"
       order_status: "cooking" | "pickup" | "completed"
       product_availability: "on_sale" | "sold_out" | "delisted"
     }
@@ -666,6 +669,8 @@ export const Constants = {
         "not_authenticated",
         "store_unavailable",
         "invalid_transition",
+        "order_not_found",
+        "invalid_status",
       ],
       order_status: ["cooking", "pickup", "completed"],
       product_availability: ["on_sale", "sold_out", "delisted"],

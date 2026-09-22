@@ -9,7 +9,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(66);
+select plan(67);
 
 -- ── 测试数据：两个门店、两个用户 ─────────────────────────────────────────────
 
@@ -507,8 +507,18 @@ select is(
     where n.nspname = 'public'
       and p.prokind = 'f'
       and p.prosrc ilike '%update public.orders%'),
+  array['transition_order', 'urge_order'],
+  'orders 的 UPDATE 只存在于「状态迁移」与「催单」两处（都是带状态谓词的原子更新，AD-6）'
+);
+select is(
+  (select array_agg(p.proname::text order by p.proname)
+     from pg_proc p
+     join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.prokind = 'f'
+      and p.prosrc ilike '%set status%'),
   array['transition_order'],
-  'orders 的 UPDATE 只存在于 transition_order 一处（状态写入唯一实现）'
+  'orders.status 的写入仍只存在于 transition_order 一处（AD-6）'
 );
 
 select * from finish();
