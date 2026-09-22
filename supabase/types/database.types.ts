@@ -111,6 +111,7 @@ export type Database = {
           order_number: string
           packaging_fee: number
           pickup_code: string | null
+          pickup_code_date: string | null
           ready_at: string
           status: Database["public"]["Enums"]["order_status"]
           store_address: string
@@ -130,6 +131,7 @@ export type Database = {
           order_number: string
           packaging_fee: number
           pickup_code?: string | null
+          pickup_code_date?: string | null
           ready_at: string
           status?: Database["public"]["Enums"]["order_status"]
           store_address: string
@@ -149,6 +151,7 @@ export type Database = {
           order_number?: string
           packaging_fee?: number
           pickup_code?: string | null
+          pickup_code_date?: string | null
           ready_at?: string
           status?: Database["public"]["Enums"]["order_status"]
           store_address?: string
@@ -161,6 +164,32 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "orders_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pickup_code_counters: {
+        Row: {
+          counter: number
+          local_date: string
+          store_id: string
+        }
+        Insert: {
+          counter: number
+          local_date: string
+          store_id: string
+        }
+        Update: {
+          counter?: number
+          local_date?: string
+          store_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pickup_code_counters_store_id_fkey"
             columns: ["store_id"]
             isOneToOne: false
             referencedRelation: "stores"
@@ -371,6 +400,11 @@ export type Database = {
       }
     }
     Functions: {
+      advance_due_orders: { Args: { p_user_id?: string }; Returns: number }
+      allocate_pickup_code: {
+        Args: { p_local_date: string; p_store_id: string }
+        Returns: string
+      }
       build_spec_summary: { Args: { p_labels: string[] }; Returns: string }
       calculate_line_amount: {
         Args: { p_quantity: number; p_unit_price: number }
@@ -412,9 +446,46 @@ export type Database = {
         }
         Returns: Json
       }
+      pickup_code_from_counter: { Args: { p_counter: number }; Returns: string }
       record_wechat_login: {
         Args: { p_openid: string; p_user_id: string }
         Returns: string
+      }
+      transition_order: {
+        Args: {
+          p_from: Database["public"]["Enums"]["order_status"]
+          p_order_id: string
+          p_pickup_code?: string
+          p_pickup_code_date?: string
+          p_to: Database["public"]["Enums"]["order_status"]
+          p_user_id?: string
+        }
+        Returns: {
+          completed_at: string | null
+          created_at: string
+          dining_mode: Database["public"]["Enums"]["dining_mode"]
+          id: string
+          idempotency_key: string
+          notes: string
+          order_number: string
+          packaging_fee: number
+          pickup_code: string | null
+          pickup_code_date: string | null
+          ready_at: string
+          status: Database["public"]["Enums"]["order_status"]
+          store_address: string
+          store_id: string
+          store_name: string
+          store_phone: string
+          total_amount: number
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "orders"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
     }
     Enums: {
@@ -439,6 +510,7 @@ export type Database = {
         | "product_unavailable"
         | "not_authenticated"
         | "store_unavailable"
+        | "invalid_transition"
       order_status: "cooking" | "pickup" | "completed"
       product_availability: "on_sale" | "sold_out" | "delisted"
     }
@@ -593,6 +665,7 @@ export const Constants = {
         "product_unavailable",
         "not_authenticated",
         "store_unavailable",
+        "invalid_transition",
       ],
       order_status: ["cooking", "pickup", "completed"],
       product_availability: ["on_sale", "sold_out", "delisted"],

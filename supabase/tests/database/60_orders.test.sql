@@ -44,7 +44,7 @@ select is(
   (select array_agg(column_name::text order by column_name) from information_schema.columns
     where table_schema = 'public' and table_name = 'orders'),
   array['completed_at', 'created_at', 'dining_mode', 'id', 'idempotency_key', 'notes',
-        'order_number', 'packaging_fee', 'pickup_code', 'ready_at', 'status',
+        'order_number', 'packaging_fee', 'pickup_code', 'pickup_code_date', 'ready_at', 'status',
         'store_address', 'store_id', 'store_name', 'store_phone', 'total_amount', 'user_id'],
   'orders 的列集合固定：归属、门店快照、金额、幂等标识与时间戳'
 );
@@ -157,11 +157,11 @@ select is(
 select lives_ok(
   $$ insert into public.orders
        (order_number, user_id, store_id, store_name, store_address, store_phone,
-        status, dining_mode, packaging_fee, total_amount, idempotency_key, pickup_code, ready_at)
+        status, dining_mode, packaging_fee, total_amount, idempotency_key, pickup_code, pickup_code_date, ready_at)
      values
        ('202609010900000002', '00000000-0000-4000-8000-000000000f11', '00000000-0000-4000-8000-000000000f01',
         '测试门店', '测试地址 1 号', '000-00000000',
-        'pickup', 'dinein', 0.00, 30.00, 'key-2', 'A-0008', now()) $$,
+        'pickup', 'dinein', 0.00, 30.00, 'key-2', 'A-0008', '2026-09-01', now()) $$,
   '字母 + 四位数字的取杯号可写入（A-0008）'
 );
 select lives_ok(
@@ -177,11 +177,11 @@ select lives_ok(
 select throws_ok(
   $$ insert into public.orders
        (order_number, user_id, store_id, store_name, store_address, store_phone,
-        status, dining_mode, packaging_fee, total_amount, idempotency_key, pickup_code, ready_at)
+        status, dining_mode, packaging_fee, total_amount, idempotency_key, pickup_code, pickup_code_date, ready_at)
      values
        ('202609010900000004', '00000000-0000-4000-8000-000000000f11', '00000000-0000-4000-8000-000000000f01',
         '测试门店', '测试地址 1 号', '000-00000000',
-        'cooking', 'takeout', 2.00, 32.00, 'key-4', 'A-0001', now()) $$,
+        'cooking', 'takeout', 2.00, 32.00, 'key-4', 'A-0001', '2026-09-01', now()) $$,
   '23514', null, '制作中的订单不能携带取杯号'
 );
 select throws_ok(
@@ -197,11 +197,11 @@ select throws_ok(
 select throws_ok(
   $$ insert into public.orders
        (order_number, user_id, store_id, store_name, store_address, store_phone,
-        status, dining_mode, packaging_fee, total_amount, idempotency_key, pickup_code, ready_at)
+        status, dining_mode, packaging_fee, total_amount, idempotency_key, pickup_code, pickup_code_date, ready_at)
      values
        ('202609010900000006', '00000000-0000-4000-8000-000000000f11', '00000000-0000-4000-8000-000000000f01',
         '测试门店', '测试地址 1 号', '000-00000000',
-        'completed', 'takeout', 2.00, 32.00, 'key-6', 'A-0002', now()) $$,
+        'completed', 'takeout', 2.00, 32.00, 'key-6', 'A-0002', '2026-09-01', now()) $$,
   '23514', null, '已完成的订单必须有完成时间'
 );
 select throws_ok(
@@ -217,11 +217,11 @@ select throws_ok(
 select throws_ok(
   $$ insert into public.orders
        (order_number, user_id, store_id, store_name, store_address, store_phone,
-        status, dining_mode, packaging_fee, total_amount, idempotency_key, pickup_code, ready_at)
+        status, dining_mode, packaging_fee, total_amount, idempotency_key, pickup_code, pickup_code_date, ready_at)
      values
        ('202609010900000008', '00000000-0000-4000-8000-000000000f11', '00000000-0000-4000-8000-000000000f01',
         '测试门店', '测试地址 1 号', '000-00000000',
-        'pickup', 'takeout', 2.00, 32.00, 'key-8', 'A-08', now()) $$,
+        'pickup', 'takeout', 2.00, 32.00, 'key-8', 'A-08', '2026-09-01', now()) $$,
   '23514', null, '两位数字的取杯号被拒绝（外形为字母 + 四位数字）'
 );
 select throws_ok(

@@ -73,7 +73,8 @@ select is(
   (select array_agg(enumlabel::text order by enumsortorder) from pg_enum
     where enumtypid = 'public.order_error_code'::regtype),
   array['invalid_request', 'invalid_quantity', 'invalid_selection',
-        'product_unavailable', 'not_authenticated', 'store_unavailable'],
+        'product_unavailable', 'not_authenticated', 'store_unavailable',
+        'invalid_transition'],
   'order_error_code 的取值集合只有数据库里的这一份定义'
 );
 
