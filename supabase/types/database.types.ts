@@ -447,6 +447,7 @@ export type Database = {
         Returns: Json
       }
       find_user_by_email: { Args: { p_email: string }; Returns: string }
+      get_my_order_detail: { Args: { p_order_id: string }; Returns: Json }
       get_my_orders: {
         Args: {
           p_before_created_at?: string
