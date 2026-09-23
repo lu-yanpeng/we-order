@@ -20,6 +20,7 @@
 | `database/92_urge.test.sql` | 催单（Story 4.3）：函数属性与权限（security definer、空 search_path、只授权已登录）、参数只有订单 id、两个新错误类别（`order_not_found` / `invalid_status`）、提前到「催单时刻 + 门店配置的提前量」（7 秒与 20 秒两个门店证明不写死默认 3 秒）、min 语义（原定更早、已到点、重复催单都不改动）、催单不改状态、也不改写下单时的取杯号（Story 4.4）、到点订单仍由推进机制照常接管、拒绝语义（他人与不存在同一结果、本人非制作中 `invalid_status`、无身份 `not_authenticated`） |
 | `database/93_complete.test.sql` | 确认取杯与超时自动完成（Story 4.5）：`complete_order` / `complete_due_orders` 的属性与权限（security definer、空 search_path、参数只有订单 id / 用户作用域、客户端不可执行兜底、走 `transition_order` 同一迁移实现）、结构约束（不在制作中 ⇔ 有自动完成时刻）与扫描索引、进入待取餐时按门店配置写入时刻（7 秒与 20 秒两个门店证明不写死默认 30）、确认的成功路径与共享形状、拒绝语义（本人制作中 `invalid_status`、他人与不存在同一结果、空 id、无身份）、重复确认与确认已自动完成的订单幂等（完成时间一字不变）、兜底的作用域与幂等重跑、改配置不影响已出的单、取杯号不被改写 |
 | `database/94_state_machine.test.sql` | 状态机与并发行为的跨故事收口（Story 4.6）：3×3 全迁移矩阵（七种非法组合被拒且订单整行不变；两条合法边执行成功，进入待取餐写自动完成时刻、完成迁移写完成时间）、终态吸收（已完成订单在推进、超时兜底、确认取杯、催单四个机制下整行一字不变）、完整生命周期（催单 → 推进 → 确认，取杯号与发号日期全程不变、不跳状态）、cron 同一条命令整体重跑（第二次 (0,0)、整表快照一字不变）；真并发现场证据见 `scripts/verify-state-machine.ts` |
+| `database/95_order_list.test.sql` | 我的订单列表（Story 5.1）：函数属性与权限（security definer、空 `search_path`、只授权已登录、读前触发推进/超时完成、条目形状来自 `order_result_json` 同一映射）、未认证拒绝（不是空列表）、分页参数边界（默认 20、上限 50、游标成对）、游标信封形状、倒序稳定与翻页不重不漏（翻页期间插入新单、并列时间按 id 倒序、到底 `next_cursor` 为 null）、列表项形状（订单对外形状 + `item_summary`、取杯号恒有值、金额为数值、门店时区时间）、读时推进与超时自动完成的落库与作用域、归属隔离（他人订单不可见） |
 
 说明：
 
@@ -28,6 +29,27 @@
 - 断言描述都带对象名，失败时输出形如 `# Failed test 1: "未认证不能写入 categories"`，可定位到具体策略或对象。
 - `86_order_invariants.test.sql` 的金额断言是公式级而非硬编码期望值：辅助函数从规格选择快照还原选项 id、查 `spec_options.price_extra`，再调用 Story 3.2 的纯函数重算单价与总额。故意改错辅助函数会看到对应断言失败（已做过一次突变验证）。
 - 周期兜底扫描（Story 4.2/4.5）由迁移声明：任务 `order-sweep` 每 15 秒执行 `select public.advance_due_orders(), public.complete_due_orders()`（一次扫描同时兜底推进与超时完成；两个调用都不传用户 = 全部到点/超时订单）。`20260923030954_complete_order_auto_complete.sql` 注册新任务名并移除 `20260922130629_advance_due_orders_cron.sql` 注册的旧任务（不存在则跳过），重建后不会残留第二个任务。**不要手工删除 `pickup_code_counters` 的行**：它是「下一个取杯号」的唯一来源（Story 4.4 起下单时发号也读它），删掉会让新号撞上已存在订单的号，使之后每一次发号都失败、订单永久卡在「制作中」。
+
+## Story 5.1 验收记录
+
+- 2026-09-23 本地栈（干净重建）：`supabase db reset`（重建库 + 种子）后 `supabase test db` 全绿——17 个文件 / 543 条断言（Story 5.1 前为 16 / 497：新增 `95_order_list` 的 46 条；其余文件断言数不变）。新增迁移 `20260923055705_get_my_orders.sql`：新增唯一读取入口 `get_my_orders(p_limit, p_before_created_at, p_before_id)`（security definer、空 `search_path`、只授权已登录身份），读取前先调用既有机制 `advance_due_orders(我)` 与 `complete_due_orders(我)`，返回游标分页信封 `{ items, next_cursor }`。无表结构变更、无新错误类别、无数据清理。
+- 类型契约：`supabase gen types typescript --local` 与入仓的 `types/database.types.ts` 零差异——新增 `get_my_orders`（`Args` 三个可选参数、返回 `Json`）；`types/README.md` 的手工类型覆盖清单补上分页信封与列表项形状。
+- 验收点 → 证据（不复制已有断言，只指出每一验收点被谁钉住）：
+
+| Story 5.1 验收点 | 证据 |
+| --- | --- |
+| 结果只包含本人订单；他人订单不可能出现 | `95_order_list`：A 的全量列表不含 B 的任一订单号；B 的列表恰为自己的两条 |
+| 排序为创建时间倒序且稳定；默认 20、参数有上限；翻页不重复、不遗漏已存在订单 | `95_order_list`：默认 20 条与上限 50（51 被拒）；第一页精确 i25…i6；翻页期间插入新单后第 2 页仍精确 i20…i16；全量翻页 29 条无重复、28 条既有恰好各一次；并列时间按 id 倒序；到底 `next_cursor` 为 null |
+| 返回结构齐备且由同一映射产出 | `95_order_list`：列表项字段集合 = `order_result_json` 的字段 + `item_summary`；函数源码断言条目形状走 `order_result_json`；id 与订单号同源 |
+| 函数内先推进调用者自己到点的订单 | `95_order_list`：读取后到点的「制作中」订单在结果里已是「待取餐」、超时的「待取餐」订单已是「已完成」、未到点的仍是「制作中」；推进落库带自动完成时刻、自动完成落库带完成时间；B 的到点订单不被 A 的读取推进 |
+| 取杯号恒有值；时间按门店本地时区输出 | `95_order_list`：全部条目取杯号匹配 `^[A-Z]-[0-9]{4}$`；纽约门店订单 `12:00+08` 显示为 `2026-07-01 00:00:00` |
+| 未登录请求被拒绝，而不是返回空列表 | `95_order_list`：`anon` 无执行权（42501）；已登录但无会话身份抛 `not_authenticated`；没有订单的用户返回空列表是正常结果 |
+| 测试一条命令运行 | `supabase test db`（17 个文件 / 543 条，断言描述都带对象名） |
+
+- 实现方式说明（游标分页为什么不重不漏；FR-P2-19 的证据形式）：分页是键集分页——排序键 `(created_at desc, id desc)`（直接走 `orders_user_created_idx`），下一页条件是 `(created_at, id) < (上一页最后一条的 created_at, id)`，游标由服务端随信封返回、客户端原样回传，服务端多取 1 条判断有没有下一页。offset 分页在「翻页期间有人下了一单」时会重复一条并漏掉一条既有订单；游标定位的是「谁之后」而不是「第几条」，插入新行不影响后续页。`95_order_list` 的「插入新单后第 2 页仍精确取到 i20…i16」与「全量翻页 28 条既有恰好各一次」是该行为的现场记录（单事务内单连接即可复现，不需要脚本）。
+- 读时推进没有时间窗口：Postgres 的 `now()` 在同一事务内固定，`advance_due_orders` / `complete_due_orders` 与随后的分页查询看到同一个服务端时钟，因此结果里不会出现「已到点却仍制作中」或「已超时却仍待取餐」；两个机制都只作用于调用者自己（周期兜底扫描是另一条路径，见 Story 4.2/4.5 记录）。
+- 分页信封与列表项形状只有一处定义：信封为 `{ items, next_cursor }`（null = 到底）；列表项复用订单对外形状的唯一映射 `order_result_json`，另加服务端生成的 `item_summary`（`商品名 ×数量`、顿号连接）。Story 5.2 的订单详情将复用同一映射，列表与详情不会出现两套口径（AD-22）。
+- 客户端范围：小程序端零改动（AD-15）；订单列表在 Phase 3 的对接与展示行为不在本故事范围。
 
 ## Story 4.6 验收记录
 
