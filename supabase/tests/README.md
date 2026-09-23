@@ -10,14 +10,15 @@
 | `database/30_storage.test.sql` | 图片桶：公开桶、`storage.objects` 零策略、未认证读不到对象、客户端不可写 |
 | `database/40_menu_view.test.sql` | `menu` 视图：过滤（下架 / 售罄 / 空分类）、排序、嵌套形状、字段名 |
 | `database/50_wechat_identities.test.sql` | 身份映射：RLS 启用且零策略、客户端完全不可达、列集合只有 openid/user_id/时间戳、openid 唯一、user_id 唯一、外键与级联、枚举含 `identity_failed` 与 `session_failed`、`record_wechat_login` 与 `find_user_by_email` 的权限/安全属性/幂等与查询行为 |
-| `database/60_orders.test.sql` | 订单结构与写路径封闭：两张表 RLS 启用且只有一条本人 SELECT 策略、客户端（未认证与已登录）对两张表的 insert/update/delete 全部被拒、列集合（明细无归属字段）、金额与时间列类型、取杯号与发号日期为 NOT NULL（Story 4.4：制作中必须带号）、完成时间联动、幂等唯一域 (user_id, idempotency_key)、订单号唯一、明细级联删除 |
+| `database/60_orders.test.sql` | 订单结构与写路径封闭：两张表 RLS 启用且只有一条本人 SELECT 策略、客户端（未认证与已登录）对两张表的 insert/update/delete 全部被拒、列集合（明细无归属字段）、金额与时间列类型（含 Story 4.5 的自动完成时刻）、取杯号与发号日期为 NOT NULL（Story 4.4：制作中必须带号）、完成时间联动、幂等唯一域 (user_id, idempotency_key)、订单号唯一、明细级联删除 |
 | `database/70_amounts.test.sql` | 金额纯计算函数：单价/行小计/包装费（费率为入参）/总额/规格摘要的规则与精度、声明为 immutable 且不提权、无表访问（用无表权限的对照角色调用成功作证明）、anon/authenticated 不可执行 |
 | `database/80_create_order.test.sql` | 下单服务端函数：参数无金额/用户入口、只授权已登录身份、客户端对订单与明细仍不可写、金额重算（单价=基础价+加价，总额=小计+包装费）、规格选择严格校验与快照、订单号 18 位、门店快照与推进时刻取自配置、下单即发号（Story 4.4：取号与建单同一条 INSERT、号有值且外形正确、发号日期 = 门店本地自然日、计数器消耗一次、同日两单不重号）、非法输入整单拒绝不落数据、幂等重放、门店唯一性 |
 | `database/85_idempotency.test.sql` | 重复提交防护：同一标识重放返回同一张订单（请求内容不同也一样）且不覆盖原内容、商品下架后重放仍成功、不同标识产生两张订单、标识与用户绑定（他人用同一标识只得到自己的新单、读不到对方订单）、被拒的请求不占用标识 |
 | `database/86_order_invariants.test.sql` | Story 3.5 的跨故事不变量：归属取自会话身份（请求里伪造的 `user_id` / `order_number` 被忽略）、落库金额用库内价目公式级交叉验算（明细单价 = 基础价 + 所选选项加价；订单头 = 明细小计之和 + 包装费）、混合清单与 null 就餐方式整单被拒且已有订单行数与金额不变、不存在「有单无明细」的行 |
-| `database/90_advance.test.sql` | 推进与取杯号（Story 4.1/4.4）：`pickup_code_date` 与唯一域约束 `(store_id, pickup_code_date, pickup_code)`、两列 NOT NULL、计数器表（RLS 启用、零策略、客户端完全不可读写）、序号 → 号码纯映射（`A-9999 → B-0001` 轮转与容量边界）、计数器按门店与自然日隔离、同日同店重号被唯一约束拒绝而跨日/跨店允许、`transition_order` 两条合法迁移与非法迁移拒绝、归属谓词、参数形状不含发号参数、推进只做状态迁移（`advance_due_orders` 不发号、不消耗计数器、不改写取杯号），以及「发号调用只存在于 `create_order` 一处、orders 的 UPDATE 只存在于 `transition_order` 与 `urge_order` 两处、`status` 的写入仍唯一在 `transition_order`」 |
-| `database/91_cron_sweep.test.sql` | 周期兜底扫描的声明（Story 4.2）：pg_cron 由迁移安装、恰好一条引用 `advance_due_orders` 的命名任务、周期 `15 seconds` 且启用、命令是不传参数的同一实现（= 全量兜底作用域）、注册在迁移应用的库、执行身份有权执行推进函数、cron schema 对客户端不可达 |
+| `database/90_advance.test.sql` | 推进与取杯号（Story 4.1/4.4）：`pickup_code_date` 与唯一域约束 `(store_id, pickup_code_date, pickup_code)`、两列 NOT NULL、计数器表（RLS 启用、零策略、客户端完全不可读写）、序号 → 号码纯映射（`A-9999 → B-0001` 轮转与容量边界）、计数器按门店与自然日隔离、同日同店重号被唯一约束拒绝而跨日/跨店允许、`transition_order` 两条合法迁移与非法迁移拒绝、归属谓词、参数形状不含发号参数、推进只做状态迁移（`advance_due_orders` 不发号、不消耗计数器、不改写取杯号），以及「发号调用只存在于 `create_order` 一处、orders 的 UPDATE 只存在于 `transition_order` 与 `urge_order` 两处、`status` 的写入仍唯一在 `transition_order`」；非制作中的样例按 Story 4.5 的结构约束携带自动完成时刻 |
+| `database/91_cron_sweep.test.sql` | 周期兜底扫描的声明（Story 4.2/4.5）：pg_cron 由迁移安装、恰好一条任务 `order-sweep` 在同一条命令里同时调用 `advance_due_orders` 与 `complete_due_orders`（一次扫描两个触发源）、周期 `15 seconds` 且启用、旧任务名 `advance-due-orders` 已被替换（不会留下第二个任务）、命令都是不传参数的同一实现（= 全量兜底作用域）、注册在迁移应用的库、执行身份对两个函数都有权、cron schema 对客户端不可达 |
 | `database/92_urge.test.sql` | 催单（Story 4.3）：函数属性与权限（security definer、空 search_path、只授权已登录）、参数只有订单 id、两个新错误类别（`order_not_found` / `invalid_status`）、提前到「催单时刻 + 门店配置的提前量」（7 秒与 20 秒两个门店证明不写死默认 3 秒）、min 语义（原定更早、已到点、重复催单都不改动）、催单不改状态、也不改写下单时的取杯号（Story 4.4）、到点订单仍由推进机制照常接管、拒绝语义（他人与不存在同一结果、本人非制作中 `invalid_status`、无身份 `not_authenticated`） |
+| `database/93_complete.test.sql` | 确认取杯与超时自动完成（Story 4.5）：`complete_order` / `complete_due_orders` 的属性与权限（security definer、空 search_path、参数只有订单 id / 用户作用域、客户端不可执行兜底、走 `transition_order` 同一迁移实现）、结构约束（不在制作中 ⇔ 有自动完成时刻）与扫描索引、进入待取餐时按门店配置写入时刻（7 秒与 20 秒两个门店证明不写死默认 30）、确认的成功路径与共享形状、拒绝语义（本人制作中 `invalid_status`、他人与不存在同一结果、空 id、无身份）、重复确认与确认已自动完成的订单幂等（完成时间一字不变）、兜底的作用域与幂等重跑、改配置不影响已出的单、取杯号不被改写 |
 
 说明：
 
@@ -25,7 +26,17 @@
 - 模拟身份用角色切换（`set local role anon` / `authenticated`）加 `request.jwt.claims` 注入（Story 3.3 起按用户身份断言）；注入写法本身是实现细节、不写入契约，契约是测试结果（AD-19）。
 - 断言描述都带对象名，失败时输出形如 `# Failed test 1: "未认证不能写入 categories"`，可定位到具体策略或对象。
 - `86_order_invariants.test.sql` 的金额断言是公式级而非硬编码期望值：辅助函数从规格选择快照还原选项 id、查 `spec_options.price_extra`，再调用 Story 3.2 的纯函数重算单价与总额。故意改错辅助函数会看到对应断言失败（已做过一次突变验证）。
-- 周期兜底扫描（Story 4.2）由迁移 `20260922130629_advance_due_orders_cron.sql` 声明：本地与云端都靠它重建，本地栈的 pg_cron 每 15 秒执行一次 `public.advance_due_orders()`（不传用户 = 全部到点订单）。**不要手工删除 `pickup_code_counters` 的行**：它是「下一个取杯号」的唯一来源（Story 4.4 起下单时发号也读它），删掉会让新号撞上已存在订单的号，使之后每一次发号都失败、订单永久卡在「制作中」。
+- 周期兜底扫描（Story 4.2/4.5）由迁移声明：任务 `order-sweep` 每 15 秒执行 `select public.advance_due_orders(), public.complete_due_orders()`（一次扫描同时兜底推进与超时完成；两个调用都不传用户 = 全部到点/超时订单）。`20260923030954_complete_order_auto_complete.sql` 注册新任务名并移除 `20260922130629_advance_due_orders_cron.sql` 注册的旧任务（不存在则跳过），重建后不会残留第二个任务。**不要手工删除 `pickup_code_counters` 的行**：它是「下一个取杯号」的唯一来源（Story 4.4 起下单时发号也读它），删掉会让新号撞上已存在订单的号，使之后每一次发号都失败、订单永久卡在「制作中」。
+
+## Story 4.5 验收记录
+
+- 2026-09-23 本地栈（干净重建）：`supabase db reset`（重建库 + 种子）后 `supabase test db` 全绿——15 个文件 / 457 条断言（Story 4.5 前为 14 / 401：新增 `93_complete` 的 54 条；`91_cron_sweep` 由 9 条改为 11 条——合并任务、改名与「旧任务名已被替换」的新断言）。新增迁移 `20260923030954_complete_order_auto_complete.sql`：`stores.auto_complete_seconds`（默认 30）、`orders.auto_complete_at` 与结构约束「不在制作中 ⇔ 有自动完成时刻」（与 Story 4.4 同样清空既有测试订单后收紧）、`transition_order` 在 cooking→pickup 的同一条更新里按门店配置写入时刻、新增 `complete_order`（只授权已登录）与 `complete_due_orders`（不向客户端暴露），cron 任务合并两个机制并改名 `order-sweep`。
+- 2026-09-23 `deno task verify:complete`（新增）：16 项断言全部通过——制作中的单确认取杯得到 `invalid_status`；他人的单与不存在返回同一结果；两张单在无人操作下被周期扫描推进为「待取餐」，自动完成时刻 = 进入时刻 + 门店配置的 5 秒（不是默认 30 秒）；并发两次确认都成功、完成时间只写一次；第二张单不点确认，把门店配置改成 600 秒后仍按落库时刻在「落库时刻 + 一个扫描周期」内自动完成、取杯号不变；确认一张已自动完成的单返回成功且不改写完成时间。测试订单 202609231155417371 / 202609231155417863，脚本结束时门店演示参数已恢复（15 / 30 秒）。
+- 2026-09-23 回归（干净重建后）：`deno task verify:sweep` 8 项断言通过（推进链路无影响；订单 202609231126347816 下单即带 `A-0004`、19.2 秒后被兜底扫描推进）；`deno task verify:urge` 12 项断言通过（催单链路无影响；订单 202609231127228258 催单后 16.8 秒被推进，取杯号 `A-0005`）。
+- 类型契约：`supabase gen types typescript --local` 与入仓的 `types/database.types.ts` 零差异——新增 `complete_order`（`jsonb` 返回，与下单/催单共用订单形状）与 `complete_due_orders`（`integer`）、`orders.auto_complete_at`（可空列）、`stores.auto_complete_seconds`；`transition_order` 的返回类型随之带上新列。
+- 跨故事修订：`60_orders` 的列集合与时间列断言带上 `auto_complete_at`（待取餐样例按新约束携带时刻）；`90_advance` 与 `92_urge` 的非制作中样例补上自动完成时刻（结构约束要求）；`91_cron_sweep` 改为断言合并后的任务；`92_urge` 头部「由 Story 4.5 收口」的过时注释改为 Story 4.6。
+- 实现方式说明（并发为什么结果确定；FR-P2-19 的证据形式）：状态判断与写入是同一条带状态谓词的原子更新（AD-6），同一行上的两次更新由行锁串行化。与推进并发时：推进先落库 → 确认语句读到「待取餐」直接完成；确认先到 → 状态仍是「制作中」，返回明确的 `invalid_status`——两种结果都由提交顺序决定，不产生中间态。与超时自动完成并发/重复确认时：没改到数据的一方读到的状态已是「已完成」，按 AD-13「目标状态已达成」返回成功且不改写完成时间；兜底扫描重复执行时已完成的单不再是 `pickup`、选中不到。`verify:complete` 的并发确认轮是该机制的现场记录。
+- 客户端范围：小程序端零改动（AD-15）；确认取杯的按钮与文案属 Phase 3，扫码出餐（商家触发）属 Phase 4，两者都不改变状态机（同一个 `pickup→completed` 迁移实现）。
 
 ## Story 4.4 验收记录
 
@@ -74,9 +85,13 @@
 - `cd supabase && deno task verify:sweep` → `scripts/verify-sweep.ts`：真 HTTP 下一单，之后**不做任何写操作、也不调用订单读取函数**，只用「裸表读」（PostgREST 直接 SELECT `public.orders`）轮询，断言订单在「到点 + 一个扫描周期」内被周期任务自己推进。之所以能证明「无人读取也会推进」：Phase 2 的读时推进只存在于服务端读取函数里（Story 5.1），裸表读不会触发推进，改状态的只可能是 cron 兜底扫描。脚本还顺带断言「到点前一直保持制作中」（推进时长没有被绕过）与「取杯号在下单时已拿到、推进不改写它」（Story 4.4）。
 - `cd supabase && deno task verify:urge` → `scripts/verify-urge.ts`：真 HTTP + 真实会话走「下单 → 催单 → 并发重复催单 → 被兜底扫描推进 → 推进后再催单」。断言 `ready_at` 从「下单 + 门店配置的推进时长」被提前到「催单时刻 + 门店配置的提前量」、催单响应里状态仍制作中且取杯号不变、并发重复催单后 `ready_at` 完全不变（min 语义）、订单在新到点后一个扫描周期内被周期任务推进（不改状态的仍只有推进机制）、推进不改写取杯号、推进后催单得到明确的 `invalid_status`。之所以要脚本：pgTAP 的事务里 `now()` 固定，跨事务的时间行为测不了。
 - `cd supabase && deno task verify:pickup-codes` → `scripts/verify-pickup-codes.ts`：真 HTTP + 真实会话并发下 8 单（各自独立 TCP 连接、不同幂等键），断言全部成功且拿到 8 个互不相同的取杯号（外形正确）、发号日期都是门店本地自然日、库中行与 RPC 返回一致且仍「制作中」、计数器恰好 +8。之所以要脚本：发号是「计数器原子递增 + 唯一约束兜底」，真并发在单连接的 pgTAP 里测不了。
+- `cd supabase && deno task verify:complete` → `scripts/verify-complete.ts`：真 HTTP + 真实会话走「制作中确认被拒 → 进入待取餐 → 并发两次确认 → 不点确认由超时兜底完成」。断言 `invalid_status` / `order_not_found`（他人与不存在同一结果）、自动完成时刻 = 进入待取餐时刻 + 门店配置、并发确认都成功且完成时间只写一次、重复确认不改写它、把门店配置改成 600 秒后已进入待取餐的订单仍按落库时刻自动完成（只做裸表读轮询，不调任何订单 RPC）、确认已自动完成的单成功且不改写完成时间。脚本为了按秒观察会临时把门店演示参数调小（结束恢复），顺带证明时刻确实按配置计算。之所以要脚本：pgTAP 的事务里 `now()` 固定，跨事务的并发与超时行为测不了。
 
 ### 验证记录
 
+- 2026-09-23 本地栈（干净重建后）：通过（`deno task verify:complete` 16 项断言；订单 202609231155417371 并发两次确认都成功、完成时间只写一次；订单 202609231155417863 不点确认，在门店配置改成 600 秒后仍按落库时刻自动完成、取杯号 `A-0003` 不变；门店演示参数已恢复，测试用户已清理，取杯号计数器按约定保留）。
+- 2026-09-23 本地栈（干净重建后）：通过（`deno task verify:sweep` 8 项断言——`transition_order` 现在负责写自动完成时刻，回归确认推进链路无影响；订单 202609231126347816 下单即带 `A-0004`、19.2 秒后被兜底扫描推进、号不变；期间只做裸表读轮询；测试用户已清理，取杯号计数器按约定保留）。
+- 2026-09-23 本地栈（干净重建后）：通过（`deno task verify:urge` 12 项断言——催单链路回归；订单 202609231127228258 下单即带 `A-0005`，催单后 16.8 秒被兜底扫描推进、号不变；测试用户已清理，取杯号计数器按约定保留）。
 - 2026-09-23 本地栈（干净重建后）：通过（`deno task verify:pickup-codes` 6 项断言；8 个并发下单拿到 8 个互不相同的取杯号 `A-0015…A-0014`、返回顺序交错、发号日期为门店本地自然日、计数器 8 → 16；测试用户已清理，取杯号计数器按约定保留）。
 - 2026-09-23 本地栈（干净重建后）：通过（`deno task verify:urge` 12 项断言；订单 202609230016129681 下单即带 `A-0017`，催单后 9.1 秒被兜底扫描推进、号不变；测试用户已清理，取杯号计数器按约定保留）。
 - 2026-09-23 本地栈（干净重建后）：通过（`deno task verify:sweep` 8 项断言；订单 202609230016434463 下单即带 `A-0018`，24.2 秒后被兜底扫描推进、号不变；期间只做裸表读轮询；测试用户已清理，取杯号计数器按约定保留）。

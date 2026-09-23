@@ -33,48 +33,50 @@ values
 
 -- 引擎测试（user A / 门店 A）：两张待迁移 + 一张已待取餐（不该被推进改动）
 -- Story 4.4 起订单在下单时已带号：这里的号由样例直接写入，推进不读也不写它。
+-- Story 4.5 起「非制作中」的订单必须携带自动完成时刻（结构约束）：
+-- 已待取餐的样例直接写入一个值；制作中的样例为空值。
 insert into public.orders (
   order_number, user_id, store_id, store_name, store_address, store_phone,
   status, dining_mode, packaging_fee, total_amount, idempotency_key,
-  pickup_code, pickup_code_date, ready_at, completed_at)
+  pickup_code, pickup_code_date, ready_at, completed_at, auto_complete_at)
 values
   ('202609030900000001', '00000000-0000-4000-8000-000000000b11', '00000000-0000-4000-8000-000000000a01',
    '推进测试门店', '测试地址 A', '000-00000001',
-   'cooking', 'takeout', 2.00, 32.00, 'engine-1', 'C-0001', '2026-09-01', now() - interval '10 minutes', null),
+   'cooking', 'takeout', 2.00, 32.00, 'engine-1', 'C-0001', '2026-09-01', now() - interval '10 minutes', null, null),
   ('202609030900000002', '00000000-0000-4000-8000-000000000b11', '00000000-0000-4000-8000-000000000a01',
    '推进测试门店', '测试地址 A', '000-00000001',
-   'cooking', 'takeout', 2.00, 32.00, 'engine-2', 'C-0002', '2026-09-01', now() - interval '10 minutes', null),
+   'cooking', 'takeout', 2.00, 32.00, 'engine-2', 'C-0002', '2026-09-01', now() - interval '10 minutes', null, null),
   ('202609030900000003', '00000000-0000-4000-8000-000000000b11', '00000000-0000-4000-8000-000000000a01',
    '推进测试门店', '测试地址 A', '000-00000001',
    'pickup', 'takeout', 2.00, 32.00, 'engine-3', 'A-0007',
-   (now() at time zone 'Asia/Shanghai')::date, now() - interval '10 minutes', null);
+   (now() at time zone 'Asia/Shanghai')::date, now() - interval '10 minutes', null, now() + interval '30 seconds');
 
 -- 推进入口测试：A 的两张到点（ready_at 有先后）、一张未到点、一张已待取餐；B 的一张到点
 insert into public.orders (
   order_number, user_id, store_id, store_name, store_address, store_phone,
   status, dining_mode, packaging_fee, total_amount, idempotency_key,
-  pickup_code, pickup_code_date, ready_at, completed_at)
+  pickup_code, pickup_code_date, ready_at, completed_at, auto_complete_at)
 values
   ('202609030900000011', '00000000-0000-4000-8000-000000000b11', '00000000-0000-4000-8000-000000000a01',
    '推进测试门店', '测试地址 A', '000-00000001',
    'cooking', 'takeout', 2.00, 32.00, 'advance-a1', 'D-0001',
-   (now() at time zone 'Asia/Shanghai')::date, now() - interval '2 seconds', null),
+   (now() at time zone 'Asia/Shanghai')::date, now() - interval '2 seconds', null, null),
   ('202609030900000012', '00000000-0000-4000-8000-000000000b11', '00000000-0000-4000-8000-000000000a01',
    '推进测试门店', '测试地址 A', '000-00000001',
    'cooking', 'takeout', 2.00, 32.00, 'advance-a2', 'D-0002',
-   (now() at time zone 'Asia/Shanghai')::date, now() - interval '1 second', null),
+   (now() at time zone 'Asia/Shanghai')::date, now() - interval '1 second', null, null),
   ('202609030900000013', '00000000-0000-4000-8000-000000000b11', '00000000-0000-4000-8000-000000000a01',
    '推进测试门店', '测试地址 A', '000-00000001',
    'cooking', 'takeout', 2.00, 32.00, 'advance-a3', 'D-0003',
-   (now() at time zone 'Asia/Shanghai')::date, now() + interval '1 hour', null),
+   (now() at time zone 'Asia/Shanghai')::date, now() + interval '1 hour', null, null),
   ('202609030900000014', '00000000-0000-4000-8000-000000000b11', '00000000-0000-4000-8000-000000000a01',
    '推进测试门店', '测试地址 A', '000-00000001',
    'pickup', 'takeout', 2.00, 32.00, 'advance-a4', 'A-0009',
-   (now() at time zone 'Asia/Shanghai')::date, now() - interval '10 minutes', null),
+   (now() at time zone 'Asia/Shanghai')::date, now() - interval '10 minutes', null, now() + interval '30 seconds'),
   ('202609030900000015', '00000000-0000-4000-8000-000000000b12', '00000000-0000-4000-8000-000000000a02',
    '第二门店', '测试地址 B', '000-00000002',
    'cooking', 'takeout', 2.00, 32.00, 'advance-b1', 'E-0001',
-   (now() at time zone 'Asia/Shanghai')::date, now() - interval '1 second', null);
+   (now() at time zone 'Asia/Shanghai')::date, now() - interval '1 second', null, null);
 
 -- ── 结构：唯一域由列与约束表达（AD-7）───────────────────────────────────────
 
@@ -237,24 +239,24 @@ select lives_ok(
   $$ insert into public.orders (
        order_number, user_id, store_id, store_name, store_address, store_phone,
        status, dining_mode, packaging_fee, total_amount, idempotency_key,
-       pickup_code, pickup_code_date, ready_at)
+       pickup_code, pickup_code_date, ready_at, auto_complete_at)
      values
        ('202609030900000021', '00000000-0000-4000-8000-000000000b11', '00000000-0000-4000-8000-000000000a01',
         '推进测试门店', '测试地址 A', '000-00000001',
         'pickup', 'takeout', 2.00, 32.00, 'uniq-1', 'B-0001', '2026-01-01',
-        now() - interval '1 hour') $$,
+        now() - interval '1 hour', now() + interval '30 seconds') $$,
   '待取餐订单可携带取杯号与发号日期'
 );
 select throws_ok(
   $$ insert into public.orders (
        order_number, user_id, store_id, store_name, store_address, store_phone,
        status, dining_mode, packaging_fee, total_amount, idempotency_key,
-       pickup_code, pickup_code_date, ready_at)
+       pickup_code, pickup_code_date, ready_at, auto_complete_at)
      values
        ('202609030900000022', '00000000-0000-4000-8000-000000000b12', '00000000-0000-4000-8000-000000000a01',
         '推进测试门店', '测试地址 A', '000-00000001',
         'pickup', 'takeout', 2.00, 32.00, 'uniq-2', 'B-0001', '2026-01-01',
-        now() - interval '1 hour') $$,
+        now() - interval '1 hour', now() + interval '30 seconds') $$,
   '23505', null,
   '同一门店同一自然日的取杯号不能重复（唯一约束兜底）'
 );
@@ -262,35 +264,36 @@ select lives_ok(
   $$ insert into public.orders (
        order_number, user_id, store_id, store_name, store_address, store_phone,
        status, dining_mode, packaging_fee, total_amount, idempotency_key,
-       pickup_code, pickup_code_date, ready_at)
+       pickup_code, pickup_code_date, ready_at, auto_complete_at)
      values
        ('202609030900000023', '00000000-0000-4000-8000-000000000b11', '00000000-0000-4000-8000-000000000a02',
         '第二门店', '测试地址 B', '000-00000002',
         'pickup', 'takeout', 2.00, 32.00, 'uniq-3', 'B-0001', '2026-01-01',
-        now() - interval '1 hour') $$,
+        now() - interval '1 hour', now() + interval '30 seconds') $$,
   '不同门店可以在同一天使用同一个取杯号'
 );
 select lives_ok(
   $$ insert into public.orders (
        order_number, user_id, store_id, store_name, store_address, store_phone,
        status, dining_mode, packaging_fee, total_amount, idempotency_key,
-       pickup_code, pickup_code_date, ready_at)
+       pickup_code, pickup_code_date, ready_at, auto_complete_at)
      values
        ('202609030900000024', '00000000-0000-4000-8000-000000000b11', '00000000-0000-4000-8000-000000000a01',
         '推进测试门店', '测试地址 A', '000-00000001',
         'pickup', 'takeout', 2.00, 32.00, 'uniq-4', 'B-0001', '2026-01-02',
-        now() - interval '1 hour') $$,
+        now() - interval '1 hour', now() + interval '30 seconds') $$,
   '同一门店跨日允许重复使用同一个取杯号'
 );
 select throws_ok(
   $$ insert into public.orders (
        order_number, user_id, store_id, store_name, store_address, store_phone,
        status, dining_mode, packaging_fee, total_amount, idempotency_key,
-       pickup_code, ready_at)
+       pickup_code, ready_at, auto_complete_at)
      values
        ('202609030900000025', '00000000-0000-4000-8000-000000000b11', '00000000-0000-4000-8000-000000000a01',
         '推进测试门店', '测试地址 A', '000-00000001',
-        'pickup', 'takeout', 2.00, 32.00, 'uniq-5', 'B-0002', now()) $$,
+        'pickup', 'takeout', 2.00, 32.00, 'uniq-5', 'B-0002', now(),
+        now() + interval '30 seconds') $$,
   '23502', null,
   '有号无日期被拒：发号日期必填（Story 4.4）'
 );
@@ -298,11 +301,12 @@ select throws_ok(
   $$ insert into public.orders (
        order_number, user_id, store_id, store_name, store_address, store_phone,
        status, dining_mode, packaging_fee, total_amount, idempotency_key,
-       pickup_code_date, ready_at)
+       pickup_code_date, ready_at, auto_complete_at)
      values
        ('202609030900000026', '00000000-0000-4000-8000-000000000b11', '00000000-0000-4000-8000-000000000a01',
         '推进测试门店', '测试地址 A', '000-00000001',
-        'pickup', 'takeout', 2.00, 32.00, 'uniq-6', '2026-01-01', now()) $$,
+        'pickup', 'takeout', 2.00, 32.00, 'uniq-6', '2026-01-01', now(),
+        now() + interval '30 seconds') $$,
   '23502', null,
   '有日期无号被拒：取杯号必填（Story 4.4）'
 );

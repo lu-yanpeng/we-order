@@ -3,7 +3,7 @@
 --   * order_error_code 的完整取值清单在 80_create_order.test.sql（本故事追加的两个取值已同步）；
 --   * 「orders 的 UPDATE 只存在于推进与催单两处、status 写入仍唯一在 transition_order」在
 --     90_advance.test.sql；
---   * 与推进的真并发单连接测不了，按 FR-P2-19 由 Story 4.5 收口 + 人工验证脚本给证据。
+--   * 与推进的真并发单连接测不了，按 FR-P2-19 由 Story 4.6 收口 + 人工验证脚本给证据。
 -- 自带数据（事务内清空订单、门店与取杯号计数器后插入样例），结束回滚；不依赖种子。
 -- 订单 id 显式指定：测试自己插的行自己知道 id，不依赖查询（以本人身份也查不到他人的单——RLS）。
 -- 断言描述都带对象名，失败时输出形如 "# Failed test 1: ..."，可定位到具体函数或约束。
@@ -55,7 +55,7 @@ values
 insert into public.orders (
   id, order_number, user_id, store_id, store_name, store_address, store_phone,
   status, dining_mode, packaging_fee, total_amount, idempotency_key,
-  pickup_code, pickup_code_date, ready_at, completed_at
+  pickup_code, pickup_code_date, ready_at, completed_at, auto_complete_at
 )
 values
   -- e01 原定一小时后：催单应提前到 now()+7s（门店 A 的提前量）
@@ -63,43 +63,45 @@ values
    '00000000-0000-4000-8000-000000000d11', '00000000-0000-4000-8000-000000000c01',
    '催单测试门店', '测试地址 A', '000-00000001',
    'cooking', 'takeout', 2.00, 32.00, 'urge-a-future', 'Z-0003',
-   (now() at time zone 'Asia/Shanghai')::date, now() + interval '1 hour', null),
+   (now() at time zone 'Asia/Shanghai')::date, now() + interval '1 hour', null, null),
   -- e02 原定 2 秒后（比提前量更早）：催单不得改动（取较早者）
   ('00000000-0000-4000-8000-000000000e02', '202609030910000002',
    '00000000-0000-4000-8000-000000000d11', '00000000-0000-4000-8000-000000000c01',
    '催单测试门店', '测试地址 A', '000-00000001',
    'cooking', 'takeout', 2.00, 32.00, 'urge-a-soon', 'Z-0004',
-   (now() at time zone 'Asia/Shanghai')::date, now() + interval '2 seconds', null),
+   (now() at time zone 'Asia/Shanghai')::date, now() + interval '2 seconds', null, null),
   -- e03 已到点但还没被扫到：催单不改动、也不报错；随后由推进机制接管
   ('00000000-0000-4000-8000-000000000e03', '202609030910000003',
    '00000000-0000-4000-8000-000000000d11', '00000000-0000-4000-8000-000000000c01',
    '催单测试门店', '测试地址 A', '000-00000001',
    'cooking', 'takeout', 2.00, 32.00, 'urge-a-overdue', 'Z-0005',
-   (now() at time zone 'Asia/Shanghai')::date, now() - interval '5 seconds', null),
-  -- e04 已待取餐：本人但状态不可催 → invalid_status
+   (now() at time zone 'Asia/Shanghai')::date, now() - interval '5 seconds', null, null),
+  -- e04 已待取餐：本人但状态不可催 → invalid_status（Story 4.5 起带自动完成时刻）
   ('00000000-0000-4000-8000-000000000e04', '202609030910000004',
    '00000000-0000-4000-8000-000000000d11', '00000000-0000-4000-8000-000000000c01',
    '催单测试门店', '测试地址 A', '000-00000001',
    'pickup', 'takeout', 2.00, 32.00, 'urge-a-pickup', 'Z-0001',
-   (now() at time zone 'Asia/Shanghai')::date, now() - interval '1 hour', null),
+   (now() at time zone 'Asia/Shanghai')::date, now() - interval '1 hour', null,
+   now() + interval '30 seconds'),
   -- e05 已完成：本人但状态不可催 → invalid_status
   ('00000000-0000-4000-8000-000000000e05', '202609030910000005',
    '00000000-0000-4000-8000-000000000d11', '00000000-0000-4000-8000-000000000c01',
    '催单测试门店', '测试地址 A', '000-00000001',
    'completed', 'takeout', 2.00, 32.00, 'urge-a-completed', 'Z-0002',
-   (now() at time zone 'Asia/Shanghai')::date, now() - interval '2 hours', now() - interval '1 hour'),
+   (now() at time zone 'Asia/Shanghai')::date, now() - interval '2 hours', now() - interval '1 hour',
+   now() - interval '1 hour'),
   -- e06 用户 A 在第二门店：提前量读该门店的 20 秒
   ('00000000-0000-4000-8000-000000000e06', '202609030910000006',
    '00000000-0000-4000-8000-000000000d11', '00000000-0000-4000-8000-000000000c02',
    '第二门店', '测试地址 B', '000-00000002',
    'cooking', 'takeout', 2.00, 32.00, 'urge-a-store2', 'Z-0001',
-   (now() at time zone 'Asia/Shanghai')::date, now() + interval '1 hour', null),
+   (now() at time zone 'Asia/Shanghai')::date, now() + interval '1 hour', null, null),
   -- e07 用户 B 的订单：A 催它应得到与「不存在」相同的结果
   ('00000000-0000-4000-8000-000000000e07', '202609030910000007',
    '00000000-0000-4000-8000-000000000d12', '00000000-0000-4000-8000-000000000c01',
    '催单测试门店', '测试地址 A', '000-00000001',
    'cooking', 'takeout', 2.00, 32.00, 'urge-b-other', 'Z-0006',
-   (now() at time zone 'Asia/Shanghai')::date, now() + interval '1 hour', null);
+   (now() at time zone 'Asia/Shanghai')::date, now() + interval '1 hour', null, null);
 
 -- ── 函数属性与权限：唯一催单入口，参数里没有时间/用户入口（AD-5、AD-21）─────
 

@@ -43,7 +43,7 @@ select is(
 select is(
   (select array_agg(column_name::text order by column_name) from information_schema.columns
     where table_schema = 'public' and table_name = 'orders'),
-  array['completed_at', 'created_at', 'dining_mode', 'id', 'idempotency_key', 'notes',
+  array['auto_complete_at', 'completed_at', 'created_at', 'dining_mode', 'id', 'idempotency_key', 'notes',
         'order_number', 'packaging_fee', 'pickup_code', 'pickup_code_date', 'ready_at', 'status',
         'store_address', 'store_id', 'store_name', 'store_phone', 'total_amount', 'user_id'],
   'orders 的列集合固定：归属、门店快照、金额、幂等标识与时间戳'
@@ -92,9 +92,9 @@ select is(
 select is(
   (select array_agg(attname::text order by attname) from pg_attribute
     where attrelid = 'public.orders'::regclass
-      and attname in ('completed_at', 'created_at', 'ready_at')
+      and attname in ('auto_complete_at', 'completed_at', 'created_at', 'ready_at')
       and format_type(atttypid, atttypmod) = 'timestamp with time zone'),
-  array['completed_at', 'created_at', 'ready_at'],
+  array['auto_complete_at', 'completed_at', 'created_at', 'ready_at'],
   '订单时间列都是 timestamptz（AD-10）'
 );
 select is(
@@ -166,12 +166,14 @@ select is(
 select lives_ok(
   $$ insert into public.orders
        (order_number, user_id, store_id, store_name, store_address, store_phone,
-        status, dining_mode, packaging_fee, total_amount, idempotency_key, pickup_code, pickup_code_date, ready_at)
+        status, dining_mode, packaging_fee, total_amount, idempotency_key, pickup_code, pickup_code_date, ready_at,
+        auto_complete_at)
      values
        ('202609010900000002', '00000000-0000-4000-8000-000000000f11', '00000000-0000-4000-8000-000000000f01',
         '测试门店', '测试地址 1 号', '000-00000000',
-        'pickup', 'dinein', 0.00, 30.00, 'key-2', 'A-0008', '2026-09-01', now()) $$,
-  '字母 + 四位数字的取杯号可写入（A-0008）'
+        'pickup', 'dinein', 0.00, 30.00, 'key-2', 'A-0008', '2026-09-01', now(),
+        now() + interval '30 seconds') $$,
+  '字母 + 四位数字的取杯号可写入（A-0008）；待取餐订单带着自动完成时刻（Story 4.5）'
 );
 select lives_ok(
   $$ insert into public.orders

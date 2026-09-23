@@ -102,6 +102,7 @@ export type Database = {
       }
       orders: {
         Row: {
+          auto_complete_at: string | null
           completed_at: string | null
           created_at: string
           dining_mode: Database["public"]["Enums"]["dining_mode"]
@@ -122,6 +123,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          auto_complete_at?: string | null
           completed_at?: string | null
           created_at?: string
           dining_mode: Database["public"]["Enums"]["dining_mode"]
@@ -142,6 +144,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          auto_complete_at?: string | null
           completed_at?: string | null
           created_at?: string
           dining_mode?: Database["public"]["Enums"]["dining_mode"]
@@ -337,6 +340,7 @@ export type Database = {
       stores: {
         Row: {
           address: string
+          auto_complete_seconds: number
           id: string
           name: string
           phone: string
@@ -347,6 +351,7 @@ export type Database = {
         }
         Insert: {
           address: string
+          auto_complete_seconds?: number
           id?: string
           name: string
           phone: string
@@ -357,6 +362,7 @@ export type Database = {
         }
         Update: {
           address?: string
+          auto_complete_seconds?: number
           id?: string
           name?: string
           phone?: string
@@ -429,6 +435,8 @@ export type Database = {
         Args: { p_base_price: number; p_price_extras: number[] }
         Returns: number
       }
+      complete_due_orders: { Args: { p_user_id?: string }; Returns: number }
+      complete_order: { Args: { p_order_id: string }; Returns: Json }
       create_order: {
         Args: {
           p_dining_mode: Database["public"]["Enums"]["dining_mode"]
@@ -459,6 +467,7 @@ export type Database = {
           p_user_id?: string
         }
         Returns: {
+          auto_complete_at: string | null
           completed_at: string | null
           created_at: string
           dining_mode: Database["public"]["Enums"]["dining_mode"]
