@@ -2,8 +2,9 @@
 -- 分工（避免重复）：
 --   * 下单时的发号（取号与建单同一条 INSERT、发号日期、计数器）在 80_create_order.test.sql 断言；
 --   * orders / order_items 的基础结构与客户端写路径封闭在 60_orders.test.sql；
---   * 非法迁移的跨故事收口与并发行为在 Story 4.6：真并发单连接测不了，
---     按 FR-P2-19 以「实现方式说明 + 人工验证记录」作证据（scripts/verify-pickup-codes.ts）。
+--   * 非法迁移的跨故事收口（3×3 全矩阵、终态吸收、整表重跑）在 94_state_machine.test.sql；
+--     真并发单连接测不了，按 FR-P2-19 以「实现方式说明 + 人工验证记录」作证据
+--     （scripts/verify-state-machine.ts）。
 -- 自带数据（事务内清空订单、门店与取杯号计数器后插入样例），结束回滚；不依赖种子。
 -- 断言描述都带对象名，失败时输出形如 "# Failed test 1: ..."，可定位到具体函数或约束。
 begin;

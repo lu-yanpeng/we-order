@@ -3,7 +3,8 @@
 --   * transition_order 的两条合法迁移、归属谓词、参数形状与「推进只做状态迁移」在 90_advance.test.sql；
 --   * order_error_code 的完整取值清单在 80_create_order.test.sql（本故事不新增取值）；
 --   * 与推进/兜底的真并发单连接测不了，按 FR-P2-19 以「实现方式说明 + 人工验证记录」作证据
---     （scripts/verify-complete.ts 的并发确认轮与超时轮）。
+--     （scripts/verify-complete.ts 的并发确认轮与超时轮；另有 verify-state-machine.ts 的
+--     确认 vs 超时兜底竞态轮，跨故事收口见 94_state_machine.test.sql）。
 -- 自带数据（事务内清空订单、门店与取杯号计数器后插入样例），结束回滚；不依赖种子。
 -- 订单 id 显式指定：测试自己插的行自己知道 id，不依赖查询（以本人身份也查不到他人的单——RLS）。
 -- 断言描述都带对象名，失败时输出形如 "# Failed test 1: ..."，可定位到具体函数或约束。

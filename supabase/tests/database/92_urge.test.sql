@@ -3,7 +3,9 @@
 --   * order_error_code 的完整取值清单在 80_create_order.test.sql（本故事追加的两个取值已同步）；
 --   * 「orders 的 UPDATE 只存在于推进与催单两处、status 写入仍唯一在 transition_order」在
 --     90_advance.test.sql；
---   * 与推进的真并发单连接测不了，按 FR-P2-19 由 Story 4.6 收口 + 人工验证脚本给证据。
+--   * 与推进的真并发单连接测不了，按 FR-P2-19 以人工验证脚本给证据
+--     （scripts/verify-state-machine.ts 的「催单 vs 推进」竞态轮；跨故事收口见
+--     94_state_machine.test.sql）。
 -- 自带数据（事务内清空订单、门店与取杯号计数器后插入样例），结束回滚；不依赖种子。
 -- 订单 id 显式指定：测试自己插的行自己知道 id，不依赖查询（以本人身份也查不到他人的单——RLS）。
 -- 断言描述都带对象名，失败时输出形如 "# Failed test 1: ..."，可定位到具体函数或约束。

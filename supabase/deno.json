@@ -6,6 +6,7 @@
     "verify:sweep": "deno run -A scripts/verify-sweep.ts",
     "verify:urge": "deno run -A scripts/verify-urge.ts",
     "verify:pickup-codes": "deno run -A scripts/verify-pickup-codes.ts",
-    "verify:complete": "deno run -A scripts/verify-complete.ts"
+    "verify:complete": "deno run -A scripts/verify-complete.ts",
+    "verify:state-machine": "deno run -A scripts/verify-state-machine.ts"
   }
 }
