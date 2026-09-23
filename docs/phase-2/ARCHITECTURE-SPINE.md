@@ -156,8 +156,8 @@ companions: []
 ### AD-17 — 结构与配置声明式入仓
 
 - **Binds:** FR-P2-16
-- **Prevents:** 控制台手工结构导致本地与云端漂移；重建不出桶与定时任务
-- **Rule:** 全部结构变更以迁移文件存在；桶与图片对象、定时任务同样声明式入仓，不属于「可以手工补」的范围。本地与云端由同一批声明产生，一致性以两边迁移列表一致为证据。任何「只在控制台点过」的结构视为不存在。
+- **Prevents:** 控制台手工结构导致环境间漂移；重建不出桶与定时任务
+- **Rule:** 全部结构变更以迁移文件存在；桶、定时任务同样声明式入仓，不属于「可以手工补」的范围。同一批声明产生任意环境；本阶段（无云端实例）一致性以两次干净重建的迁移列表一致、库与声明零差异为证据。任何「只在控制台点过」的结构视为不存在。图片对象入仓经 ly 裁定不在本阶段交付。
 
 ### AD-18 — 类型契约
 
@@ -227,7 +227,7 @@ companions: []
 
 | 名称 | 版本 |
 | --- | --- |
-| Postgres | 17（平台托管；本地容器使用同一大版本） |
+| Postgres | 17（本阶段为本地容器；将来云端使用同一大版本） |
 | Supabase CLI | 跟随最新（本地容器 / 迁移 / 类型生成 / 部署） |
 | 边缘函数运行时 | Deno 兼容（Supabase Edge Runtime，不锁补丁版本） |
 | 定时调度 | Supabase Cron（pg_cron，支持 `30 seconds` 级周期） |
@@ -242,7 +242,7 @@ companions: []
 ```text
 {仓库根}/
 └── supabase/
-    ├── config.toml          # 本地栈配置；桶与图片对象的声明（objects_path）
+    ├── config.toml          # 本地栈配置（本阶段不含图片对象声明，见修订记录）
     ├── migrations/          # 全部结构变更：表、策略、函数、桶策略、cron.schedule
     ├── seed.sql             # 目录种子数据（分类、商品、规格、门店）；不含订单
     ├── functions/
@@ -258,28 +258,31 @@ api/auth/    # 登录链路 + 会话存取与续期，上层不感知
 
 ### 环境与拓扑
 
-实线为 Phase 2 真接线的路径，虚线为已定契约、Phase 3 才接线。
+实线为 Phase 2 真接线的路径，虚线为已定契约、Phase 3 才接线。**Phase 2 无云端实例：本地 Docker 容器是唯一运行环境**；云端子图表示将来上云时的推送目标，不参与本阶段交付与验收。
 
 ```mermaid
 graph LR
-    subgraph local["本地 Docker 容器"]
-        ldb[("迁移 + 种子 + 桶 + 图片")]
+    subgraph local["本地 Docker 容器（Phase 2 唯一运行环境）"]
+        ldb[("Postgres 17：迁移 + 种子")]
+        lstorage["Storage 公开读桶"]
+        lfunc["Edge Function: wechat-login"]
+        lcron["Cron：兜底推进"]
         ltest["pgTAP：supabase test db"]
     end
-    subgraph cloud["云端单一托管实例"]
+    subgraph cloud["云端单一托管实例（Phase 2 不部署；将来推送同一批声明）"]
         db[("Postgres 17")]
         storage["Storage 公开读桶"]
         func["Edge Function: wechat-login"]
         cron["Cron：兜底推进"]
     end
-    mp["小程序"] -->|"apikey（Phase 2 接线）"| func
-    mp -.->|"REST：目录 / 门店（Phase 3 接线）"| db
-    mp -.->|"RPC：下单 / 订单读取 / 催单 / 确认取杯（Phase 3 接线）"| db
-    mp -.->|"图片 URL"| storage
-    func -->|"code2Session"| wx["微信服务器"]
-    cron -->|"同一份推进实现"| db
+    mp["小程序"] -->|"apikey（Phase 2 接线）"| lfunc
+    mp -.->|"REST：目录 / 门店（Phase 3 接线）"| ldb
+    mp -.->|"RPC：下单 / 订单读取 / 催单 / 确认取杯（Phase 3 接线）"| ldb
+    mp -.->|"图片 URL"| lstorage
+    lfunc -->|"code2Session"| wx["微信服务器"]
+    lcron -->|"同一份推进实现"| ldb
     decl["同一批声明：migrations + seed.sql + config.toml"] -.->|"重建"| ldb
-    decl -.->|"推送"| db
+    decl -.->|"推送（将来）"| db
 ```
 
 ### 核心实体
@@ -322,7 +325,7 @@ erDiagram
 | 本地订单与购物车的去向 | Phase 3 把订单切到服务端时，现有本地存储数据如何处理（清空 / 迁移 / 并存） |
 | Realtime 实时推送 | 小程序没有浏览器 WebSocket（有 `wx.connectSocket`），社区 Supabase 适配库已多年未维护；Phase 3 评估，Plan B 为轮询 |
 | 客户端编译期类型保护 | 取决于 Phase 3 选定的调用方式 |
-| 图片上传与商品写路径 | Phase 4 范围 |
+| 图片对象入仓与商品图片写路径 | 公开读桶与读取策略已交付（Story 1.4）；图片对象入仓经 ly 裁定不在本阶段交付（见修订记录）；上传路径属 Phase 4 |
 | 域名备案与正式发布链路 | 需备案域名反代或平台云托管中转；不阻塞本阶段 |
 | CI/CD、生产部署与多环境治理 | PRD §9 明确排除 |
 | 接口版本化与对外兼容承诺 | 接口只服务本项目 |
@@ -335,5 +338,6 @@ erDiagram
 
 ## 修订记录
 
+- 2026-09-23：Phase 2 范围修订（ly 裁定）——本阶段不上云、无任何云端实例，且不做图片对象入仓。AD-17 的「本地与云端漂移」与「与云端一致」改为「环境间漂移」与「同批声明在两次干净重建上一致（迁移列表一致 + 库与声明零差异）」；Stack 的 Postgres 说明、结构种子树、环境与拓扑图（云端子图标注为将来推送目标）同步修订；Deferred 表补记图片对象入仓的推迟理由。平台事实（备案、免费版暂停、域名白名单）保留。
 - 2026-09-22：取杯号发号时机由「推进到待取餐时分配」前移到「下单时分配」（AD-6、AD-7、AD-22 与一致性约定表同步修订）：制作中即可报号询问进度、取杯号一经分配不可变、「能否取餐」由状态表达。
 - 2026-09-22：AD-6 补充「自动完成」触发——用户不点确认时，订单在进入「待取餐」后按门店配置的等待时长超时自动完成（自动完成时刻在进入「待取餐」时写入订单，读时判定 + 周期扫描触发，与确认取杯共用 `pickup→completed` 一处实现）。

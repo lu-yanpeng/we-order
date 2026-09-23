@@ -32,6 +32,37 @@
 - `86_order_invariants.test.sql` 的金额断言是公式级而非硬编码期望值：辅助函数从规格选择快照还原选项 id、查 `spec_options.price_extra`，再调用 Story 3.2 的纯函数重算单价与总额。故意改错辅助函数会看到对应断言失败（已做过一次突变验证）。
 - 周期兜底扫描（Story 4.2/4.5）由迁移声明：任务 `order-sweep` 每 15 秒执行 `select public.advance_due_orders(), public.complete_due_orders()`（一次扫描同时兜底推进与超时完成；两个调用都不传用户 = 全部到点/超时订单）。`20260923030954_complete_order_auto_complete.sql` 注册新任务名并移除 `20260922130629_advance_due_orders_cron.sql` 注册的旧任务（不存在则跳过），重建后不会残留第二个任务。**不要手工删除 `pickup_code_counters` 的行**：它是「下一个取杯号」的唯一来源（Story 4.4 起下单时发号也读它），删掉会让新号撞上已存在订单的号，使之后每一次发号都失败、订单永久卡在「制作中」。
 
+## Story 5.4 验收记录
+
+- 2026-09-23 范围修订（ly 裁定）：本阶段不上云（无任何云端实例），且不做图片对象入仓。Story 5.4 的两条验收改用等价证据：①「本地与云端一致」→「同一批声明在两次从零重建上一致」；②「图片全部就位」→ 不达成，记录为已知偏移（公开读桶与策略仍交付）。规划文档的同步修订见 `docs/phase-2/epics.md`、`docs/phase-2/prd.md`、`docs/phase-2/ARCHITECTURE-SPINE.md` 的 2026-09-23 修订记录。
+- 2026-09-23 干净重建（三次，均从零）：
+  1. 栈在运行时执行 `bash scripts/rebuild.sh`（删除全部数据卷 → 启动 → `db reset` → `test db`），exit 0；应用 19 条迁移、灌入种子；`Files=19, Tests=623, Result: PASS`。
+  2. 再清空数据卷重建，结果同上（19 文件 / 623 断言全绿）；`supabase migration list --local` 两次输出逐行一致（19 条 = `migrations/*.sql` 文件数）。
+  3. 先 `supabase stop --no-backup` 让栈处于未运行状态，再执行 `bash scripts/rebuild.sh`——脚本走「本地栈未在运行，跳过停止步骤」分支，启动 → 重置 → 测试仍 exit 0（19 文件 / 623 断言）。
+- 2026-09-23 重建后状态（第 2 次重建后的库）：`categories=17`、`products=51`、`spec_groups=6`、`spec_options=24`、`product_spec_groups=9`、`stores=1`、`orders=0`（种子不含订单）；桶 `product-images` 存在且 `public=true`、对象 0 个（图片对象入仓不在本阶段交付）；cron 任务 `order-sweep`（15 秒、启用）；`supabase_migrations.schema_migrations` 19 条。
+- 2026-09-23 结构一致性（无云端实例的等价证据）：
+  - 两次干净重建的 `supabase migration list --local` 输出逐行一致（19 条）。
+  - `supabase db diff --local` → `No schema changes found`（库与迁移声明零差异）。
+  - `supabase gen types typescript --local` 与入仓 `types/database.types.ts` 零差异。
+- 2026-09-23 重建后端到端（第 3 次重建后的栈）：
+  - `deno task verify:login`：40 项断言全部通过（3 轮并发首登 + 重登 + 续期 + 自愈 + 令牌单次消费；断言数随并发输家分支在 34–40 间变化）。
+  - `deno task verify:rebuild`（本故事新增）：24 项断言全部通过——匿名读 `menu`（50 个商品，下架不出现、售罄保留）与门店；两个 openid 登录得到两个不同用户；携带真实会话下单（订单 `202609232357090215`，18 位订单号、下单即带取杯号）；`get_my_orders` 与 `get_my_order_detail` 读到同一张单（订单字段逐字段一致）；第二个身份读不到且与「不存在」同一结果 `order_not_found`；清理无残留。
+- 本故事交付物：`supabase/scripts/rebuild.sh`（一条命令干净重建）、`supabase/scripts/verify-rebuild.ts` + `deno.json` 的 `verify:rebuild`、`supabase/README.md`（本地重建手册）、三份规划文档的 2026-09-23 修订记录。**无迁移、无结构变更、无类型生成变化、小程序零改动**（AD-15）。
+- 证据边界（如实记录）：
+  - 「干净环境」为单机近似：数据层清空全部数据卷（数据库与 Storage 从零）；仓库层未使用「只含将要提交文件」的纯净副本（2b 选项），因此**未证明**重建不依赖本机未入仓文件（`functions/.env`、`supabase/.temp` 等）——重建命令只读取仓库声明文件，这一点由人工核对而非副本实验确认。
+  - 宿主机的 Docker 镜像缓存与 CLI/Deno 安装不属于「干净」范围；它们不承载仓库声明，不影响结论。
+  - 无云端实例：PRD §SM-1 / SM-C3 允许结构一致性以「实现方式说明 + 人工验证记录」为证据，本记录即该证据。
+  - 图片偏移由来：ly 裁定不交付；此前的手动上传验证由 ly 人工完成，仓库内没有可复现证据（重建后 `storage.objects` 与 `products.image_path` 均为空）。
+- 验收点 → 证据（不复制已有断言，只指出每一验收点被谁钉住）：
+
+| Story 5.4 验收点（修订后） | 证据 |
+| --- | --- |
+| 干净重建后结构与目录数据就位，零控制台、零未入仓 SQL | 三次 `rebuild.sh` exit 0；迁移列表 19 条 = 迁移文件数；目录计数与种子一致（17/51/6/24/9/1）；桶 `product-images` 与 cron 任务 `order-sweep` 自动回来 |
+| 同批声明在两次从零重建上结构一致（替代「与云端一致」） | 两次 `migration list --local` 逐行一致；`db diff --local` 为 `No schema changes found`；生成类型与入仓零差异 |
+| 重建后立即能登录、下单、查询 | `verify:login` 40 项 + `verify:rebuild` 24 项全绿（订单 `202609232357090215`） |
+| 重建后数据库测试直接通过 | 三次重建后的 `supabase test db` 均 19 文件 / 623 断言全绿 |
+| 图片对象入仓 | 不达成（已知偏移）：`storage.objects` 0 行、`products.image_path` 全空；桶与公开读策略已交付（`30_storage` 测试） |
+
 ## Story 5.3 验收记录
 
 - 2026-09-23 本地栈（干净重建）：`supabase db reset`（重建库 + 种子）后 `supabase test db` 全绿——19 个文件 / 623 条断言（Story 5.3 前为 18 / 583：新增 `97_isolation_boundaries` 的 40 条；其余文件断言数不变）。本故事无迁移、无结构变更、无新错误类别、小程序零改动（AD-15）；全表盘点未发现漏洞，不需要修补。
@@ -194,9 +225,11 @@
 - `cd supabase && deno task verify:pickup-codes` → `scripts/verify-pickup-codes.ts`：真 HTTP + 真实会话并发下 8 单（各自独立 TCP 连接、不同幂等键），断言全部成功且拿到 8 个互不相同的取杯号（外形正确）、发号日期都是门店本地自然日、库中行与 RPC 返回一致且仍「制作中」、计数器恰好 +8。之所以要脚本：发号是「计数器原子递增 + 唯一约束兜底」，真并发在单连接的 pgTAP 里测不了。
 - `cd supabase && deno task verify:complete` → `scripts/verify-complete.ts`：真 HTTP + 真实会话走「制作中确认被拒 → 进入待取餐 → 并发两次确认 → 不点确认由超时兜底完成」。断言 `invalid_status` / `order_not_found`（他人与不存在同一结果）、自动完成时刻 = 进入待取餐时刻 + 门店配置、并发确认都成功且完成时间只写一次、重复确认不改写它、把门店配置改成 600 秒后已进入待取餐的订单仍按落库时刻自动完成（只做裸表读轮询，不调任何订单 RPC）、确认已自动完成的单成功且不改写完成时间。脚本为了按秒观察会临时把门店演示参数调小（结束恢复），顺带证明时刻确实按配置计算。之所以要脚本：pgTAP 的事务里 `now()` 固定，跨事务的并发与超时行为测不了。
 - `cd supabase && deno task verify:state-machine` → `scripts/verify-state-machine.ts`（Story 4.6）：四轮真并发竞态——**催单 vs 推进**（到点瞬间重复催单与并发推进同场，收敛到同一状态与同一 `ready_at`）、**确认 vs 推进**（确认要么完成、要么 `invalid_status`）、**确认 vs 超时兜底**（完成时间只写一次）、**并发兜底重跑**（合计推进数不超过并发前到点条数，重跑 (0,0) 且整表快照不变）。用户操作走真实会话与真实 HTTP；推进/超时兜底对客户端撤权，脚本用 service_role 调用它们模拟「周期扫描正在跑」（不是客户端边界的一部分）。之所以要脚本：pgTAP 事务里 `now()` 固定，跨事务的真并发测不了。
+- `cd supabase && deno task verify:rebuild` → `scripts/verify-rebuild.ts`（Story 5.4）：干净重建后的端到端现场——未登录读 `menu` 与门店、两个 openid 经真实 handler 登录拿到真实会话、携带会话真实 HTTP 下单、`get_my_orders` / `get_my_order_detail` 读到同一张单、第二个身份读不到（且与「不存在」同一拒绝结果）；结束清理测试用户，订单随用户级联删除。之所以要脚本：Story 5.4 的验收点是「重建后立即可用」，需要一个可重复执行的整体证据。
 
 ### 验证记录
 
+- 2026-09-23 本地栈（干净重建，三次）：通过（Story 5.4——`bash scripts/rebuild.sh` 三次 exit 0（第三次从「栈未运行」状态启动），`supabase test db` 均 19 文件 / 623 断言全绿；`verify:login` 40 项、`verify:rebuild` 24 项（订单 `202609232357090215`）；两次迁移列表逐行一致、`db diff` 零差异、生成类型与入仓零差异；测试用户已清理，取杯号计数器按约定保留）。
 - 2026-09-23 本地栈（干净重建后）：通过（Story 4.6 回归——`deno task verify:pickup-codes` 6 项、`verify:urge` 12 项、`verify:sweep` 8 项、`verify:complete` 16 项；号 `A-0009…A-0016` / `A-0017` / `A-0018` / `A-0019`、`A-0021`；门店演示参数已恢复，测试用户已清理，取杯号计数器按约定保留）。
 - 2026-09-23 本地栈（干净重建后）：通过（`deno task verify:state-machine` 26 项断言，最终版本连跑三次均通过；催单 vs 推进轮 `A-0032`、并发推进合计 1 ≤ 1 且 `ready_at` 不变；确认 vs 推进轮 `A-0033` 收敛为待取餐；确认 vs 超时兜底轮 `A-0034` 完成时间只写一次；并发兜底重跑轮 `A-0035` / `A-0036` 合计 2 ≤ 2、重跑 (0,0) 且整表快照不变；门店演示参数已恢复，测试用户已清理，取杯号计数器按约定保留）。
 - 2026-09-23 本地栈（干净重建后）：通过（`deno task verify:complete` 16 项断言；订单 202609231155417371 并发两次确认都成功、完成时间只写一次；订单 202609231155417863 不点确认，在门店配置改成 600 秒后仍按落库时刻自动完成、取杯号 `A-0003` 不变；门店演示参数已恢复，测试用户已清理，取杯号计数器按约定保留）。
