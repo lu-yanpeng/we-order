@@ -22,6 +22,7 @@
 | `database/94_state_machine.test.sql` | 状态机与并发行为的跨故事收口（Story 4.6）：3×3 全迁移矩阵（七种非法组合被拒且订单整行不变；两条合法边执行成功，进入待取餐写自动完成时刻、完成迁移写完成时间）、终态吸收（已完成订单在推进、超时兜底、确认取杯、催单四个机制下整行一字不变）、完整生命周期（催单 → 推进 → 确认，取杯号与发号日期全程不变、不跳状态）、cron 同一条命令整体重跑（第二次 (0,0)、整表快照一字不变）；真并发现场证据见 `scripts/verify-state-machine.ts` |
 | `database/95_order_list.test.sql` | 我的订单列表（Story 5.1）：函数属性与权限（security definer、空 `search_path`、只授权已登录、读前触发推进/超时完成、条目形状来自 `order_result_json` 同一映射）、未认证拒绝（不是空列表）、分页参数边界（默认 20、上限 50、游标成对）、游标信封形状、倒序稳定与翻页不重不漏（翻页期间插入新单、并列时间按 id 倒序、到底 `next_cursor` 为 null）、列表项形状（订单对外形状 + `item_summary`、取杯号恒有值、金额为数值、门店时区时间）、读时推进与超时自动完成的落库与作用域、归属隔离（他人订单不可见） |
 | `database/96_order_detail.test.sql` | 我的订单详情（Story 5.2）：函数属性与权限（security definer、空 `search_path`、参数只有订单 id、订单字段来自 `order_result_json` 同一映射、读前触发推进/超时完成）、入口身份（未认证无执行权、无会话身份 `not_authenticated`、空 id `invalid_request`）、详情形状（顶层字段集合 = 订单对外形状 + 门店快照 + items、明细快照六列、内部列不外泄、金额为数值、时间按门店时区与格式、无明细返回空数组）、快照不随商品改名改价与门店改名变化、与列表共有的订单字段逐字段相同、拒绝语义（他人与不存在同一结果 `order_not_found`）、读时推进与超时完成的落库与作用域 |
+| `database/97_isolation_boundaries.test.sql` | 归属隔离与策略边界收口（Story 5.3）：两个身份 + 一个未认证的三类边界（他人数据不可见 / 他人数据不可写 / 未认证不可读）、归属两处表达（RLS 策略与 RPC 谓词）等价（订单可见集合逐行相同、详情谓词同域、明细行数一致）、发布密钥视角（匿名角色一律 42501、金额自定订单写不进）、内部表完全不可达（零策略 + 零权限）、全表盘点（10 张表硬编码清单 + 逐张 RLS + `menu` 视图 `security_invoker` + `storage.objects` RLS） |
 
 说明：
 
@@ -30,6 +31,36 @@
 - 断言描述都带对象名，失败时输出形如 `# Failed test 1: "未认证不能写入 categories"`，可定位到具体策略或对象。
 - `86_order_invariants.test.sql` 的金额断言是公式级而非硬编码期望值：辅助函数从规格选择快照还原选项 id、查 `spec_options.price_extra`，再调用 Story 3.2 的纯函数重算单价与总额。故意改错辅助函数会看到对应断言失败（已做过一次突变验证）。
 - 周期兜底扫描（Story 4.2/4.5）由迁移声明：任务 `order-sweep` 每 15 秒执行 `select public.advance_due_orders(), public.complete_due_orders()`（一次扫描同时兜底推进与超时完成；两个调用都不传用户 = 全部到点/超时订单）。`20260923030954_complete_order_auto_complete.sql` 注册新任务名并移除 `20260922130629_advance_due_orders_cron.sql` 注册的旧任务（不存在则跳过），重建后不会残留第二个任务。**不要手工删除 `pickup_code_counters` 的行**：它是「下一个取杯号」的唯一来源（Story 4.4 起下单时发号也读它），删掉会让新号撞上已存在订单的号，使之后每一次发号都失败、订单永久卡在「制作中」。
+
+## Story 5.3 验收记录
+
+- 2026-09-23 本地栈（干净重建）：`supabase db reset`（重建库 + 种子）后 `supabase test db` 全绿——19 个文件 / 623 条断言（Story 5.3 前为 18 / 583：新增 `97_isolation_boundaries` 的 40 条；其余文件断言数不变）。本故事无迁移、无结构变更、无新错误类别、小程序零改动（AD-15）；全表盘点未发现漏洞，不需要修补。
+- 2026-09-23 突变验证（证明新断言真的能抓住偏差）：临时把 `orders_own_read` 策略放宽为 `using (true)`（模拟两处归属表达不一致）后单跑 `97`——第 10 条（A 的裸表可见集合）与第 16 条（裸表与函数可见集合等价）按预期失败，随后第 17 条因「裸表可见但详情拒绝」提前中止（`Bad plan. You planned 40 tests but ran 16.`、FAIL 退出）。`supabase db reset` 还原全部结构后，全量测试重新全绿；还原后的最终一次全量运行即上一条记录。
+- 类型契约：`supabase gen types typescript --local` 与入仓的 `types/database.types.ts` 零差异（本故事无结构变更）。
+- 验收点 → 证据（不复制已有断言，只指出每一验收点被谁钉住）：
+
+| Story 5.3 验收点 | 证据 |
+| --- | --- |
+| 三类边界：他人数据不可见 | `97_isolation_boundaries`：A 的裸表可见订单恰为自己两条、列表恰为同样两条、不含 B 的订单号；B 同理；A/B 拿对方订单 id 读详情都抛 `order_not_found`（与不存在的 id 同一结果） |
+| 三类边界：他人数据不可写 | `97_isolation_boundaries`：A 对 B 的订单 update/delete、对 B 的明细 update/delete 全部 42501；对自己也没有写路径（插入金额自定订单、改自己订单金额、插明细全部 42501） |
+| 三类边界：未认证不可读 | `97_isolation_boundaries`：anon 读 orders/order_items/两张内部表全部 42501；执行 `get_my_orders` 42501（不是空列表）；对照：仍可读公开目录（AD-20） |
+| 归属两处表达等价 | `97_isolation_boundaries`：A 与 B 各自「经裸表（RLS 策略）的订单集合 == 经 `get_my_orders`（RPC 谓词）的订单集合」；裸表可见的每一单都能经 `get_my_order_detail` 读到同一行；每单明细行数经详情与经裸表一致（AD-3、AD-4）；突变验证见上 |
+| 拿到发布密钥读不到他人订单、写不进金额自定的订单 | `97_isolation_boundaries`：匿名角色（发布密钥的对应物）对订单域与内部表一律 42501，插 0.01 元订单没有落点；已登录身份试图插入/修改金额也一律 42501——数据库里不存在「金额由客户端决定」的行（写路径只有 `create_order`，其重算证据见 80/86） |
+| 内部表对客户端完全不可达 | `97_isolation_boundaries`：`wechat_identities` 与 `pickup_code_counters` 零策略，且 anon/authenticated 对它们没有任何表权限（SELECT/INSERT/UPDATE/DELETE/TRUNCATE/REFERENCES/TRIGGER 一起查）；深度断言见 50/90 |
+| 所有对外暴露的表都启用 RLS | `97_isolation_boundaries`：public 表集合 == 硬编码的 10 张预期清单（新增/删除表会失败、强制来此处登记）；没有任何一张缺 RLS；`menu` 视图 `security_invoker=true`；`storage.objects` RLS 启用（对象读取行为见 30） |
+| 一条命令、重建后空库直接通过 | `supabase test db`（19 个文件 / 623 条）；测试自带数据、事务内回滚，不依赖种子 |
+| 客户端交付物无服务端密钥 | 仓库级搜索（见下） |
+
+- 密钥边界（客户端交付物）——仓库级搜索记录（2026-09-23；`git grep` 只搜 tracked 文件，天然排除本机 `.env`）：
+  - 客户端目录（`mp/`）搜索 `SERVICE_ROLE|APP_SECRET|sb_secret`：零命中；客户端构建变量全集只有 `VITE_SUPABASE_URL` 与 `VITE_SUPABASE_PUBLISHABLE_KEY`（发布密钥，本就公开）。
+  - 全仓搜索密钥值特征（`sb_secret_` 前缀、JWT 三段结构、`WECHAT_APP_SECRET=` 带非空值、`SERVICE_ROLE*=` 带长值）：唯一命中是第三方技能文档里的 jwt.io 示例串（`skills/antfu-skills/.../useJwt.md`，非本项目密钥、非客户端交付物）；其余零命中。
+  - `git ls-files` 中的 env 类文件只有 `mp/.env.example` 与 `supabase/functions/.env.example`，密钥位都留空；`git check-ignore -v mp/.env.local supabase/functions/.env` 证明真实密钥文件被忽略、不入仓。
+- 实现方式说明（为什么这组断言构成证明；FR-P2-19 的证据形式）：
+  - 「等价」的比较对象是订单 id 集合：同一身份在同一事务内，分别经 RLS 裸表读与经 `get_my_orders` 读，两组 id 逐行相同；再看裸表可见的每一单能否被详情读到、每单明细行数是否一致。夹具全用「已完成」订单、时间字段固定，断言只依赖可见行集合，不受读时推进影响。
+  - 发布密钥在数据库测试中的对应物是匿名角色：只带发布密钥的请求以 `anon` 身份到达 PostgREST（AD-16），所以「拿发布密钥直接访问」= 以 `anon` 身份的一切尝试都被 42501 挡在授权层（不是策略过滤出空结果）。
+  - 全表盘点把 10 张表的清单硬编码进断言：将来新增表这条断言会失败，强制来此处登记并确认 RLS 与授权（AD-21「列出全部表，逐张确认」）。平台默认会给 public 新表授予 anon/authenticated 全部权限（auto-expose），内部表的「默认授权已撤销」是迁移里显式 revoke 的结果，断言查的是生效状态。
+  - 无脚本：本故事没有并发或跨事务时间行为，pgTAP 单事务即可覆盖；真机上的两身份隔离见 Story 5.5。
+- 客户端范围：小程序端零改动（AD-15）。
 
 ## Story 5.2 验收记录
 
