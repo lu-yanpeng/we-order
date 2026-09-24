@@ -1,18 +1,20 @@
-# api/auth — 登录链路与会话（Story 2.4 / 2.5 / 2.6）
+# api/auth — 登录链路与会话（Story 2.4 / 2.5 / 2.6 / 5.5）
 
-小程序端唯一接触会话的地方。上层（composable / 页面）只需要 `getSessionUser()`；
-token、持久化、过期判断、续期与失败回退全部封在本目录内（AR-9、AD-14）。
+小程序端唯一接触会话的地方。正式链路里上层（composable / 页面）只需要 `getSessionUser()`；
+token、持久化、过期判断、续期与失败回退全部封在本目录内（AR-9、AD-14）。临时的
+`verifyUsedCodeReplay()` 只给验证页用，Phase 3 随验证页一起删除。
 
 ## 文件
 
 | 文件         | 职责                                                                                           |
 | ------------ | ---------------------------------------------------------------------------------------------- |
-| `index.ts`   | 对外出口：`getSessionUser()`、`authErrorMessage()`；需要身份时内部保证存在有效会话             |
+| `index.ts`   | 对外出口：`getSessionUser()`、`authErrorMessage()`、临时验证 `verifyUsedCodeReplay()`；需要身份时内部保证存在有效会话 |
 | `config.ts`  | 构建变量 `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY`，缺失快速失败                   |
 | `http.ts`    | `uni.request` 封装；**唯一构造请求头的地方**（apikey 恒带、Authorization 仅按需）；`AuthError` |
 | `errors.ts`  | **唯一**的「类别 → 文案」翻译函数；类别取值集合来自数据库枚举 `login_error_code`               |
 | `login.ts`   | `uni.login` 取一次性凭证 → 调边缘函数 `wechat-login` → 平台会话                                |
 | `session.ts` | 会话状态机：存储恢复、过期判断、单飞续期、刷新凭证失效后的回退重登                             |
+| `verify.ts`  | **临时验证**（Story 5.5）：重放已消费的凭证，让真机真实拿到一次 `code_expired_or_used`；Phase 3 随验证页删除 |
 
 ## 关键行为
 
@@ -23,6 +25,7 @@ token、持久化、过期判断、续期与失败回退全部封在本目录内
 - **回退重登**：只有刷新凭证失效（平台返回 400 / 401）才清会话并重新静默登录；网络不可达、5xx 等原样上抛，不用登录掩盖。同一 openid 映射同一用户，不会产生第二个身份。
 - **错误**：统一抛 `AuthError { code, status, requestId }`；`authErrorMessage()` 是客户端唯一的翻译函数（类别取值来自数据库枚举，未知类别兜底），失败提示只输出文案，不透传服务端 message、堆栈或数据库细节。
 - **受保护请求**：`GET /auth/v1/user`（平台当前用户查询），只返回 `{ id }`，不回传完整 user（其中 synthetic email 由 openid 派生）。
+- **凭证失效重放（验证用）**：`verifyUsedCodeReplay()`（Story 5.5）取一次微信凭证后连续提交两次，第二次拿到微信真实的「凭证已使用/已过期」→ 类别 `code_expired_or_used`；随后清掉本地会话并真实重新登录一次，返回重试后的身份（与重放前同一用户）。仅验证页使用，Phase 3 删除。
 
 ## 验证（模拟器，Story 2.4 / 2.5 / 2.6）
 
@@ -43,6 +46,25 @@ token、持久化、过期判断、续期与失败回退全部封在本目录内
 
 > 注意：`supabase stop` 会重建容器，旧日志随容器消失；`network_unreachable` 永远不会到服务端，服务端日志只覆盖请求到达后的失败。
 
+## 真机两身份验证（Story 5.5）
+
+用两个真实微信号走「A 下单 → 换成 B → 查不到 → 换回 A → 看得到」，并让真机真实碰到一次「微信凭证已失效」。证据形式为**实现方式说明 + 人工验证记录**。
+
+前置：本地栈在跑；`supabase/functions/.env` 是真实 AppID/AppSecret；`mp/.env.local` 指向手机可访问的局域网地址；两个微信号都是该小程序的开发/体验成员；真机打开调试模式（域名绕过见 `docs/phase-2/addendum.md` §H）。
+
+| #   | 操作                                                                                             | 预期 |
+| --- | ------------------------------------------------------------------------------------------------ | --- |
+| 1   | 设备 A 打开小程序 → 点【验证身份链路】 → 记下页面显示的用户 id                                    | 静默登录成功，会话写入 `weorder_session` |
+| 2   | 设备 B 同上                                                                                       | 拿到另一个用户 id；A 与 B 的用户 id 不同 |
+| 3   | 主机运行 `cd supabase && deno task verify:two-identities --user-a <A的id> --user-b <B的id>`        | 断言全绿：A 下单 → B 列表里没有 A 的单、读 A 详情得 `order_not_found`（与「不存在」同一结果）→ A 列表里有这张单 → 库中订单归属 = A 的 openid 映射的用户 |
+| 4   | 用脚本打印的复核 SQL 在 Studio / psql 查一次                                                      | 订单的 `user_prefix` 与身份 A 一致、`openid_fingerprint` 与脚本输出一致；SQL 本身不含完整 user_id 与 openid 原文 |
+| 5   | 两台设备杀掉小程序重开 → 再点【验证身份链路】；再用脚本输出的「重启小程序后复核身份」SQL 查一次 | 用户 id 不变；`last_login_at` 与步骤 3 前一致（说明会话恢复，没有重新登录） |
+| 6   | 设备上点【凭证失效重放（验证用）】                                                                | 两行结果：①「凭证重放按预期失败：[code_expired_or_used] 登录凭证已失效，请重试」（微信侧真实返回）②「重试成功：<用户 id>（与重放前同一身份，未产生第二个身份）」 |
+| 7   | （可选）库中复核重试确实是一次真实登录                                                          | `last_login_at` 比步骤 5 新（重试登录了），而该 openid 对应的 `user_prefix` 没变（没有第二个身份） |
+
+> **隐私**：openid 只出现在数据库与本机内存里，不写进任何文档。脚本输出中的 openid 一律是 SHA-256 指纹（前 12 位十六进制），回填验收记录时抄指纹即可；不要把含原始库查询结果的输出贴进仓库。
+> **清理**：脚本不删除真实用户、也不清理验证订单（按裁定保留为现场证据）；可重复运行，每次产生一张新订单。
+
 ## 验证记录
 
 > 只做简单记录；Phase 2 结束后验证页（`pages/auth-check/`）会删除，本 README 的验证部分一并清理。
@@ -51,10 +73,11 @@ token、持久化、过期判断、续期与失败回退全部封在本目录内
 - 2026-09-21 真机：通过（登录与会话恢复；本机需 Windows 端口转发，见当日环境配置）
 - 2026-09-21 模拟器（微信开发者工具）：通过（Story 2.6 步骤 7–9：三类失败文案互不相同、断网提示「网络不可用」、重启后重试成功且用户 id 不变）
 - 2026-09-21 服务端日志：通过（`deno task test` 20/20；curl 假 code 得到 400 `invalid_code`，响应头请求标识与 `docker logs` 记录一致）
+- 2026-09-24 真机两身份（Story 5.5）：通过（两台设备静默登录出两个不同身份；`deno task verify:two-identities` 15 项断言全绿，B 读不到 A 的订单、A 看得到；【凭证失效重放】拿到真实 `code_expired_or_used` 且重试为同一身份；重启后仍是各自身份、没有重新登录）
 
 ## Phase 3 收口
 
 - 其他 `api/` 模块的受保护请求接入本目录（请求头只在这里构造）。
 - 提示界面（toast/弹窗）按 Phase 3 设计接入 `authErrorMessage()`；文案表调整只改 `errors.ts`。
 - 已知边界：本地判定未过期、但服务端拒绝访问凭证（401）时，现有实现会复用该会话、重试不恢复；Phase 3 会话层一并处理。
-- 临时验证页 `pages/auth-check/` 与本 README 的验证步骤一并清理。
+- 临时验证页 `pages/auth-check/`、`verify.ts`（凭证重放）与本 README 的验证步骤一并清理。

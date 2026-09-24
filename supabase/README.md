@@ -70,6 +70,7 @@ supabase test db
 | --- | --- |
 | `deno task verify:login` | 并发首登收敛、重登复用、映射丢失自愈、平台会话与续期、一次性令牌单次消费 |
 | `deno task verify:rebuild` | Story 5.4：干净重建后匿名读目录/门店、登录、下单、订单列表与详情、他人不可见 |
+| `deno task verify:two-identities` | Story 5.5：真机登录出来的两个真实身份互相看不到对方的订单（需先在真机登录并传入两个用户 id） |
 | `deno task verify:idempotency` | 同一幂等标识的并发重复提交只落一张订单 |
 | `deno task verify:sweep` | 无人读取时订单被周期兜底扫描推进 |
 | `deno task verify:urge` | 催单提前推进时刻、min 语义、并发重复催单幂等 |

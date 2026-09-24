@@ -7,6 +7,9 @@
  */
 import { AuthError, supabaseRequest } from './http'
 
+/** 登录边缘函数路径；本模块内部共用（含验证用的凭证重放） */
+export const LOGIN_PATH = '/functions/v1/wechat-login'
+
 /** 平台会话响应：登录与续期同构（见 supabase/functions/wechat-login/README.md） */
 export type PlatformSession = {
   access_token: string
@@ -20,7 +23,7 @@ export type PlatformSession = {
 }
 
 /** 取微信一次性凭证；失败与「拿不到凭证」都归为可重试的类别 */
-function loginCode(): Promise<string> {
+export function loginCode(): Promise<string> {
   return new Promise<string>((resolve, reject) => {
     uni.login({
       provider: 'weixin',
@@ -42,7 +45,7 @@ function loginCode(): Promise<string> {
 export async function silentLogin(): Promise<PlatformSession> {
   const code = await loginCode()
   return supabaseRequest<PlatformSession>({
-    path: '/functions/v1/wechat-login',
+    path: LOGIN_PATH,
     method: 'POST',
     body: { code },
   })

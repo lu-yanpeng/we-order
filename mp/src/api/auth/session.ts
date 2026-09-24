@@ -62,6 +62,14 @@ function clearSession(): void {
   uni.removeStorageSync(STORAGE_KEY)
 }
 
+/**
+ * 清掉本地会话，强制下一次 ensureSession 走真实登录。
+ * 仅供 Story 5.5 的「凭证失效重放」验证使用（Phase 3 随验证页删除）。
+ */
+export function clearStoredSessionForVerify(): void {
+  clearSession()
+}
+
 /** 平台响应归一化为内部会话；缺 expires_at 时按 expires_in 估算 */
 function fromPlatform(data: PlatformSession, fallbackUserId?: string): Session {
   const responseUserId = data.user?.id

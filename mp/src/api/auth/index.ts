@@ -13,6 +13,8 @@ import { ensureSession } from './session'
 export { AuthError } from './http'
 export { authErrorMessage } from './errors'
 export type { LoginErrorCode } from './errors'
+// 临时验证接口（Story 5.5）：制造一次真实的「微信凭证已失效」并真实重试登录；Phase 3 随验证页删除
+export { verifyUsedCodeReplay } from './verify'
 
 /** 会话主体（平台用户）；只含 id，平台完整 user 对象不外传 */
 export type SessionUser = { id: string }

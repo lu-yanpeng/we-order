@@ -7,8 +7,16 @@
  */
 import { useAuthCheck } from './composables/use-auth-check'
 
-const { verifying, verifyingConcurrent, results, verify, verifyConcurrent, selfCheck } =
-  useAuthCheck()
+const {
+  verifying,
+  verifyingConcurrent,
+  replaying,
+  results,
+  verify,
+  verifyConcurrent,
+  selfCheck,
+  replayUsedCode,
+} = useAuthCheck()
 </script>
 
 <template>
@@ -16,7 +24,7 @@ const { verifying, verifyingConcurrent, results, verify, verifyConcurrent, selfC
     <view class="flex flex-col gap-[8rpx]">
       <text class="font-semibold text-[32rpx] text-ink">身份链路验证（临时页面）</text>
       <text class="text-[22rpx] text-ink-soft">
-        验证静默登录、会话恢复、透明续期、单飞、回退重登与失败文案；步骤见
+        验证静默登录、会话恢复、透明续期、单飞、回退重登、失败文案与凭证失效重放；步骤见
         mp/src/api/auth/README.md。
       </text>
     </view>
@@ -27,6 +35,9 @@ const { verifying, verifyingConcurrent, results, verify, verifyConcurrent, selfC
         并发验证 ×3
       </t-button>
       <t-button block @click="selfCheck"> 三类失败文案自检 </t-button>
+      <t-button block :loading="replaying" @click="replayUsedCode">
+        凭证失效重放（验证用）
+      </t-button>
     </view>
 
     <scroll-view

@@ -1,12 +1,18 @@
 /**
- * 身份链路验证 Composable（Story 2.4 / 2.5 / 2.6 的临时入口）
+ * 身份链路验证 Composable（Story 2.4 / 2.5 / 2.6 / 5.5 的临时入口）
  *
  * 职责：调用 api/auth 的对外出口，把结果整理成页面可展示的状态。
  * 页面只做编排；本 composable 仅本页面使用，按 AD-9 放在页面目录内。
  * Phase 2 结束后整个验证页（含本文件）删除。
  */
 import { ref } from 'vue'
-import { AuthError, authErrorMessage, getSessionUser, type LoginErrorCode } from '@/api/auth'
+import {
+  AuthError,
+  authErrorMessage,
+  getSessionUser,
+  verifyUsedCodeReplay,
+  type LoginErrorCode,
+} from '@/api/auth'
 
 /** 单条验证结果 */
 export type CheckResult = {
@@ -43,6 +49,7 @@ const SELF_CHECK_CODES: LoginErrorCode[] = [
 export function useAuthCheck() {
   const verifying = ref(false)
   const verifyingConcurrent = ref(false)
+  const replaying = ref(false)
   const results = ref<CheckResult[]>([])
 
   /** 【验证身份链路】一次受保护请求 */
@@ -72,5 +79,44 @@ export function useAuthCheck() {
     }))
   }
 
-  return { verifying, verifyingConcurrent, results, verify, verifyConcurrent, selfCheck }
+  /**
+   * 【凭证失效重放（验证用）】Story 5.5：制造一次真实的「微信凭证已失效」。
+   * 连续提交同一个微信凭证，第二次拿到真实的 code_expired_or_used；
+   * 随后清掉本地会话并真实重新登录，验证「可重试、且重试不产生第二个身份」。
+   */
+  const replayUsedCode = async () => {
+    if (replaying.value) return
+    replaying.value = true
+    try {
+      const result = await verifyUsedCodeReplay()
+      const sameIdentity = result.firstUserId !== '' && result.firstUserId === result.retriedUserId
+      results.value = [
+        {
+          ok: true,
+          detail: `凭证重放按预期失败：${describeFailure(result.rejection)}`,
+        },
+        {
+          ok: sameIdentity,
+          detail: sameIdentity
+            ? `重试成功：${result.retriedUserId}（与重放前同一身份，未产生第二个身份）`
+            : `重试得到不同身份：重放前 ${result.firstUserId}，重试后 ${result.retriedUserId}`,
+        },
+      ]
+    } catch (error) {
+      results.value = [{ ok: false, detail: `重放未按预期进行：${describeFailure(error)}` }]
+    } finally {
+      replaying.value = false
+    }
+  }
+
+  return {
+    verifying,
+    verifyingConcurrent,
+    replaying,
+    results,
+    verify,
+    verifyConcurrent,
+    selfCheck,
+    replayUsedCode,
+  }
 }

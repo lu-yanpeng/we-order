@@ -8,6 +8,7 @@
     "verify:pickup-codes": "deno run -A scripts/verify-pickup-codes.ts",
     "verify:complete": "deno run -A scripts/verify-complete.ts",
     "verify:state-machine": "deno run -A scripts/verify-state-machine.ts",
-    "verify:rebuild": "deno run -A scripts/verify-rebuild.ts"
+    "verify:rebuild": "deno run -A scripts/verify-rebuild.ts",
+    "verify:two-identities": "deno run -A scripts/verify-two-identities.ts"
   }
 }
