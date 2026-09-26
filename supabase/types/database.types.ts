@@ -530,6 +530,7 @@ export type Database = {
         | "invalid_transition"
         | "order_not_found"
         | "invalid_status"
+        | "unknown"
       order_status: "cooking" | "pickup" | "completed"
       product_availability: "on_sale" | "sold_out" | "delisted"
     }
@@ -687,6 +688,7 @@ export const Constants = {
         "invalid_transition",
         "order_not_found",
         "invalid_status",
+        "unknown",
       ],
       order_status: ["cooking", "pickup", "completed"],
       product_availability: ["on_sale", "sold_out", "delisted"],

@@ -74,8 +74,8 @@ select is(
     where enumtypid = 'public.order_error_code'::regtype),
   array['invalid_request', 'invalid_quantity', 'invalid_selection',
         'product_unavailable', 'not_authenticated', 'store_unavailable',
-        'invalid_transition', 'order_not_found', 'invalid_status'],
-  'order_error_code 的取值集合只有数据库里的这一份定义'
+        'invalid_transition', 'order_not_found', 'invalid_status', 'unknown'],
+  'order_error_code 的取值集合只有数据库里的这一份定义（unknown 为客户端未知类别兜底，P3 Story 1.2）'
 );
 
 -- ── 测试数据：唯一门店 + 平台用户 + 商品与规格 ────────────────────────────────
