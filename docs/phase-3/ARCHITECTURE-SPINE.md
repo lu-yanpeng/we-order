@@ -376,6 +376,7 @@ flowchart TD
 | 确认取杯成功 | toast「取杯成功」+ 状态即时更新 |
 | 支付超时 | 基础文案 + 结算页内联「可安全重试，不会重复下单」（幂等键保留） |
 | 业务拒绝（售罄 / 规格失效 / 商品不可售） | 订单类文案可行动，停留可重试；本阶段不做售罄置灰（见 Deferred） |
+| 订单图片（列表卡片 / 详情，Story 4.7） | 卡片只留 编号 / 状态 / 图片行 / 时间 / 金额 / 按钮；图片行单行、每明细行一张（同规格合并、不同规格分行）；溢出用渐变遮罩 + `+N`（N = 未展示行数）；详情每行前置缩略图；缺图色块占位 |
 
 ## Consistency Conventions
 
@@ -448,7 +449,7 @@ mp/src/
 supabase/
 ├── migrations/                  # 新增：create_order_for_user + revoke/grant 收紧、
 │                                #      orders 加入 publication、扫描周期同名替换 3s、
-│                                #      order_error_code 追加 unknown
+│                                #      order_error_code 追加 unknown、order_items 图片快照列（Story 4.7）
 ├── functions/
 │   ├── wechat-login/            # 不变
 │   └── pay-order/               # 新增：verify_jwt = true；服务端密钥调用包装函数；失败带 x-request-id
@@ -571,3 +572,4 @@ stateDiagram-v2
 - 2026-09-25：评审关口修正（lint 0 findings + rubric 走查 + 输入对账 + 版本核查 + 对抗透镜）。主要修正：推送改为「只作触发信号、收到即补读」；订阅恢复 `SUBSCRIBED` 前补读一次；错误按端点分派枚举域、`AppError` 增 `source`、42501 不再映射会话失效；`create_order_for_user` 完整签名与 revoke/grant 语句序列、注入失败模式与正向断言；幂等键复用条件与清除/保留按类别写死；清理改为 `onLaunch` 第一步 gate 并补 `weorder_checkout_intent`；客户端唯一契约文件与 `order.id`/`order_number` 映射；realtime-js `URL` 垫片与真机冒烟前提；请求头构造统一到 `core/transport`；验证矩阵扩至 13 行；售罄推迟理由按事实改写并入回写清单。
 - 2026-09-25：定稿（status: final）。聚焦复核：上轮 14 条发现全部关闭，6 处新引入不一致（会话类行优先级、权限断言角色、契约文件边界、订阅静默语义、催单时效分支等）已修；上游回写已执行（PRD FR-P3-7/16/17 与修订记录；P2 spine AD-2/AD-5/AD-14/AD-19、偏离段、Deferred 行、Stack、修订记录）。
 - 2026-09-25：spec 收敛回写（Ly 裁定）：Realtime 止损时间盒由「1–2 周」改为「1 天」；演示定位确认 Phase 3 本地为主、公开演示版归 Phase 4；错误类别 `unknown` 保留（加法型），订阅及其它新增类别暂不入库、先在客户端侧记录。
+- 2026-09-26：范围修订（Ly 裁定）：订单页图片化呈现（Story 4.7）——`order_items` 新增图片快照列与读取形状增量（加法型，AR-P3-3 清单已补）；FR-P3-10 / FR-P3-11 展示增量回写 PRD；「最小 UI 规范」形态表补订单图片行；界面结构扩展属对「零变化」约束的显式修订，M1 预演（Story 4.8）覆盖新界面。

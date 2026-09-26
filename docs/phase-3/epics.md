@@ -79,7 +79,7 @@ NFR-P3-5 可观测性（开发期）：订阅连接、回退与重连过程可�
 
 - AR-P3-1 无 starter 模板：架构未指定任何 greenfield / starter 模板。当前仓库为**规划仓库**（只产出 PRD、架构与 Epic 文档）；实际实现发生在**开发仓库 `we-order`**（含 `mp/` 与 `supabase/`）。Epic 1 的第一个 story 不是「从模板初始化项目」，而是在既有开发仓库内落地 Phase 3 骨架与存量清理。
 - AR-P3-2 客户端结构落点（Structural Seed）：`mp/src/` 新增 `core/{session,transport,realtime}`；重建 `api/{catalog,orders,cart,auth,storage}.ts`；根新增 `composables/use-app-bootstrap.ts`、`use-order-status.ts`（跨主包 / 分包 → 根）；`utils/error-copy.ts`、`utils/order-status.ts`；`types/api-contracts.ts` 为客户端唯一契约文件；删除 `src/mock/`、`pages/auth-check/` 并同步 `pages.json` 首页与声明。
-- AR-P3-3 后端改动清单（Phase 3 全部加法型）：迁移（`create_order_for_user` + revoke / grant 收紧、`orders` 加入 publication、扫描周期同名替换 3s、`order_error_code` 追加 `unknown`）；新增边缘函数 `pay-order`（`verify_jwt = true`、失败响应带 `x-request-id`）；pgTAP 既有断言按新授权反转 / 重述并新增反向与正向断言；8 个 verify 脚本 9 处 `create_order` 调用改造（优先改走 `pay-order`）；`supabase/types/database.types.ts` 重新生成。
+- AR-P3-3 后端改动清单（Phase 3 全部加法型）：迁移（`create_order_for_user` + revoke / grant 收紧、`orders` 加入 publication、扫描周期同名替换 3s、`order_error_code` 追加 `unknown`、`order_items` 图片快照列与读取形状增量（Story 4.7））；新增边缘函数 `pay-order`（`verify_jwt = true`、失败响应带 `x-request-id`）；pgTAP 既有断言按新授权反转 / 重述并新增反向与正向断言；8 个 verify 脚本 9 处 `create_order` 调用改造（优先改走 `pay-order`）；`supabase/types/database.types.ts` 重新生成。
 - AR-P3-4 环境与拓扑：本地 Supabase 栈是唯一运行环境（Postgres 17、迁移 + 种子、RLS、publication、Storage 公开读桶、`wechat-login` / `pay-order`、cron 扫描）；小程序并发走 REST / RPC、HTTP（登录 / 支付）、Socket（订阅）、图片 URL；Phase 4 前不上云；演示前按 addendum §F 预检（含真机读目录最小冒烟）。
 
 **客户端分层与基础设施**
@@ -660,7 +660,42 @@ So that 面试官看到的是设计过的兜底，而不是事故现场。
 **And** 登录失败不产生半登录；建单失败不丢购物车、不产生重复订单；催单 / 确认取杯失败不改变本地展示状态；任一步失败后用户都能找到明确的下一步（重试 / 返回）
 **And** 提示不含内部堆栈、数据库细节、密钥或 OpenID；演示路径不依赖任何「特判后门」或假数据兜底
 
-### Story 4.7: 演示主路径预演与手动验证矩阵（M1 收口）
+### Story 4.7: 订单商品图片呈现（范围修订）
+
+> **范围修订提示：** 本 story 是 Phase 3 的一次显式范围扩展——原约束「界面结构与交互零变化（仅兑现最小 UI 规范）」在订单页扩展为「订单卡片与详情页的图片化呈现」。其余增量仍以最小 UI 规范为限；后端为加法型改动（新增快照列 + 读取形状增量），不构成结构性返工。
+
+As a 已下单用户，
+I want 在订单卡片上一眼看到买了哪几样、在详情里看清每一项与规格，
+So that 订单页不再是一屏文字，核对商品更快。
+
+**Requirements:** FR-P3-7(缺图占位复用), FR-P3-10/11(展示增量); AR-P3-3(新增加法型迁移), AR-P3-18(契约增量), AR-P3-20(形态沿用)
+
+**Acceptance Criteria:**
+
+**Given** 后端快照与读取形状
+**When** 应用迁移
+**Then** `order_items` 新增图片快照列 `image_path`（可空，形状同 `products.image_path`）；`create_order` 下单时把商品**当时**的 `image_path` 写入快照；既有订单行不回填（历史单显示占位）
+**And** `get_my_order_detail` 的明细形状增加 `image_path`；`get_my_orders` 的列表项增加 `item_images`（按明细行顺序，元素 `{ image_path, quantity }`，`image_path` 可空）；两处其余字段与既有形状逐字段一致（只增不改；`item_summary` 保留在契约中，客户端不再展示）
+**And** pgTAP 的列集合与形状断言按新列同步（`60_orders` 明细列、`80_create_order` 快照列、`95_order_list` 列表项、`96_order_detail` 明细），新增断言「商品改图后历史订单快照不变」；verify 脚本同步；`supabase test db` 全绿；类型重新生成、mp 契约（`OrderDetailItem` / `OrderListItem`）同步
+**And** 图片对象仍由 Ly 自备（沿用 FR-P3-7），本 story 不做图片入仓与上传
+
+**Given** 订单卡片（列表）
+**When** 渲染一条订单
+**Then** 卡片只保留：订单编号、状态、商品图片行、下单时间、金额、状态操作按钮；不展示商品名、规格摘要、备注、就餐方式
+**And** 图片行只占一行：每个明细行（`product_id` + 规格选择唯一确定一条线）一张方图——同款同规格合并为一张、不同规格分别列出，不按数量展开
+**And** 一行放不下时不渲染多余格子：前 k−1 格为商品图，第 k 格为渐变遮罩格（可垫下一张商品图）并显示 `+N`，N = 未展示的明细行数 = 总行数 − (k−1)；一行容量 k 由实际宽度决定
+**And** 图片经对象存储 URL 构造（复用目录图片的同一构造与占位规则）；`image_path` 为空或加载失败以占位色块呈现、不阻塞列表渲染
+
+**Given** 订单详情
+**When** 渲染
+**Then** 每条明细行在名称前显示方图缩略图；名称与完整规格摘要一条不少（`spec_summary` 原样展示）；金额与数量沿用；其余卡片结构与 Phase 1 一致
+**And** 缺图同占位色块
+
+**Given** 演示预演
+**When** 更新验证矩阵
+**Then** #9 界面无回归的复验项含：卡片图片行与 `+N` 溢出、同规格合并 / 不同规格分行、详情缩略图、缺图占位（含老订单空图）；实际效果以模拟器验收为准，皮肤级调整记入验收记录
+
+### Story 4.8: 演示主路径预演与手动验证矩阵（M1 收口）
 
 As a 演示者，
 I want 一次预演走完 UJ-P3-1 并留下验证记录，
