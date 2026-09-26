@@ -44,7 +44,7 @@ const DEFAULT_TIMEOUT_MS = 10000
 
 /**
  * 会话类失败的处理：续期 / 重登后**重放一次**。
- * - provider 未注册（Story 1.2 尚无 core/session）→ 直接归一为 client.session_expired；
+ * - provider 未注册（测试或裸用通道）→ 直接归一为 client.session_expired；
  * - 已有重放标记（重放后的响应仍是会话类）→ 归一为 client.session_expired；
  * - 恢复本身失败 → 归一为 client.session_expired（不把登录域错误上浮给消费方）。
  */

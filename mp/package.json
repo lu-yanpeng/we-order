@@ -42,6 +42,7 @@
   },
   "dependencies": {
     "@alova/adapter-uniapp": "2.0.18",
+    "@alova/shared": "1.3.4",
     "@dcloudio/uni-app": "3.0.0-5010420260703001",
     "@dcloudio/uni-app-harmony": "3.0.0-5010420260703001",
     "@dcloudio/uni-app-plus": "3.0.0-5010420260703001",

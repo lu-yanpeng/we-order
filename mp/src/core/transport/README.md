@@ -46,17 +46,16 @@ export function fetchOrders() {
   `not_authenticated`）先经 provider 续期并**只重放一次**，恢复失败 → `client.session_expired`；
   `42501` 是权限拒绝、不是会话问题（不触发续期）。
 - **依赖反转**：transport 不 import `core/session`；session 在装载时用 `registerSessionProvider()`
-  注入「取凭证 / 会合会话 / 强制恢复」三个动作（唯一调用方 `core/session`，Story 1.3）。
+  注入「取凭证 / 会合会话 / 强制恢复」三个动作（唯一调用方 `core/session`）。
 - **裸通道** `rawTransport`：不等待会话、不续期、不重放，凭证经 `meta.accessToken` 显式传入；
   仅供 `core/session` 调平台 auth 端点与 `wechat-login`。
 - **超时**：默认 10s（`timeoutMs` 可覆盖），归入 `client.timeout`。
 
-## Story 1.2 范围与遗留
+## 会话注册现状（Story 1.3 起）
 
-本 story 只建通道与错误层，未接任何调用方（`api/` 保持原状，2B 裁定）：第一个真实调用方是
-Story 1.3 的 `core/session`（走裸通道）。因此「全仓不存在绕开通道的 `uni.request`」与
-「`api/` 不持有运行时状态」两条 AC 记在 Story 1.3 关闭；旧 `api/auth/http.ts`、`api/auth/errors.ts`
-届时一并删除。
+`core/session` 已落地并在装载时注册 provider：会话持久化、单飞续期、主动续期与回退重登
+全部封在会话模块内（见 `core/session/README.md`）；传输侧只做「请求前取凭证、401 时调用
+续期并重放一次」。`api/auth.ts` 是会话门面，页面 / Composable 不直接接触本目录。
 
 ## 测试
 

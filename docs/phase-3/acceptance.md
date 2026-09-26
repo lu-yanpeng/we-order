@@ -127,3 +127,89 @@ Story 4.8 的手动验证矩阵（演示主路径与失败场景）可在本文�
 4. **AD-6 未覆盖 REST（目录）域的服务端失败**：未归类失败统一落 `order.unknown` 兜底文案（域模型没有目录域）；Story 2.2 的目录失败态按此消费，如体验不合适再评估。
 5. **`40_menu_view.test.sql` 的本地环境失败**：非本次改动引入；如需全绿可在演示前跑 `supabase/scripts/rebuild.sh`（会清空本地栈数据，属演示前预检动作，不属本 story）。
 6. **过渡期重复**：`core/transport/config.ts` 与 `api/auth/config.ts` 读取同名构建变量；Story 1.3 删除后者。
+
+## Story 1.3 会话模块（登录 · 持久化 · 单飞续期 · 回退重登）
+
+- 日期：2026-09-26
+- 环境：本地 Supabase 栈（CLI 2.117.0 / Postgres 17）；mp 侧 `pnpm type-check`（vue-tsc 3.3.6）、`pnpm lint`、`pnpm test`（vitest 3.2.7）、`pnpm build:mp-weixin`
+- 范围：客户端新增 `core/session`、重建 `api/auth.ts` 门面并删除旧 `api/auth/`、验证页换接线；**后端零改动**
+- 裁定记录：验证页保留改接线（1A）、凭证重放按钮删除（2A）、提前量 5 分钟 + 登录重试上限 3 次退避 0/1s/2s（3A）、凭证变更通知本 story 一起做（4A）、会话状态内存持有（5A，Storage 篡改需重新编译/重启）
+
+### 交付物
+
+| 类别 | 内容 |
+| --- | --- |
+| 新增（客户端） | `src/core/session/`：`index.ts`（组装 + transport provider 注册）、`session.ts`（单飞 / 主动续期 / 回退重登 / 退避与上限 / 变更通知）、`storage.ts`（`weorder_session` 唯一读写 + 损坏自愈）、`login.ts`（`uni.login` + `wechat-login` + 平台续期，走裸通道）、`types.ts`、`README.md`、`session.test.ts`（16 项） |
+| 新增（客户端） | `src/api/auth.ts`：会话门面（`warmUpSession()` / `getSessionUser()`，只转调 `core/session`，不自建登录请求） |
+| 删除（客户端） | `src/api/auth/` 全目录（`index` / `session` / `login` / `http` / `errors` / `config` / `verify` / `README`）；旧会话状态、旧 `uni.request` 通道、旧翻译函数一并退场 |
+| 修改（客户端） | `pages/auth-check/`（换接新门面：会话预热 / 并发 ×3 / 失败文案自检；移除凭证重放）；`core/transport` 三处注释与 README 的 Story 1.2 遗留段 |
+| 依赖（客户端） | `+@alova/shared@1.3.4`（直挂；见下方「构建阻塞修复」） |
+| 未改动 | `src/api/orders.ts`、`src/api/cart.ts`、`src/mock/**`、页面结构（订单侧随 Epic 3/4 迁移） |
+
+### 会话设计落点
+
+- 依赖方向成立：`api/auth.ts → core/session → core/transport（裸通道）→ 平台`；transport 不 import session，取凭证与会合经装载时注册的 provider 回调（`core/session/index.ts` 注册）。
+- 静默登录：`uni.login` 一次性凭证 → `wechat-login`（裸通道）→ 建立会话并持久化；无登录界面、无授权弹窗、不索取资料。
+- 持久化：`weorder_session` 形状与 Phase 2 完全一致（`accessToken` / `refreshToken` / `expiresAt` / `userId`），升级不强制重登（Story 1.4 的 gate 保留该 key）；损坏 / 缺字段按无会话处理并清掉。
+- 单飞 + 主动续期：模块级 `inflight` 一条链；每次拿到会话后按 `expiresAt − 5 分钟` 排一个定时器，到点后台续期；失败静默且不重排（下一次会合兜底）；请求前 `ensureSession()` 是硬保证。
+- 回退重登：续期被平台明确拒绝（400 / 401）→ 清会话 → 静默重登（同一 openid 映射同一身份）；网络类失败保留原会话、错误上抛。「续期发出后被杀、新凭证丢失」走同一条回退路径（平台已轮换，旧刷新凭证被拒）。
+- 退避与上限：登录失败仅对 `session_failed` / `identity_failed` / `network_unreachable` / `timeout` 自动重试，上限 3 次、退避 0 / 1s / 2s；`rate_limited` 等不自动重试。
+- 不留半登录：只有完整会话才写内存与存储；任何失败不落盘。
+- 会话状态内存持有（5A）：启动时从存储恢复并纳入主动续期（剩余不足提前量则立即后台续期）；不进 Pinia、不经 `api/` 暴露。
+- 凭证变更通知：`subscribeSession()` 在登录 / 续期成功后回调 `{ accessToken, userId }`，供 Epic 5 的 realtime 同步订阅凭证。
+
+### 验收点与证据
+
+| Story 1.3 验收点 | 证据 |
+| --- | --- |
+| 冷启动无会话：静默完成登录并持久化；无登录界面、无授权弹窗 | `core/session/login.ts` + `api/auth.ts`；单测「无会话：静默登录一次并持久化；重复会合不重复登录」；手动验证 #1 |
+| 已有有效会话：冷启动 / 重启直接复用、不重复登录 | `createSession` 装载时 `loadStoredSession()`；单测「有效会话恢复：零网络、零登录」；存储形状与 Phase 2 一致（升级可复用）；手动 #2 |
+| 续期单飞：并发只发一次续期，其余复用同一结果 | 单测「并发会合只发一次续期」「并发会合单飞：冷启动三条并发只登录一次」；手动 #4 |
+| 主动续期：到期前自动续期、调用方无感 | `session.ts` `scheduleRenewal()` + 单测「主动续期：不需要请求触发」；手动 #5 |
+| 续期失败回退重登：带退避与上限、不产生第二身份、不留半登录 | `isInvalidRefresh` → `loginWithRetry()`；单测「续期被平台拒绝：清本地会话并回退重登，身份不变」「续期遇到网络失败：不重登、保留原会话」「连续失败到达上限：抛最后错误、不落盘」「session_failed 自动重试」「非可重试类别不自动重试」；手动 #6 |
+| 续期发出后被杀、新凭证丢失同样回退 | 平台轮换后旧刷新凭证被拒 → 同一条回退路径（无特判）；手动 #7 |
+| `ensureSession()` 会合语义：等待在飞登录 / 续期，不暴露「未登录」 | provider 注册（`core/session/index.ts`）→ transport 请求前会合；`api/auth.ts` 只暴露 `warmUpSession()` / `getSessionUser()`；单测「force：本地看似有效也强制恢复」 |
+| 上层不出现 token 一词；请求头构造只在 `core/transport` | `grep -rni token` 于 pages / composables / stores / components / 分包：唯一命中为 `bottom-bar/index.vue` 的 CSS 设计变量注释（与会话无关）；`headers.ts` 为唯一请求头构造点（Story 1.2 已证） |
+| 旧 `api/auth/` 删除，会话职责由 `core/session` 承接 | 目录已删除（8 个文件）；`api/auth.ts` 仅转调 `core/session`；`grep "AuthError\|authErrorMessage\|verifyUsedCodeReplay"` 无结果 |
+| 关闭 Story 1.2 遗留：「全仓无绕开通道的 `uni.request`」 | `grep -rn "uni\.request(" src` 无字面调用；请求全部经 alova（适配器内部调用），旧 `api/auth/http.ts` 已删 |
+| 关闭 Story 1.2 遗留：「`api/` 不持有运行时状态」 | 会话状态在 `core/session` 内存；`api/` 引用 `core/` 仅 `api/auth.ts`；`api/` 其余文件只做存储出口（cart / orders）与 Mock（随各自 story 迁移） |
+| 关闭 Story 1.2 遗留：「error-copy 是唯一翻译函数」 | `api/auth/errors.ts` 已删；`utils/error-copy.ts` 为唯一翻译点；验证页改用 `errorCopy` + `isAppError` |
+| 会话承载可替换（验证矩阵 #10） | transport 层以伪 provider 断言续期 / 重放（Story 1.2 的 14 项）；本 story `session.test.ts` 以注入假 http 跑真实状态机（不 mock 自身）；`grep` 上层（pages / composables）无 `core/` import |
+| 参数与存储自愈 | 提前量 / 上限 / 退避为 `session.ts` 顶部常量；单测「存储损坏 / 缺字段：自愈为无会话并重新登录」「平台响应缺字段：归一为 login.unknown 且不落盘」 |
+| 客户端全量编译与构建 | `pnpm type-check` 0 错误；`pnpm lint` 0 错误 / 0 警告；`pnpm format` 无格式告警 |
+| 单元测试全绿 | `pnpm test`：4 个文件 56 项全过（会话 16、归一 18、文案 8、通道 14） |
+| 小程序仍可构建且会话代码入包 | `pnpm build:mp-weixin` → `Build complete.`；产物含 `core/session/*` 与 `core/transport/*` |
+
+### 构建阻塞修复（Vite/uni 与 pnpm）
+
+alova 在本 story 第一次真正进入小程序包（此前无调用方），暴露 `@dcloudio/vite-plugin-uni` 强制 `resolve.preserveSymlinks: true` 与 pnpm 严格目录的组合问题：alova / adapter 的传递依赖 `@alova/shared` 从符号链接路径解析不到。处理：`pnpm add -E @alova/shared@1.3.4` 直挂（与 alova 内部 pin 的版本一致），构建恢复；`@alova/shared` 是 alova ESM 入口唯一的外部 import。
+
+### 手动验证结果（模拟器 / 真机，2026-09-26 演示者执行）
+
+步骤与预期见 `mp/src/core/session/README.md`「手动验证」一节（11 步 + 真机复验）。
+
+| # | 结果 | 证据 / 说明 |
+| --- | --- | --- |
+| 1 | 通过（模拟器 + 真机） | 冷启动 1 次 `wechat-login` 成功、页面显示本人 id、`weorder_session` 落盘；无授权弹窗 |
+| 2 | 通过（模拟器 + 真机） | 重启后无 `wechat-login`、无续期请求，同一 id（有效会话直接复用） |
+| 3 | 通过（模拟器） | 过期会话重启后 1 次 `refresh_token` 续期成功，存储更新 |
+| 4 | 通过（模拟器） | 冷启动并发 ×3 只发 1 次 `wechat-login`（单飞），三条结果同一 id |
+| 5 | 通过（模拟器） | 静置约 15 秒自动出现续期（主动续期，无需点击） |
+| 6 | 通过（模拟器） | 无效刷新凭证 → 续期 400 → 自动 `wechat-login` 重登，id 不变 |
+| 7 | 通过（模拟器，修正版） | 用真实被轮换掉的旧刷新凭证（续期后回填旧会话 + 过期时间）→ 续期 400 → 自动重登，id 不变（模拟「续期发出后被杀、新凭证丢失」） |
+| 8 | 通过（模拟器） | `supabase stop` 后显示 `[network_unreachable] 网络不可用，请检查网络后重试`，无白屏、不崩 |
+| 9 | 通过（模拟器） | `supabase start` 后重试成功，同一 id、不产生第二个身份 |
+| 10 | 通过（模拟器） | 非法 JSON 的 `weorder_session` 被自动清理并重新登录 |
+| 11 | 通过（模拟器） | 三行文案互不相同、无堆栈 / 密钥 / OpenID 等敏感信息 |
+| 真机（1 / 2 / 6） | 1、2 通过；6 未执行 | 真机证据：静默登录与会话恢复。6 的原因：真机重启小程序会断开真机调试、重连耗时长于「启动瞬间续期 / 重登」的观察窗口，无法观察网络面板；与模拟器为同一代码路径，经演示者确认**接受该偏移**。 |
+
+> 步骤 7 的原始写法在「内存持有会话 + 只改 Storage 不重启」时观察不到现象（回填的旧会话若仍在有效期会被直接复用）；已按「真实轮换作废的旧刷新凭证 + 过期时间」的修正版执行通过，README 已同步该写法。该时序（400 / 401 → 回退重登）另有单测覆盖。
+
+### 有意偏差与遗留（Story 1.4 / 2.3 / Epic 5）
+
+1. **验证页保留到 Story 2.3**（1A）：本 story 只换接线并移除凭证重放按钮（2A）；`pages.json` 首页与页面删除仍按原计划留给 Story 2.3。
+2. **会话状态内存持有**（5A）：开发者工具直接改 Storage 需重新编译 / 重启才生效（README 已注明）；Phase 2 的「读-through 存储」写法不再保留。
+3. **主动续期失败不重排定时器**：失败静默且有界（下一次请求 / 会合兜底），避免循环重试；如演示上需要更积极的恢复策略，再评估。
+4. **凭证变更通知暂无消费方**：`subscribeSession()` 已按 AD-2 提供，Epic 5 的 `core/realtime` 接 `setAuth` 时消费。
+5. **启动编排未接**：`App.vue:onLaunch` 的预热调用属 Story 1.4（`use-app-bootstrap.ts`）；当前验证入口为 `pages/auth-check/`。
+6. **订单 / 目录侧仍 Mock**：`api/orders.ts`、`api/products.ts`、`api/store.ts`、`src/mock/` 未动，随 Epic 2 / Epic 4 迁移；本 story 不产生 Mock↔真实开关。

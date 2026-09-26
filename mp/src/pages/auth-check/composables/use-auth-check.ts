@@ -1,18 +1,14 @@
 /**
- * 身份链路验证 Composable（Story 2.4 / 2.5 / 2.6 / 5.5 的临时入口）
+ * 身份链路验证 Composable（Phase 2 临时入口；Story 1.3 起接线 core/session）
  *
  * 职责：调用 api/auth 的对外出口，把结果整理成页面可展示的状态。
- * 页面只做编排；本 composable 仅本页面使用，按 AD-9 放在页面目录内。
- * Phase 2 结束后整个验证页（含本文件）删除。
+ * 页面只做编排；本 composable 仅本页面使用，按 P1 AD-9 放在页面目录内。
+ * Phase 3 Story 2.3 随验证页（含本文件）删除。
  */
 import { ref } from 'vue'
-import {
-  AuthError,
-  authErrorMessage,
-  getSessionUser,
-  verifyUsedCodeReplay,
-  type LoginErrorCode,
-} from '@/api/auth'
+import { getSessionUser } from '@/api/auth'
+import type { AppError } from '@/types/errors'
+import { errorCopy, isAppError } from '@/utils/error-copy'
 
 /** 单条验证结果 */
 export type CheckResult = {
@@ -22,14 +18,14 @@ export type CheckResult = {
 
 /** 失败展示：类别 + 文案（+ 请求标识，便于与服务端日志对账） */
 function describeFailure(error: unknown): string {
-  if (error instanceof AuthError) {
+  if (isAppError(error)) {
     const requestId = error.requestId === undefined ? '' : `（请求标识 ${error.requestId}）`
-    return `[${error.code}] ${authErrorMessage(error)}${requestId}`
+    return `[${error.code}] ${errorCopy(error)}${requestId}`
   }
-  return authErrorMessage(error)
+  return '未知失败'
 }
 
-/** 发起一次受保护请求并收集结果 */
+/** 发起一次身份的会合与读取并收集结果 */
 async function checkOnce(index: number): Promise<CheckResult> {
   try {
     const user = await getSessionUser()
@@ -39,84 +35,50 @@ async function checkOnce(index: number): Promise<CheckResult> {
   }
 }
 
-/** Story 2.6：三类关键失败的类别（文案自检用，渲染仍走唯一的翻译函数） */
-const SELF_CHECK_CODES: LoginErrorCode[] = [
-  'network_unreachable',
-  'rate_limited',
-  'code_expired_or_used',
+/** 文案自检用：三域各取一个类别，喂给唯一的翻译函数（渲染仍走 errorCopy） */
+const SELF_CHECK_ERRORS: AppError[] = [
+  { source: 'client', code: 'network_unreachable' },
+  { source: 'login', code: 'rate_limited' },
+  { source: 'order', code: 'product_unavailable' },
 ]
 
 export function useAuthCheck() {
-  const verifying = ref(false)
+  const warming = ref(false)
   const verifyingConcurrent = ref(false)
-  const replaying = ref(false)
   const results = ref<CheckResult[]>([])
 
-  /** 【验证身份链路】一次受保护请求 */
-  const verify = async () => {
-    if (verifying.value) return
-    verifying.value = true
-    results.value = [await checkOnce(1)]
-    verifying.value = false
+  /** 【会话预热 / 当前身份】触发同一条会合链路（静默登录 / 续期）并读取本人标识 */
+  const warmUp = async () => {
+    if (warming.value) return
+    warming.value = true
+    try {
+      results.value = [await checkOnce(1)]
+    } finally {
+      warming.value = false
+    }
   }
 
   /**
-   * 【并发验证 ×3】同时发起三个受保护请求。
+   * 【并发验证 ×3】同时发起三个身份读取。
    * 会话已过期时用于验证单飞：网络面板应只出现一次续期请求。
    */
   const verifyConcurrent = async () => {
     if (verifyingConcurrent.value) return
     verifyingConcurrent.value = true
-    results.value = await Promise.all([checkOnce(1), checkOnce(2), checkOnce(3)])
-    verifyingConcurrent.value = false
-  }
-
-  /** 【错误文案自检】三类关键失败的文案是否互不相同（喂给同一个翻译函数） */
-  const selfCheck = () => {
-    results.value = SELF_CHECK_CODES.map((code) => ({
-      ok: false,
-      detail: `[${code}] ${authErrorMessage(new AuthError(code, ''))}`,
-    }))
-  }
-
-  /**
-   * 【凭证失效重放（验证用）】Story 5.5：制造一次真实的「微信凭证已失效」。
-   * 连续提交同一个微信凭证，第二次拿到真实的 code_expired_or_used；
-   * 随后清掉本地会话并真实重新登录，验证「可重试、且重试不产生第二个身份」。
-   */
-  const replayUsedCode = async () => {
-    if (replaying.value) return
-    replaying.value = true
     try {
-      const result = await verifyUsedCodeReplay()
-      const sameIdentity = result.firstUserId !== '' && result.firstUserId === result.retriedUserId
-      results.value = [
-        {
-          ok: true,
-          detail: `凭证重放按预期失败：${describeFailure(result.rejection)}`,
-        },
-        {
-          ok: sameIdentity,
-          detail: sameIdentity
-            ? `重试成功：${result.retriedUserId}（与重放前同一身份，未产生第二个身份）`
-            : `重试得到不同身份：重放前 ${result.firstUserId}，重试后 ${result.retriedUserId}`,
-        },
-      ]
-    } catch (error) {
-      results.value = [{ ok: false, detail: `重放未按预期进行：${describeFailure(error)}` }]
+      results.value = await Promise.all([checkOnce(1), checkOnce(2), checkOnce(3)])
     } finally {
-      replaying.value = false
+      verifyingConcurrent.value = false
     }
   }
 
-  return {
-    verifying,
-    verifyingConcurrent,
-    replaying,
-    results,
-    verify,
-    verifyConcurrent,
-    selfCheck,
-    replayUsedCode,
+  /** 【失败文案自检】三域类别经同一翻译函数后互不相同、无敏感信息 */
+  const selfCheck = () => {
+    results.value = SELF_CHECK_ERRORS.map((error) => ({
+      ok: false,
+      detail: `[${error.code}] ${errorCopy(error)}`,
+    }))
   }
+
+  return { warming, verifyingConcurrent, results, warmUp, verifyConcurrent, selfCheck }
 }

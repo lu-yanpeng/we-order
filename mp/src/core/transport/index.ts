@@ -4,7 +4,8 @@
  * - `transport`：业务通道（REST / RPC / 边缘函数），自动带请求头、错误归一、
  *   会话类失败续期重放一次；api/ 方法用它定义并导出 alova Method（AD-5）。
  * - `rawTransport`：裸通道（不等待会话、不续期、不重放），仅 `core/session` 使用。
- * - `registerSessionProvider`：会话插槽注册；唯一调用方是 `core/session`（Story 1.3）。
+ * - `registerSessionProvider`：会话插槽注册；唯一调用方是 `core/session`，在装载时注入
+ *   取凭证与会合会话两个动作（避免 transport 反向依赖 session）。
  *
  * api/ 方法示例（Story 2.1 起）：
  *   transport.Get<MenuCategory[]>('/rest/v1/menu', { meta: { auth: 'anonymous' } })

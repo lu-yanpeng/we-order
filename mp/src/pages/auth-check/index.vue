@@ -1,22 +1,14 @@
 <script setup lang="ts">
 /**
- * 身份链路验证页（Story 2.4 / 2.5 / 2.6 的临时入口，Phase 2 结束后整个目录删除）
+ * 身份链路验证页（Phase 2 临时入口；Story 1.3 起验证 core/session）
  *
- * 页面只做编排与展示：调用与状态在 useAuthCheck，登录链路与会话在 api/auth。
- * 本页是 Phase 2 的客户端验证入口，全部验证都在这里完成。
+ * 页面只做编排与展示：调用与状态在 useAuthCheck，会话链路在 api/auth 门面与 core/session。
+ * 本页是 Phase 3 会话模块的手动验证入口，随 Story 2.3 的存量清理删除。
  */
 import { useAuthCheck } from './composables/use-auth-check'
 
-const {
-  verifying,
-  verifyingConcurrent,
-  replaying,
-  results,
-  verify,
-  verifyConcurrent,
-  selfCheck,
-  replayUsedCode,
-} = useAuthCheck()
+const { warming, verifyingConcurrent, results, warmUp, verifyConcurrent, selfCheck } =
+  useAuthCheck()
 
 const goHome = () => {
   uni.redirectTo({
@@ -30,20 +22,19 @@ const goHome = () => {
     <view class="flex flex-col gap-[8rpx]">
       <text class="font-semibold text-[32rpx] text-ink">身份链路验证（临时页面）</text>
       <text class="text-[22rpx] text-ink-soft">
-        验证静默登录、会话恢复、透明续期、单飞、回退重登、失败文案与凭证失效重放；步骤见
-        mp/src/api/auth/README.md。
+        验证静默登录、会话恢复、透明续期、单飞、回退重登与失败文案；步骤见
+        mp/src/core/session/README.md。
       </text>
     </view>
 
     <view class="flex flex-col gap-[16rpx]">
-      <t-button theme="primary" block :loading="verifying" @click="verify"> 验证身份链路 </t-button>
+      <t-button theme="primary" block :loading="warming" @click="warmUp">
+        会话预热 / 当前身份
+      </t-button>
       <t-button block :loading="verifyingConcurrent" @click="verifyConcurrent">
         并发验证 ×3
       </t-button>
-      <t-button block @click="selfCheck"> 三类失败文案自检 </t-button>
-      <t-button block :loading="replaying" @click="replayUsedCode">
-        凭证失效重放（验证用）
-      </t-button>
+      <t-button block @click="selfCheck"> 失败文案自检 </t-button>
     </view>
 
     <scroll-view

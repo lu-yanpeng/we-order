@@ -6,8 +6,7 @@
  * - VITE_SUPABASE_PUBLISHABLE_KEY：发布密钥
  *
  * 遵循 AD-25：客户端只允许出现发布密钥；服务端密钥与 AppSecret 不进入客户端。
- * Story 1.2 阶段 api/auth/config.ts 仍是同样两个变量的旧读取点（Story 1.3 随会话
- * 重建删除）；过渡期两份并存，取值口径一致。
+ * 本文件是构建变量的唯一读取点（Phase 2 的 api/auth/config.ts 已随会话重建删除）。
  */
 const url = String(import.meta.env.VITE_SUPABASE_URL ?? '').replace(/\/+$/, '')
 const publishableKey = String(import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? '')
