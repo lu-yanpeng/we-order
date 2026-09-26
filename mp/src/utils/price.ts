@@ -3,8 +3,7 @@
  *
  * 不依赖 Vue 响应式系统，可独立测试。
  */
-import type { SpecGroup } from '@/types/product'
-import type { DiningMode } from '@/types/order'
+import type { DiningMode, MenuSpecGroup, SpecSelections } from '@/types/api-contracts'
 
 /**
  * 计算规格选项的累计加价金额
@@ -13,10 +12,7 @@ import type { DiningMode } from '@/types/order'
  * @param selections 用户选择的规格值，key=groupId, value=optionId(s)
  * @returns 全部规格选项的加价总和
  */
-export function calcSpecExtras(
-  specGroups: SpecGroup[],
-  selections: Record<string, string | string[]>,
-): number {
+export function calcSpecExtras(specGroups: MenuSpecGroup[], selections: SpecSelections): number {
   let extra = 0
   for (const group of specGroups) {
     const val = selections[group.id]
@@ -25,11 +21,11 @@ export function calcSpecExtras(
       const ids = val as string[]
       for (const id of ids) {
         const opt = group.options.find((o) => o.id === id)
-        if (opt) extra += opt.priceExtra
+        if (opt) extra += opt.price_extra
       }
     } else {
       const opt = group.options.find((o) => o.id === val)
-      if (opt) extra += opt.priceExtra
+      if (opt) extra += opt.price_extra
     }
   }
   return extra
@@ -44,10 +40,7 @@ export function calcSpecExtras(
  * @param selections 用户选择的规格值
  * @returns 用 " / " 分隔的规格摘要，无规格时返回空字符串
  */
-export function buildSpecSummary(
-  specGroups: SpecGroup[],
-  selections: Record<string, string | string[]>,
-): string {
+export function buildSpecSummary(specGroups: MenuSpecGroup[], selections: SpecSelections): string {
   const parts: string[] = []
 
   for (const group of specGroups) {
@@ -83,8 +76,8 @@ export function buildSpecSummary(
  */
 export function calcTotalPrice(
   basePrice: number,
-  specGroups: SpecGroup[],
-  selections: Record<string, string | string[]>,
+  specGroups: MenuSpecGroup[],
+  selections: SpecSelections,
   count: number,
   hasSpecs: boolean,
 ): number {

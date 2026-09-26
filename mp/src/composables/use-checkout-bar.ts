@@ -18,7 +18,7 @@
 
 import { ref } from 'vue'
 import type { Ref } from 'vue'
-import type { CartItem } from '@/types/product'
+import type { CartItem } from '@/types/cart'
 
 /** 结算栏可见性：模块级共享，保证 once-true-never-false（AD-4-e） */
 const checkoutBarVisible = ref(false)

@@ -11,12 +11,12 @@
  * 遵循 AD-9：首页专属 composable 放在页面目录内。
  */
 import { ref } from 'vue'
-import type { Order } from '@/types/order'
+import type { OrderListItem } from '@/types/api-contracts'
 import { fetchOrders } from '@/api/orders'
 
 export function useOrders() {
   /** 订单列表（按时间倒序） */
-  const orders = ref<Order[]>([])
+  const orders = ref<OrderListItem[]>([])
   /** 数据加载错误信息 */
   const error = ref<string | null>(null)
   /** 订单详情跳转进行中标记，防止重复点击（navigateTo 成功后重置） */
@@ -26,7 +26,8 @@ export function useOrders() {
   const initOrders = async () => {
     error.value = null
     try {
-      orders.value = await fetchOrders()
+      const page = await fetchOrders()
+      orders.value = page.items
     } catch {
       error.value = '订单加载失败'
     }
@@ -34,9 +35,10 @@ export function useOrders() {
 
   /**
    * 点击卡片 → 进入订单详情页（FR-13）。
+   * 跳转用服务端 UUID（order.id）；展示编号是 order.order_number。
    * 防连点靠 navigatingToDetail 标记。
    */
-  const goToOrderDetail = async (order: Order) => {
+  const goToOrderDetail = async (order: OrderListItem) => {
     if (navigatingToDetail.value) return
     navigatingToDetail.value = true
     await uni.showLoading({

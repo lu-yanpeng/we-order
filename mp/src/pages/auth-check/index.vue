@@ -17,6 +17,12 @@ const {
   selfCheck,
   replayUsedCode,
 } = useAuthCheck()
+
+const goHome = () => {
+  uni.redirectTo({
+    url: '/pages/home/index',
+  })
+}
 </script>
 
 <template>
@@ -58,5 +64,9 @@ const {
         <text class="text-[24rpx] text-ink-soft">尚无结果</text>
       </view>
     </scroll-view>
+
+    <view>
+      <t-button @click="goHome">首页</t-button>
+    </view>
   </view>
 </template>

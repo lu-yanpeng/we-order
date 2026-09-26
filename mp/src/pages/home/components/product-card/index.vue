@@ -1,15 +1,15 @@
 <script setup lang="ts">
-import type { Product } from '@/types/product'
+import type { MenuProduct } from '@/types/api-contracts'
 
 defineProps<{
-  product: Product
+  product: MenuProduct
 }>()
 
 const emit = defineEmits<{
-  'add-to-cart': [product: Product]
+  'add-to-cart': [product: MenuProduct]
 }>()
 
-const handleAddToCart = (product: Product) => {
+const handleAddToCart = (product: MenuProduct) => {
   emit('add-to-cart', product)
 }
 </script>
@@ -19,7 +19,9 @@ const handleAddToCart = (product: Product) => {
     <view class="h-[144rpx] w-[144rpx] shrink-0 rounded-[24rpx] bg-surface-ceramic" />
     <view class="flex min-w-0 flex-1 flex-col gap-[4rpx]">
       <text class="leading-[1.3] font-semibold text-[28rpx] text-ink">{{ product.name }}</text>
-      <text class="line-clamp-2 leading-[1.4] text-[22rpx] text-ink-soft">{{ product.desc }}</text>
+      <text class="line-clamp-2 leading-[1.4] text-[22rpx] text-ink-soft">{{
+        product.description
+      }}</text>
       <text v-if="product.sales > 0" class="mt-[2rpx] text-[22rpx] text-ink-soft"
         >月售{{ product.sales }}</text
       >

@@ -11,10 +11,9 @@ import { computed } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { useOrderDetail } from '@/sub-order-detail/composables/use-order-detail'
 import { useReorder } from '@/composables/use-reorder'
-import type { OrderStatus } from '@/types/order'
+import type { OrderStatus } from '@/types/api-contracts'
 
-const { order, store, error, modeLabel, initOrderDetail, urgeOrder, confirmPickup } =
-  useOrderDetail()
+const { order, error, modeLabel, initOrderDetail, urgeOrder, confirmPickup } = useOrderDetail()
 
 const { reorder } = useReorder()
 
@@ -71,7 +70,7 @@ onLoad((query) => {
           >
             <text class="text-[20rpx] text-ink-soft">取杯号</text>
             <text class="font-bold tracking-[2rpx] text-[52rpx] text-gold">
-              {{ order.pickupCode }}
+              {{ order.pickup_code }}
             </text>
           </view>
 
@@ -99,21 +98,18 @@ onLoad((query) => {
           </view>
         </view>
 
-        <!-- 门店信息卡片 -->
-        <view
-          v-if="store"
-          class="flex flex-col gap-[8rpx] rounded-card bg-surface-card p-[28rpx] shadow-card"
-        >
+        <!-- 门店信息卡片：取订单上的门店快照（AD-9），不读当前门店 -->
+        <view class="flex flex-col gap-[8rpx] rounded-card bg-surface-card p-[28rpx] shadow-card">
           <view class="mb-[4rpx] flex items-center justify-between">
-            <text class="font-bold text-[26rpx] text-ink">{{ store.name }}</text>
+            <text class="font-bold text-[26rpx] text-ink">{{ order.store_name }}</text>
             <text
               class="rounded-full bg-surface-ceramic px-[16rpx] py-[4rpx] font-bold text-[20rpx] text-green-accent"
             >
               {{ modeLabel }}
             </text>
           </view>
-          <text class="text-[20rpx] text-ink-soft">{{ store.address }}</text>
-          <text class="text-[20rpx] text-ink-soft">联系电话：{{ store.phone }}</text>
+          <text class="text-[20rpx] text-ink-soft">{{ order.store_address }}</text>
+          <text class="text-[20rpx] text-ink-soft">联系电话：{{ order.store_phone }}</text>
         </view>
 
         <!-- 商品明细卡片：与确认订单页结构相近，后续两页需要同时调整时可考虑抽成共享组件（AD-5） -->
@@ -125,18 +121,20 @@ onLoad((query) => {
           <view class="flex flex-col gap-[20rpx]">
             <view
               v-for="item in order.items"
-              :key="item.productId + item.specSummary"
+              :key="item.product_id + item.spec_summary"
               class="flex items-start justify-between gap-[20rpx]"
             >
               <view class="flex min-w-0 flex-1 flex-col gap-[4rpx]">
-                <text class="font-semibold text-[24rpx] text-ink">{{ item.productName }}</text>
-                <text class="leading-[1.3] text-[20rpx] text-ink-soft">{{ item.specSummary }}</text>
+                <text class="font-semibold text-[24rpx] text-ink">{{ item.product_name }}</text>
+                <text class="leading-[1.3] text-[20rpx] text-ink-soft">{{
+                  item.spec_summary
+                }}</text>
               </view>
               <view class="flex shrink-0 flex-col items-end gap-[2rpx]">
                 <view class="flex items-baseline">
                   <text class="font-bold text-[18rpx] text-ink">¥</text>
                   <text class="font-bold text-[24rpx] text-ink">{{
-                    item.unitPrice * item.quantity
+                    item.unit_price * item.quantity
                   }}</text>
                 </view>
                 <text class="text-[18rpx] text-ink-soft">x{{ item.quantity }}</text>
@@ -145,13 +143,13 @@ onLoad((query) => {
           </view>
 
           <view
-            v-if="order.packagingFee > 0"
+            v-if="order.packaging_fee > 0"
             class="flex items-baseline justify-between border-t border-dashed border-border-hairline pt-[12rpx] text-[22rpx] text-ink-rewards"
           >
             <text>外带包装费</text>
             <view class="flex items-baseline">
               <text class="font-bold text-[18rpx]">¥</text>
-              <text class="font-bold text-[22rpx]">{{ order.packagingFee }}</text>
+              <text class="font-bold text-[22rpx]">{{ order.packaging_fee }}</text>
             </view>
           </view>
 
@@ -159,7 +157,7 @@ onLoad((query) => {
             <text class="font-semibold text-[22rpx] text-ink">合计，实付</text>
             <view class="flex items-baseline">
               <text class="font-bold text-[20rpx] text-green">¥</text>
-              <text class="font-bold text-[30rpx] text-green">{{ order.totalPrice }}</text>
+              <text class="font-bold text-[30rpx] text-green">{{ order.total_amount }}</text>
             </view>
           </view>
         </view>
@@ -170,13 +168,13 @@ onLoad((query) => {
             class="flex items-center justify-between border-b border-border-hairline pb-[20rpx] text-[22rpx]"
           >
             <text class="font-semibold text-ink">订单编号</text>
-            <text class="text-ink-soft">{{ order.id }}</text>
+            <text class="text-ink-soft">{{ order.order_number }}</text>
           </view>
           <view
             class="flex items-center justify-between border-b border-border-hairline pb-[20rpx] text-[22rpx]"
           >
             <text class="font-semibold text-ink">下单时间</text>
-            <text class="text-ink-soft">{{ order.createdAt }}</text>
+            <text class="text-ink-soft">{{ order.created_at }}</text>
           </view>
           <view
             class="flex items-center justify-between border-b border-border-hairline pb-[20rpx] text-[22rpx]"

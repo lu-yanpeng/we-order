@@ -2,13 +2,13 @@
  * 门店 API 层
  *
  * 统一数据入口，隐藏数据来源（AD-1）。
- * Phase 1 返回固定的 Mock 门店，Phase 2 对接 Supabase 后整体替换。
- * 不做人为延迟，避免首屏空态闪烁。
+ * Phase 3 Epic 1：数据源仍是 Mock，返回形状已对齐服务端 `public.stores` 行
+ * （types/api-contracts.ts 的 StoreInfo）。
  */
-import type { Store } from '@/types/store'
+import type { StoreInfo } from '@/types/api-contracts'
 import { mockStore } from '@/mock/store'
 
 /** 获取门店信息 */
-export async function fetchStore(): Promise<Store> {
+export async function fetchStore(): Promise<StoreInfo> {
   return mockStore
 }

@@ -6,10 +6,10 @@
  * 操作只向外 emit，不涉及数据读写（AD-2：组件不依赖 composable / store）。
  */
 import { computed } from 'vue'
-import type { Order, OrderStatus } from '@/types/order'
+import type { OrderListItem, OrderStatus } from '@/types/api-contracts'
 
 const { order } = defineProps<{
-  order: Order
+  order: OrderListItem
 }>()
 
 const emit = defineEmits<{
@@ -37,15 +37,10 @@ const statusMeta = computed(() => STATUS_META[order.status])
 const actionMeta = computed(() => ACTION_META[order.status])
 
 /** 就餐方式文案 */
-const modeLabel = computed(() => (order.diningMode === 'takeout' ? '打包外带' : '店内堂食'))
+const modeLabel = computed(() => (order.dining_mode === 'takeout' ? '打包外带' : '店内堂食'))
 
-/** 商品标题：[就餐方式] 商品名、商品名 */
-const goodsTitle = computed(
-  () => `[${modeLabel.value}] ${order.items.map((it) => it.productName).join('、')}`,
-)
-
-/** 规格摘要 */
-const goodsDesc = computed(() => order.items.map((it) => it.specSummary).join(' | '))
+/** 商品标题：[就餐方式] 商品摘要（服务端 item_summary：商品名 ×数量、顿号连接） */
+const goodsTitle = computed(() => `[${modeLabel.value}] ${order.item_summary}`)
 
 /** 备注，「无备注要求」视为未填写 */
 const goodsNotes = computed(() =>
@@ -67,7 +62,7 @@ const handleAction = () => {
   >
     <!-- 卡头：订单编号 + 状态标签 -->
     <view class="flex items-center justify-between border-b border-border-hairline pb-[16rpx]">
-      <text class="text-[24rpx] text-ink-soft">订单编号: {{ order.id }}</text>
+      <text class="text-[24rpx] text-ink-soft">订单编号: {{ order.order_number }}</text>
       <text class="font-bold text-[24rpx]" :class="statusMeta.textClass">
         {{ statusMeta.label }}
       </text>
@@ -77,14 +72,13 @@ const handleAction = () => {
     <view class="flex items-center justify-between">
       <view class="flex min-w-0 flex-1 flex-col gap-[8rpx] pr-[24rpx]">
         <text class="line-clamp-1 font-semibold text-[28rpx] text-ink">{{ goodsTitle }}</text>
-        <text class="line-clamp-2 leading-[1.3] text-[22rpx] text-ink-soft">{{ goodsDesc }}</text>
         <text v-if="goodsNotes" class="line-clamp-2 leading-[1.3] text-[22rpx] text-ink-soft">{{
           goodsNotes
         }}</text>
       </view>
       <view class="flex shrink-0 items-baseline">
         <text class="font-bold text-[22rpx] text-ink">¥</text>
-        <text class="font-bold text-[32rpx] text-ink">{{ order.totalPrice }}</text>
+        <text class="font-bold text-[32rpx] text-ink">{{ order.total_amount }}</text>
       </view>
     </view>
 
@@ -94,7 +88,7 @@ const handleAction = () => {
       class="rounded-[8rpx] border border-dashed border-gold bg-[rgba(203,162,88,0.05)] px-[24rpx] py-[20rpx]"
     >
       <view class="flex justify-between font-semibold text-[22rpx] text-gold">
-        <text>凭取杯号 {{ order.pickupCode }} 到柜台取杯</text>
+        <text>凭取杯号 {{ order.pickup_code }} 到柜台取杯</text>
         <text>待取餐</text>
       </view>
     </view>

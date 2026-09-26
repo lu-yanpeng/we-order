@@ -9,10 +9,11 @@
  */
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import type { CartItem } from '@/types/product'
+import type { CartItem } from '@/types/cart'
+import type { SpecSelections } from '@/types/api-contracts'
 
-function selectionsKey(selections: Record<string, string | string[]>): string {
-  const normalized: Record<string, string | string[]> = {}
+function selectionsKey(selections: SpecSelections): string {
+  const normalized: SpecSelections = {}
   for (const key of Object.keys(selections).sort()) {
     const val = selections[key]
     normalized[key] = Array.isArray(val) ? [...val].sort() : val
@@ -42,7 +43,7 @@ export const useCartStore = defineStore('cart', () => {
     }
   }
 
-  function removeItem(productId: string, selections: Record<string, string | string[]>) {
+  function removeItem(productId: string, selections: SpecSelections) {
     const key = selectionsKey(selections)
     const idx = items.value.findIndex(
       (i) => i.productId === productId && selectionsKey(i.selections) === key,
@@ -52,11 +53,7 @@ export const useCartStore = defineStore('cart', () => {
     }
   }
 
-  function updateQuantity(
-    productId: string,
-    selections: Record<string, string | string[]>,
-    quantity: number,
-  ) {
+  function updateQuantity(productId: string, selections: SpecSelections, quantity: number) {
     const key = selectionsKey(selections)
     const item = items.value.find(
       (i) => i.productId === productId && selectionsKey(i.selections) === key,

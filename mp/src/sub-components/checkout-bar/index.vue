@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { getCurrentInstance, nextTick, onMounted, ref, watch } from 'vue'
-import type { CartItem } from '@/types/product'
+import type { CartItem } from '@/types/cart'
 import MyStepper from '@/components/stepper/index.vue'
 import BottomBar from '@/components/bottom-bar/index.vue'
 

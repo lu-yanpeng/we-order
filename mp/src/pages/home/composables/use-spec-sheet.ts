@@ -13,18 +13,18 @@
  * 弹窗组件始终挂载，通过 v-model:visible 控制显示。
  */
 import { computed, reactive, ref, watch } from 'vue'
-import type { Product } from '@/types/product'
+import type { MenuProduct, SpecSelections } from '@/types/api-contracts'
 import { calcTotalPrice, calcSpecExtras, buildSpecSummary } from '@/utils/price'
 
 export function useSpecSheet() {
   /** 弹窗是否可见 */
   const visible = ref(false)
   /** 当前正在选规格的商品 */
-  const currentProduct = ref<Product | null>(null)
+  const currentProduct = ref<MenuProduct | null>(null)
 
   // ---- 表单状态（从 SpecSheet 组件上移到 Composable） ----
   /** 各规格组的当前选中值: { groupId: optionId | optionId[] } */
-  const selections = reactive<Record<string, string | string[]>>({})
+  const selections = reactive<SpecSelections>({})
   /** 步进器数量：有规格时为浓缩份数，无规格时为购买数量 */
   const count = ref(1)
 
@@ -32,7 +32,7 @@ export function useSpecSheet() {
   /** 当前商品是否有规格组 */
   const hasSpecs = computed(() => {
     if (!currentProduct.value) return false
-    return !!(currentProduct.value.specGroups && currentProduct.value.specGroups.length > 0)
+    return currentProduct.value.spec_groups.length > 0
   })
 
   /** 单件单价：有规格 = 基础价 + 规格加价，无规格 = 基础价 */
@@ -40,7 +40,7 @@ export function useSpecSheet() {
     if (!currentProduct.value) return 0
     if (hasSpecs.value) {
       return (
-        currentProduct.value.price + calcSpecExtras(currentProduct.value.specGroups!, selections)
+        currentProduct.value.price + calcSpecExtras(currentProduct.value.spec_groups, selections)
       )
     }
     return currentProduct.value.price
@@ -54,7 +54,7 @@ export function useSpecSheet() {
    */
   const totalPrice = computed(() => {
     if (!currentProduct.value) return 0
-    const groups = currentProduct.value.specGroups || []
+    const groups = currentProduct.value.spec_groups
     return calcTotalPrice(
       currentProduct.value.price,
       groups,
@@ -68,7 +68,7 @@ export function useSpecSheet() {
   const priceLabel = computed(() => {
     if (!currentProduct.value) return ''
     if (hasSpecs.value) {
-      const summary = buildSpecSummary(currentProduct.value.specGroups!, selections)
+      const summary = buildSpecSummary(currentProduct.value.spec_groups, selections)
       return `${summary} x${count.value}`
     }
     return `x${count.value}`
@@ -77,7 +77,7 @@ export function useSpecSheet() {
   /** 纯规格摘要（不含数量），用于加入购物车时存储 */
   const specSummary = computed(() => {
     if (!currentProduct.value || !hasSpecs.value) return ''
-    return buildSpecSummary(currentProduct.value.specGroups!, selections)
+    return buildSpecSummary(currentProduct.value.spec_groups, selections)
   })
 
   // ---- 表单操作方法 ----
@@ -85,7 +85,7 @@ export function useSpecSheet() {
   const initSelections = () => {
     Object.keys(selections).forEach((k) => delete selections[k])
     if (!currentProduct.value) return
-    const groups = currentProduct.value.specGroups || []
+    const groups = currentProduct.value.spec_groups
     for (const group of groups) {
       selections[group.id] = group.multi ? [] : group.options[0]?.id || ''
     }
@@ -95,7 +95,7 @@ export function useSpecSheet() {
   /** 切换规格选项的选中状态 */
   const toggleOption = (groupId: string, optionId: string) => {
     if (!currentProduct.value) return
-    const groups = currentProduct.value.specGroups || []
+    const groups = currentProduct.value.spec_groups
     const group = groups.find((g) => g.id === groupId)
     if (!group) return
 
@@ -129,7 +129,7 @@ export function useSpecSheet() {
   )
 
   /** 打开弹窗，传入目标商品 */
-  const open = (product: Product) => {
+  const open = (product: MenuProduct) => {
     currentProduct.value = product
     visible.value = true
   }

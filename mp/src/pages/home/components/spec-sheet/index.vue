@@ -10,15 +10,15 @@
  *   - 无规格（!hasSpecs）：仅显示数量步进器
  */
 import { computed } from 'vue'
-import type { Product } from '@/types/product'
+import type { MenuProduct, SpecSelections } from '@/types/api-contracts'
 import MyStepper from '@/components/stepper/index.vue'
 import BottomBar from '@/components/bottom-bar/index.vue'
 
 const props = defineProps<{
   visible: boolean
-  product: Product | null
+  product: MenuProduct | null
   /** 各规格组的选中值: { groupId: optionId | optionId[] } */
-  selections: Record<string, string | string[]>
+  selections: SpecSelections
   /** 步进器数值 */
   count: number
   /** 最终价格 */
@@ -93,7 +93,7 @@ const popupVisible = computed({
             <text class="leading-[1.3] font-semibold text-[32rpx] text-ink">{{
               product.name
             }}</text>
-            <text class="leading-[1.4] text-[22rpx] text-ink-soft">{{ product.desc }}</text>
+            <text class="leading-[1.4] text-[22rpx] text-ink-soft">{{ product.description }}</text>
           </view>
         </view>
 
@@ -101,7 +101,7 @@ const popupVisible = computed({
           <view class="px-[32rpx] pt-[28rpx] pb-[48rpx]">
             <template v-if="hasSpecs">
               <view
-                v-for="group in product.specGroups"
+                v-for="group in product.spec_groups"
                 :key="group.id"
                 class="mb-[36rpx] last:mb-0"
               >
@@ -120,8 +120,8 @@ const popupVisible = computed({
                     @click="$emit('toggle-option', group.id, opt.id)"
                   >
                     <text class="mr-[8rpx] leading-none">{{ opt.label }}</text>
-                    <text v-if="opt.priceExtra > 0" class="text-[20rpx] opacity-80"
-                      >+¥{{ opt.priceExtra }}</text
+                    <text v-if="opt.price_extra > 0" class="text-[20rpx] opacity-80"
+                      >+¥{{ opt.price_extra }}</text
                     >
                   </view>
                 </view>

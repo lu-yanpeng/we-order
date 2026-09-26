@@ -14,7 +14,7 @@ import { watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useCartStore } from '@/stores/cart'
 import { loadCartString, saveCartString } from '@/api/cart'
-import type { CartItem } from '@/types/product'
+import type { CartItem } from '@/types/cart'
 
 let _initialized = false
 

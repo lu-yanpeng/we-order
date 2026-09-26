@@ -8,12 +8,12 @@
  * 遵循 AD-3：页面仅负责组件编排，业务逻辑封装在此。
  */
 import { ref, nextTick } from 'vue'
-import type { Category } from '@/types/product'
+import type { MenuCategory } from '@/types/api-contracts'
 import { fetchCategories } from '@/api/products'
 
 export function useProducts() {
   /** 商品分类列表（含各分类下的商品） */
-  const categories = ref<Category[]>([])
+  const categories = ref<MenuCategory[]>([])
   /** 数据加载状态 */
   const loading = ref(false)
   /** 数据加载错误信息 */

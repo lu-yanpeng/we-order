@@ -8,6 +8,10 @@
  * 4. 派生包装费、商品合计、总件数、应付金额与 ETA 文案
  * 5. 模拟支付状态机：验证中 → 成功（FR-10）；支付成功时构建订单记录经 API 层写入本地存储
  *
+ * Phase 3 Epic 1：订单记录形状已对齐服务端 `OrderDetail`。本地造单只是过渡——
+ * Epic 3 起改经 `pay-order` 服务端建单（id / 订单号 / 取杯号 / 金额都由服务端产出），
+ * 本文件里的 buildOrder 整段删除。
+ *
  * 遵循 AD-1：运行时响应式状态（Pinia store）由 Composable 直接读写；
  *              门店信息与订单持久化经由 api/。
  * 遵循 AD-6：购物车作为跨页面共享状态使用 Pinia。
@@ -18,13 +22,12 @@ import { useCartStore } from '@/stores/cart'
 import { createOrder } from '@/api/orders'
 import { fetchStore } from '@/api/store'
 import { calcPackagingFee } from '@/utils/price'
-import type { DiningMode, Order } from '@/types/order'
-import type { Store } from '@/types/store'
+import type { DiningMode, OrderDetail, StoreInfo } from '@/types/api-contracts'
 
 /** 模拟支付阶段（FR-10） */
 type PaymentPhase = 'idle' | 'verifying' | 'success'
 
-/** 当前时间格式化为「2026-06-28 23:15:20」，与订单 Mock 数据格式一致 */
+/** 当前时间格式化为「2026-06-28 23:15:20」，与服务端订单时间的对外格式一致 */
 function formatDateTime(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
@@ -38,10 +41,10 @@ export function useOrderConfirm() {
   const diningMode = ref<DiningMode>('dinein')
   /** 备注偏好，随订单一并保存到本地订单记录（FR-8） */
   const notes = ref('')
-  /** 门店信息（Phase 1 固定 Mock 门店） */
-  const store = ref<Store | null>(null)
+  /** 门店信息（数据源仍是 Mock，形状同服务端 `stores` 行） */
+  const store = ref<StoreInfo | null>(null)
 
-  /** 包装费：外带 ¥2，堂食免收 */
+  /** 包装费：外带 ¥2，堂食免收（展示口径；订单金额以服务端重算为准） */
   const packagingFee = computed(() => calcPackagingFee(diningMode.value))
   /** 应付金额 = 商品合计 + 包装费 */
   const payAmount = computed(() => totalPrice.value + packagingFee.value)
@@ -64,25 +67,34 @@ export function useOrderConfirm() {
   /** 支付进行中（验证中或成功展示中），用于弹层显隐与防重复点击 */
   const paying = computed(() => paymentPhase.value !== 'idle')
 
-  /** 用当前购物车与订单页状态构建订单记录（FR-10：新订单状态为「制作中」） */
-  function buildOrder(): Order {
+  /**
+   * 用当前购物车与订单页状态构建订单记录（FR-10：新订单状态为「制作中」）。
+   * 临时实现：id / 订单号 / 取杯号 / 金额本是服务端产物，这里只能造占位值；
+   * 接入 pay-order（Epic 3）后整段删除。
+   */
+  function buildOrder(): OrderDetail {
+    const now = new Date()
     return {
-      id: `SG${String(Date.now()).slice(-8)}`,
+      id: `mock-${now.getTime()}`,
+      order_number: `SG${String(now.getTime()).slice(-8)}`,
       status: 'cooking',
-      diningMode: diningMode.value,
+      dining_mode: diningMode.value,
+      packaging_fee: packagingFee.value,
+      total_amount: payAmount.value,
+      notes: notes.value.trim() || '无备注要求',
+      pickup_code: 'A-00',
+      created_at: formatDateTime(now),
+      store_name: store.value?.name ?? '',
+      store_address: store.value?.address ?? '',
+      store_phone: store.value?.phone ?? '',
       items: items.value.map((item) => ({
-        productId: item.productId,
-        productName: item.productName,
-        specSummary: item.specSummary,
+        product_id: item.productId,
+        product_name: item.productName,
+        spec_summary: item.specSummary,
         selections: item.selections,
-        unitPrice: item.unitPrice,
+        unit_price: item.unitPrice,
         quantity: item.quantity,
       })),
-      packagingFee: packagingFee.value,
-      totalPrice: payAmount.value,
-      notes: notes.value.trim() || '无备注要求',
-      createdAt: formatDateTime(new Date()),
-      pickupCode: '',
     }
   }
 

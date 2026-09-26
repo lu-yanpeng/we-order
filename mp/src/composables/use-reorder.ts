@@ -11,21 +11,22 @@
  * 遵循 AD-9：首页订单卡与订单详情页都要用，跨包复用故放在根 composables/。
  */
 import { ref } from 'vue'
+import { fetchOrderById } from '@/api/orders'
 import { useCart } from '@/composables/use-cart'
 import { useCheckoutBar } from '@/composables/use-checkout-bar'
 import { HOME_TAB_SWITCH_EVENT } from '@/composables/use-home-tabs'
-import type { Order, OrderItem } from '@/types/order'
-import type { CartItem } from '@/types/product'
+import type { OrderDetail, OrderDetailItem, OrderListItem } from '@/types/api-contracts'
+import type { CartItem } from '@/types/cart'
 
-/** 订单商品快照 → 购物车条目 */
-function toCartItem(item: OrderItem): CartItem {
+/** 订单商品快照（服务端形状）→ 购物车条目（纯本地形状） */
+function toCartItem(item: OrderDetailItem): CartItem {
   return {
-    productId: item.productId,
-    productName: item.productName,
+    productId: item.product_id,
+    productName: item.product_name,
     selections: item.selections,
     quantity: item.quantity,
-    unitPrice: item.unitPrice,
-    specSummary: item.specSummary,
+    unitPrice: item.unit_price,
+    specSummary: item.spec_summary,
   }
 }
 
@@ -42,12 +43,24 @@ export function useReorder() {
   /** 跳转进行中标记，防止重复点击 */
   const reordering = ref(false)
 
-  /** 再来一单：整车替换购物车 → 回到首页点餐 tab → 展开购物车面板 */
-  const reorder = (order: Order) => {
+  /**
+   * 再来一单：整车替换购物车 → 回到首页点餐 tab → 展开购物车面板。
+   *
+   * 订单卡触发时只有列表项（没有明细快照），先按 id 取一次详情；
+   * 详情页触发时直接用已加载的快照。Epic 4 起这两条都走服务端读取路径。
+   */
+  const reorder = async (order: OrderDetail | OrderListItem) => {
     if (reordering.value) return
     reordering.value = true
 
-    setItems(order.items.map(toCartItem))
+    const detail = 'items' in order ? order : await fetchOrderById(order.id)
+    if (!detail) {
+      reordering.value = false
+      uni.showToast({ title: '订单不存在', icon: 'none' })
+      return
+    }
+
+    setItems(detail.items.map(toCartItem))
     uni.$emit(HOME_TAB_SWITCH_EVENT, 'menu')
     openCartDetail()
 

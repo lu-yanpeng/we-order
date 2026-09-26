@@ -7,7 +7,8 @@
  */
 import { onMounted } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import type { Product, CartItem } from '@/types/product'
+import type { MenuProduct } from '@/types/api-contracts'
+import type { CartItem } from '@/types/cart'
 import { useProducts } from './composables/use-products'
 import { useSpecSheet } from './composables/use-spec-sheet'
 import { useOrders } from './composables/use-orders'
@@ -81,7 +82,7 @@ const {
 const { reorder } = useReorder()
 
 /** 点击商品加号 → 打开规格弹窗 */
-const handleAddToCart = (product: Product) => {
+const handleAddToCart = (product: MenuProduct) => {
   openSpecSheet(product)
 }
 
