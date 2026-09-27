@@ -213,3 +213,55 @@ alova 在本 story 第一次真正进入小程序包（此前无调用方），�
 4. **凭证变更通知暂无消费方**：`subscribeSession()` 已按 AD-2 提供，Epic 5 的 `core/realtime` 接 `setAuth` 时消费。
 5. **启动编排未接**：`App.vue:onLaunch` 的预热调用属 Story 1.4（`use-app-bootstrap.ts`）；当前验证入口为 `pages/auth-check/`。
 6. **订单 / 目录侧仍 Mock**：`api/orders.ts`、`api/products.ts`、`api/store.ts`、`src/mock/` 未动，随 Epic 2 / Epic 4 迁移；本 story 不产生 Mock↔真实开关。
+
+## Story 1.4 启动编排与存量清理 gate
+
+- 日期：2026-09-27
+- 环境：本地 Supabase 栈（CLI 2.117.0 / Postgres 17）；mp 侧 `pnpm type-check`（vue-tsc 3.3.6）、`pnpm lint`、`pnpm test`（vitest 3.2.7）、`pnpm build:mp-weixin`
+- 范围：客户端新增 `api/storage.ts`、`composables/use-app-bootstrap.ts`，`App.vue:onLaunch` 接启动编排；**后端零改动、无迁移**
+- 裁定记录（Ly）：会话恢复保留 import 期并写文档豁免（1B）；购物车空水合靠启动时序、不额外加代码（2A）；存储异常不写版本戳、下次启动重试（3A）；版本号数字 3 + 严格相等（4A）；App.vue 脚手架占位（`onShow/onHide` 与 `console.log`）由 Ly 在实施后直接删除（5B 的实施后修订，不影响本 story 验收点）；清理清单改为**按版本分组**（b），每代只清自己列出的 key，避免将来新增数据版本时误清真实购物车等活数据
+
+### 交付物
+
+| 类别 | 内容 |
+| --- | --- |
+| 新增（客户端） | `src/api/storage.ts`：`migrateStorageOnce()`——数据世代低于 3 时按「退役 key 清单」清空 `weorder_orders` / `weorder_cart` / `weorder_checkout_intent` 并写 `weorder_schema_version = 3`；清单**按版本分组**（新增版本新增一组、不改旧组，活数据不入清单）；保留 `weorder_session`；全同步 API；异常不阻塞启动 |
+| 新增（客户端） | `src/composables/use-app-bootstrap.ts`：`useAppBootstrap()`——存量清理 gate（同步第一步）→ 会话预热（异步、失败静默）；唯一调用方 App.vue（主包） |
+| 新增（测试） | `src/api/storage.test.ts`（6 项） |
+| 修改（客户端） | `App.vue`：`onLaunch` 第一条语句调 `useAppBootstrap()`；脚手架占位（`onShow/onHide` 与 `console.log`）已删除 |
+| 未改动 | `core/session`（1B：装载时恢复保留）、`api/orders.ts` 的 Mock seed、`src/mock/**`、页面结构、`pages.json`（分别归 Story 2.3 / Epic 4） |
+
+### 验收点与证据
+
+| Story 1.4 验收点 | 证据 |
+| --- | --- |
+| `App.vue:onLaunch` 第一步同步执行 `migrateStorageOnce()`；执行者唯一为 `api/storage.ts` | `App.vue:onLaunch` 第一条语句为 `useAppBootstrap()`，其第一条语句为 `migrateStorageOnce()`；`grep -rn "migrateStorageOnce" src`：定义只有 `api/storage.ts`，调用方只有 `use-app-bootstrap.ts`；构建产物 `dist/build/mp-weixin/app.js` 为 `onLaunch(()=>{useAppBootstrap(),...})`、`use-app-bootstrap.js` 为 `migrateStorageOnce(), warmUpSession()` 顺序 |
+| 数据世代低于 3：清空三个存量 key 并写 `weorder_schema_version = 3`；`weorder_session` 保留；世代 ≥ 3 不重复清理 | `storage.test.ts` 6 项覆盖：版本缺失 / 旧版本 2 清空三键并写 3；版本已是 3 空转（真实购物车原样、零删除调用）；版本高于当前（4，降级场景）空转且不改写版本戳；重复调用幂等；存储异常不抛错、不写版本戳（下次启动重试）。清理清单按版本分组，新增版本不会复用旧清单（见交付物） |
+| 完成前不发生任何存储读取或 store 水合 | 清理集合三键的读取点只有 `api/orders.ts`（订单页调用）与 `api/cart.ts`（`useCart` 页面 setup 水合），均晚于 `onLaunch`；`migrateStorageOnce` 是同步函数、先于首屏页面 setup。`weorder_session` 的 import 期恢复按 1B 列为显式豁免（见下） |
+| 清理后购物车 store 重新水合（空） | 2A：store 只在页面 setup 的 `useCart()` 中水合，必在 gate 之后，读到的是已清空的存储；本 story 不为它加代码。手动验证 #1 / #2 复验 |
+| 经 `use-app-bootstrap` 触发会话预热：异步、不阻塞页面、失败不弹全局提示、不产生半登录状态 | `useAppBootstrap` 以 `void warmUpSession()` 触发；`warmUpSession` 内部吞错；会话模块只在拿到完整会话时落盘（Story 1.3 单测已证）。手动验证 #4 / #5 复验 |
+| 本 story 不删除 Mock 数据源与旧 `api/` 的订单 / 目录实现；不存在 Mock↔真实的开关或回退路径 | 本次 diff 仅 4 个文件（新增 3 + App.vue）；`src/mock/**`、`api/orders.ts`、`api/products.ts`、`api/store.ts` 未动；无新增开关 |
+| 客户端全量编译与构建 | `pnpm type-check` 0 错误；`pnpm lint` 0 错误 / 0 警告；`pnpm format` 无格式改动；`pnpm build:mp-weixin` → `Build complete.`；产物含 `api/storage.js` / `composables/use-app-bootstrap.js` |
+| 单元测试全绿（既有不回归） | `pnpm test`：5 个文件 62 项全过（新增 storage 6 项，既有 56 项不动） |
+
+### 有意偏差与遗留
+
+1. **import 期会话恢复列为显式豁免（1B 裁定）**：`core/session` 按 Story 1.3 约定在装载时恢复 `weorder_session`，属 import 期存储读取、发生在 gate 之前；该 key 不在清理集合内、读取不会带入 Mock 数据，故列为显式豁免。AC 中「完成前不发生任何存储读取或 store 水合」按「清理集合的 key 不被读取、业务 store 不被水合」执行。
+2. **Mock 订单 seed 回填**：清理后打开订单 tab，`api/orders.ts` 仍会把 Mock 订单重新写入 `weorder_orders`（Epic 4 才移除该实现）。手动验证须在打开订单 tab 前检查存储快照，避免误读为 gate 失效。
+3. **购物车空水合不额外加代码（2A 裁定）**：以启动时序保证；若未来引入在 `onLaunch` 之前水合购物车的代码路径，需同步复核该保证。
+
+### 手动验证（2026-09-27 演示者执行）
+
+前置：本地栈在跑（`supabase start`）、`mp/.env.local` 指向本地栈、开发者工具打开「不校验合法域名」；Storage 面板可编辑。
+
+| # | 操作 | 预期 | 结果 |
+| --- | --- | --- | --- |
+| 1 | 预置 `weorder_orders` / `weorder_cart` / `weorder_checkout_intent` 哨兵值 + 有效 `weorder_session`，删除 `weorder_schema_version`（或改为 2）→ 编译重启，**先不要打开订单 tab**，打开 Storage 面板 | 三个存量 key 已消失；`weorder_schema_version = 3`；`weorder_session` 原样保留 | 通过 |
+| 2 | 承接 #1：进入点餐页 | 页面正常渲染；购物车为空（无旧条目、结算栏不出现） | 通过 |
+| 3 | 加购一件商品 → 再编译重启 | 结算栏仍显示该商品（版本 = 3 空转、真实购物车不被清）；`weorder_schema_version` 仍为 3 | 通过 |
+| 4 | 清掉 `weorder_session`（其余保留）→ 重启，**不做任何点击** | 网络面板自动出现 1 次 `wechat-login`（启动预热）；无授权弹窗、无全局提示；随后 `weorder_session` 落盘；验证页读取本人 id 正常 | 通过 |
+| 5 | `supabase stop` → 清 `weorder_session` → 重启 | 页面立即渲染、无白屏、无全局 toast、无未捕获异常；约 3 秒（登录重试上限）后网络面板停止重试 | 通过 |
+| 6 | `supabase start` → 重启（或点验证页【会话预热 / 当前身份】） | 登录成功；身份与 #1 相同（不产生第二个身份） | 通过 |
+| 7 | 回归冒烟：点餐页双栏联动 / 规格弹窗 / 加购、订单 tab（Mock 阶段行为不变）、结算页 | 与 Story 1.3 验收时一致，无新增异常 | 通过 |
+
+> 2026-09-27 由演示者在微信开发者工具按上表执行，报告全部通过（存量清理、空水合、版本 3 空转、启动自动登录、后端停机不阻塞、回归冒烟）。#1 的存储快照按提示在打开订单 tab 前检查，未混入 Mock seed 回填。
