@@ -8,7 +8,7 @@
  * - 图片：由 `image_path` 构造对象存储公开读 URL（纯地址拼接、不发请求，`<image>` 组件消费）。
  *
  * 身份要求全部为 `anonymous`：不等待会话（登录失败不阻塞目录浏览），请求只带发布密钥。
- * 旧 `api/products.ts` / `api/store.ts` 的 Mock 实现不再被调用，随 Story 2.3 删除。
+ * 旧 Mock 实现（无调用方的死代码）已随 Story 2.3 删除，目录 / 门店数据源只有本文件。
  */
 import { supabaseUrl, transport } from '@/core/transport'
 import type { MenuCategory, StoreInfo } from '@/types/api-contracts'

@@ -1,6 +1,6 @@
 -- 目录种子数据：门店、分类、商品、规格组与规格选项
 -- 不含任何订单；商品图片引用（products.image_path）不在此维护，由人工上传图片后填入。
--- 数据来源：Phase 1 的 mp/src/mock/products.ts 与 mp/src/mock/store.ts（store 属 Story 1.3）。
+-- 数据来源：Phase 1 Mock 目录数据（源文件已随 Phase 3 Story 2.3 删除，本种子即其唯一存续）。
 -- uuid 规则：末 12 位为编号 —— 000000000001 门店、0000000001NN 分类、0000000002NN 商品、
 --            0000000003NN 规格组、0000000004NN 规格选项。
 

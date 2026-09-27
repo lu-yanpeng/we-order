@@ -2,7 +2,7 @@
 //（FR-P2-14 / FR-P2-15 / FR-P2-18、UJ-P2-1；证据形式：实现方式说明 + 人工验证记录）。
 //
 // 与 verify-rebuild.ts 的区别：那里的身份是脚本伪造的 openid；这里的两套身份来自真机
-//（两台设备，或同一设备上的两个微信号）的真实微信登录。脚本按真机验证页显示的用户 id
+//（两台设备，或同一设备上的两个微信号）的真实微信登录。脚本按传入的用户 id
 // 从 wechat_identities 读回 openid（只在内存里用于派生合成 email），用与登录边缘函数
 // 相同的平台标准机制（admin.generateLink → auth.verifyOtp）为这两个真实用户签发会话，
 // 再走真实 HTTP 完成：
@@ -15,7 +15,8 @@
 // 清理：不删除真实用户（它们是真的微信号，不是测试用户），也不删除本次订单（按裁定保留为
 //       现场证据）；脚本可重复运行，每次产生一张新订单。
 //
-// 前置：本地栈在跑（supabase start），且两个微信号已在真机上完成登录（验证页显示用户 id）。
+// 前置：本地栈在跑（supabase start），且两个微信号已在真机上完成登录
+//（用户 id 从 Studio → Authentication → Users 获取）。
 // 运行：cd supabase && deno task verify:two-identities --user-a <用户idA> --user-b <用户idB>
 //       （也可以设置环境变量 VERIFY_USER_A / VERIFY_USER_B）
 
@@ -70,12 +71,13 @@ async function loadLocalConfig(): Promise<
   return { url: apiUrl, serviceRoleKey: serviceKey, anonKey: anon };
 }
 
-// ── 参数：真机验证页显示的两个用户 id ────────────────────────────────────────────
+// ── 参数：两个真实微信身份的用户 id ────────────────────────────────────────────
 
 const USAGE = `用法：cd supabase && deno task verify:two-identities --user-a <用户idA> --user-b <用户idB>
 
-两个用户 id 来自真机验证页（pages/auth-check）：在真机上打开小程序、点【验证身份链路】，
-页面会显示当前用户 id。也可以改用环境变量 VERIFY_USER_A / VERIFY_USER_B。`;
+两个用户 id 由两个微信号在小程序里各登录一次后获取：Studio（http://127.0.0.1:54323）
+→ Authentication → Users 复制，或从小程序 Storage 面板的 weorder_session.userId 读取。
+也可以改用环境变量 VERIFY_USER_A / VERIFY_USER_B。`;
 
 function readArg(name: string): string {
   const index = Deno.args.indexOf(`--${name}`);
@@ -151,7 +153,7 @@ async function loadIdentity(
   if (data === null) {
     throw new Error(
       `FAIL: ${label}（${userId}）没有身份映射：请先在真机上打开小程序完成登录` +
-        `（验证页显示用户 id），再把该 id 传进来`,
+        `（用户 id 见 Studio → Authentication → Users），再把该 id 传进来`,
     );
   }
   return { ...data, fingerprint: await openidFingerprint(data.openid) };

@@ -397,3 +397,58 @@ alova 在本 story 第一次真正进入小程序包（此前无调用方），�
 5. **REST 5xx 文案沿用订单域 `unknown`**（「操作失败，请稍后重试」），若演示体验不合适再评估（与 2.1 遗留一致）。
 
 > 2026-09-27 范围修订：加载态（骨架 / 全屏遮罩）经 Ly 裁定纳入 Phase 3 界面增量（见 spine 修订记录）；本段遗留第 1 条（首次加载不加 loading 占位）由此关闭——目录骨架随 Story 4.1、确认订单页遮罩随 Story 3.5、订单详情遮罩随 Story 4.2 落地，Story 4.8 矩阵补复验项。
+
+## Story 2.3 存量清理收口（目录侧）
+
+- 日期：2026-09-27
+- 环境：本地 Supabase 栈（CLI 2.117.0 / Postgres 17）；mp 侧 `pnpm type-check`（vue-tsc 3.3.6）、`pnpm lint`、`pnpm test`（vitest 3.2.7）、`pnpm build:mp-weixin`
+- 范围：Mock 目录 / 门店数据源与旧目录实现彻底删除、Phase 2 验证入口移除、`pages.json` 首页切换；客户端零新增功能、后端零改动（仅 seed 注释）；订单侧 Mock（`api/orders.ts` / `mock/orders.ts`）按 AC 保留给 Epic 4
+- 裁定记录（Ly）：① 数据库重建跑完整 `rebuild.sh`（接受本地库与 Storage 卷清空、演示图片重建后重传；顺带关闭 1.1 遗留的 test db 环境失败）（1A）；② `mock/orders.ts` 门店快照内联常量解耦（2A）；③ `core/session/README.md` 手动验证表改写为首页启动自然路径、并发单飞与文案自检两行退役（3A）；④ 「全仓无 Mock 引用」按代码 + 活文档口径（历史验收 / 审计 / 规划文档保留原文）（4A）；⑤ 重建后「会话不受影响」按全清客户端缓存后的冷启动观察，`weorder_session` 保留性由 1.4 手动 #1 承担（5A）
+
+### 交付物
+
+| 类别 | 内容 |
+| --- | --- |
+| 删除（客户端） | `src/mock/products.ts`、`src/mock/store.ts`、`src/api/products.ts`、`src/api/store.ts`、`src/pages/auth-check/`（页面 + composable 共 2 文件） |
+| 修改（客户端） | `pages.json`：移除验证页声明；`pages/home/index` 提为第一项（启动页） |
+| 修改（客户端） | `mock/orders.ts`：门店快照内联常量（不再引用门店 Mock 模块）、注释去掉已删文件引用 |
+| 修改（注释） | `api/catalog.ts`（数据源唯一性）、`api/auth.ts`（去掉验证页）、`sub-order-detail/order-detail/index.vue`（门店信息来自订单快照） |
+| 修改（文档） | `core/session/README.md` 手动验证表：入口改首页启动自然路径；步骤 4 / 11 退役（单测 + Story 4.8 矩阵 #3 复验） |
+| 修改（supabase） | `seed.sql` 来源注释；`scripts/verify-two-identities.ts` 前置注释 / USAGE / 报错文案（user id 改从 Studio → Authentication → Users 获取） |
+| 未改动 | `api/orders.ts`、`mock/orders.ts` 本体（Epic 4 收口）、`core/**`、`utils/error-copy.ts`、后端代码与迁移；目录链路零依赖订单侧 Mock |
+
+### 验收点与证据
+
+| Story 2.3 验收点 | 证据 |
+| --- | --- |
+| 删除清单完成、`pages.json` 首页切换 | `git status`：4 个文件 + 1 个页面目录删除；`pages.json` 的 `pages` 唯一项 `pages/home/index`；构建产物 `app.json` 的 `pages[0]` = `pages/home/index`、`pages/` 目录仅 `home` |
+| 全仓无 Mock 目录 / 门店数据引用；无并存开关 / 回退路径 | `grep -rn "mock/products\|mock/store\|api/products\|api/store" mp/src supabase/scripts supabase/seed.sql` → 0；`grep -rn "useMock\|mockEnabled\|isMock" mp/src` → 0；`grep -rn "@/mock/" mp/src` → 仅 `api/orders.ts`（Epic 4 保留项，目录链路不引用）；全仓（排除历史文档）残留 → 0 |
+| `pages/auth-check/` 移除且不可达 | `grep -rn "auth-check" mp/src supabase/scripts` → 0；构建产物 `pages/` 仅 `home`、特征串「身份链路验证」0 命中 |
+| 旧实现不再进包 | 产物 `api/` 仅 `auth/cart/catalog/orders/storage`；`mock/` 仅 `orders.js`；Mock 目录特征串（`section-coffee` / `prod-001`）0 命中；`api/catalog.js` 含 `/rest/v1/menu`、`/rest/v1/stores`、`product-images` |
+| 订单侧 Mock 保留且目录不依赖 | `api/orders.ts` 仍 import `@/mock/orders`（未改动）；`api/catalog.ts` 零 Mock 依赖；订单 tab 行为见手动 #3 |
+| 本地库可整体清空并由迁移 + seed 重建；重建后目录立即可读 | `bash scripts/rebuild.sh` 四步全部成功（停栈删卷 → 启动自动应用迁移 + seed → `db reset` 再应用 20 个迁移 + seed → `test db`）；重建后 `supabase test db` = 19 文件 / 623 项 PASS（关闭 1.1 遗留的 `40_menu_view` 环境失败）；匿名 curl `/rest/v1/menu` 16 分类 / 50 商品（含 `sold_out`）、`/rest/v1/stores` 1 行，均只带 `apikey`；`deno task verify:rebuild` 24 项断言 PASS（匿名目录与门店 → 登录 → 下单 202609272252115028 → 列表 / 详情 → 他人不可见）；`deno task verify:login` 通过（重建后登录 / 续期 / 自愈链路可用） |
+| 「会话不受影响」观察口径 | 按 5A：全清客户端缓存后冷启动，以「静默登录重建身份 + 目录匿名可读」为现场证据（手动 #1）；`weorder_session` 的存储保留性由 1.4 手动 #1 承担（本 story 不重复观察，见遗留 #2） |
+| 新增 / 移动文件满足 P1 AD-9 | 本 story 无新增文件；删除均在主包目录树（`src/mock`、`src/api`、`src/pages/auth-check`）；`pages.json` 仅主包页面调整，分包声明未动 |
+| 客户端全量编译与构建 | `pnpm type-check` 0 错误；`pnpm lint` 0 错误 / 0 警告；`pnpm format` 仅重排本次改动文件；`pnpm build:mp-weixin` → `Build complete.` |
+| 单元测试全绿（既有不回归） | `pnpm test`：5 个文件 62 项全过（未新增 / 删除测试） |
+
+### 手动验证结果（2026-09-27 演示者执行）
+
+前置：本地栈在跑（已完成重建）、`mp/.env.local` 指向本地栈、开发者工具勾选「不校验合法域名」、用最新代码编译；按惯例清空全部缓存（含 `weorder_session`）。
+
+| # | 操作 | 预期 | 结果 |
+| --- | --- | --- | --- |
+| 1 | 清全部缓存 → 重新编译冷启动 | 直接落点餐首页；`wechat-login` 与 `/rest/v1/menu` 并行，menu 只带 `apikey`、不等待登录；无授权弹窗、无全局提示（关闭 2.1 遗留 #7 的自然路径复验） | 通过 |
+| 2 | 侧边栏切分类、规格弹窗改选项、加购；首次加购看结算栏 | 双栏联动 / 实时计价 / 分包按需加载与 2.1 验收一致（重建后图片为色块，预期） | 通过 |
+| 3 | 切到订单 tab，打开一张 Mock 订单详情 | 5 条预置单三态展示、可进详情，行为与之前一致（Epic 4 前预期） | 通过 |
+| 4 | 确认无「身份链路验证」入口 | 编译产物只有点餐页，无验证页入口 | 通过 |
+| 5（可选） | Storage 预置三键哨兵 + `weorder_schema_version=2` → 重启 | 三键被清（`weorder_orders` 随即被订单 Mock 回填，预期）、`version=3`、`weorder_session` 保留；跳过时以 1.4 记录为准 | 通过 |
+
+> 2026-09-27 由演示者在微信开发者工具按上表执行，5 项全部通过（冷启动落首页且登录与目录并行、目录交互与结算栏回归、订单 Mock 行为不变、验证页入口消失、存量清理 gate 复验）。
+
+### 有意偏差与遗留
+
+1. **`weorder_orders` 的 Mock 回填提前到冷启动**：home 成为启动页后，首页 `onShow` 的 `initOrders()` 会在每次冷启动即写入 5 条 Mock 订单（原行为是进入订单 tab 才写）。属订单侧 Mock 的既知行为（1.4 遗留 #2 的触发点变化），Epic 4 切换真实订单后消失；存量清理 gate 仍先于页面执行（1.4 已验）。
+2. **`weorder_session` 保留性不在本 story 重复观察**（5A）：全清客户端缓存后冷启动以「静默登录重建身份 + 目录匿名可读」为现场证据；存储保留性由 1.4 手动 #1 承担。
+3. **演示图片随 Storage 卷清空**：重建后需重新上传并回填 `products.image_path`（图片素材不属本 story 交付，见 2.1 遗留 #4）。
+4. **并发单飞 / 文案自检入口退役**：原验证页按钮随页面删除，端到端复验定位到 Story 4.8 矩阵 #3 与 `session.test.ts` / `error-copy.test.ts` 单测。

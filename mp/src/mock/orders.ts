@@ -15,18 +15,18 @@
  *
  * 前 3 条的商品名 / 编号 / 金额 / 时间 / 备注 沿用 HTML 原型（docs/starbucks-ordering-program-8.html），
  * 规格摘要文案使用项目自身规格标签，与 utils/price.ts 的 buildSpecSummary 输出格式一致。
- * 注：前 3 条商品 id 沿用原型的 p3/p6/p4，与 mock/products.ts 的商品目录不一一对应；
- * 后 2 条为补充的已完成订单（原型只有 3 条），商品取自 mock/products.ts 目录，用于订单列表滚动测试。
- * selections 为规格选项快照（选项 id 取自 mock/products.ts 的规格组），用于再来一单还原同一 SKU（FR-14）。
+ * 注：前 3 条商品 id 沿用原型的 p3/p6/p4，与 Phase 1 Mock 目录（已随 Story 2.3 删除）不一一对应；
+ * 后 2 条为补充的已完成订单（原型只有 3 条），商品取自 Phase 1 Mock 目录，用于订单列表滚动测试。
+ * selections 为规格选项快照（选项 id 取自 Phase 1 Mock 目录的规格组），用于再来一单还原同一 SKU（FR-14）。
  */
 import type { OrderDetail } from '@/types/api-contracts'
-import { mockStore } from '@/mock/store'
 
+/** 门店快照（订单快照数据；Story 2.3 起不再引用门店 Mock 模块，与目录 / 门店数据源无关） */
 function storeSnapshot() {
   return {
-    store_name: mockStore.name,
-    store_address: mockStore.address,
-    store_phone: mockStore.phone,
+    store_name: '星巴克 啡快自提店',
+    store_address: '北京市朝阳区创意产业园 A 座 1 层',
+    store_phone: '010-88888888',
   }
 }
 

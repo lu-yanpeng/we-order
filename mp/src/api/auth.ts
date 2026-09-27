@@ -2,7 +2,7 @@
  * 会话门面（P3 AD-2、AR-P3-6）：仅转调 `core/session`，不自建登录请求。
  *
  * 上层（页面 / Composable）只经这里接触会话能力：
- * - `warmUpSession()`：启动预热（Story 1.4 的启动编排调用，验证页也用它）；
+ * - `warmUpSession()`：启动预热（Story 1.4 的启动编排调用）；
  * - `getSessionUser()`：会合会话后返回本人标识（订单、订阅等场景）。
  *
  * 「未登录」不是对外状态：要么成功，要么抛 `AppError`（按类别翻译文案）；
