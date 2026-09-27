@@ -1,5 +1,8 @@
--- 下单服务端函数：唯一写路径、金额重算、严格规格校验、幂等重放与整单拒绝
--- （Story 3.3；FR-P2-9、FR-P2-10、NFR2；AD-2、AD-3、AD-8、AD-9、AD-10、AD-11、AD-12、AD-22）
+-- 下单服务端入口：服务端接缝（create_order_for_user）与内核（create_order）、权限收紧、唯一写路径、
+-- 金额重算、严格规格校验、幂等重放与整单拒绝
+-- （P2 Story 3.3 + P3 Story 3.1；FR-P2-9、FR-P2-10、FR-P3-8、NFR2；AD-2、AD-3、AD-8、AD-9、AD-10、AD-11、AD-12、AD-22）
+-- 写路径自 P3 Story 3.1 起改经服务端接缝（service_role + fixture 用户 UUID，移除 claim 注入）；
+-- 客户端角色（public / anon / authenticated）对两个函数均无 EXECUTE，直呼 → 42501。
 -- 断言描述都带对象名，失败时输出形如 "# Failed test 1: ..."，可定位到具体函数或策略。
 -- 自带数据（事务内清空订单与门店后插入样例），结束回滚；不依赖种子，在重建后的空库上直接通过。
 begin;
@@ -27,9 +30,9 @@ as $$
 $$;
 grant execute on function public.test_spec_items() to authenticated;
 
-select plan(93);
+select plan(102);
 
--- ── 函数属性与权限：唯一写入口，参数无金额/用户入口 ─────────────────────────
+-- ── 函数属性与权限：写入口收在服务端，客户端没有执行入口 ───────────────────────
 
 select ok(
   (select prosecdef from pg_proc
@@ -48,12 +51,43 @@ select is(
   'create_order 的参数只有商品、就餐方式、备注与幂等键——没有金额、用户与订单号入口'
 );
 select ok(
-  not has_function_privilege('anon', 'public.create_order(jsonb, public.dining_mode, text, text)', 'EXECUTE'),
-  '未认证不能执行 create_order'
+  not has_function_privilege('public', 'public.create_order(jsonb, public.dining_mode, text, text)', 'EXECUTE')
+  and not has_function_privilege('anon', 'public.create_order(jsonb, public.dining_mode, text, text)', 'EXECUTE')
+  and not has_function_privilege('authenticated', 'public.create_order(jsonb, public.dining_mode, text, text)', 'EXECUTE'),
+  'create_order 从 public / anon / authenticated 收回执行权：客户端直呼 → 42501'
 );
 select ok(
-  has_function_privilege('authenticated', 'public.create_order(jsonb, public.dining_mode, text, text)', 'EXECUTE'),
-  '已登录身份可以执行 create_order'
+  (select prosecdef from pg_proc
+    where oid = 'public.create_order_for_user(uuid, jsonb, public.dining_mode, text, text)'::regprocedure),
+  'create_order_for_user 是 security definer'
+);
+select ok(
+  (select 'search_path=""' = any(coalesce(proconfig, '{}')) from pg_proc
+    where oid = 'public.create_order_for_user(uuid, jsonb, public.dining_mode, text, text)'::regprocedure),
+  'create_order_for_user 使用空 search_path'
+);
+select is(
+  (select proargnames::text from pg_proc
+    where oid = 'public.create_order_for_user(uuid, jsonb, public.dining_mode, text, text)'::regprocedure),
+  '{p_user_id,p_items,p_dining_mode,p_notes,p_idempotency_key}',
+  '包装函数签名与 AD-12 一致：第一个参数是服务端声明的用户 id'
+);
+select is(
+  (select proowner from pg_proc
+    where oid = 'public.create_order_for_user(uuid, jsonb, public.dining_mode, text, text)'::regprocedure),
+  (select proowner from pg_proc
+    where oid = 'public.create_order(jsonb, public.dining_mode, text, text)'::regprocedure),
+  '包装函数与内核属主相同'
+);
+select ok(
+  not has_function_privilege('public', 'public.create_order_for_user(uuid, jsonb, public.dining_mode, text, text)', 'EXECUTE')
+  and not has_function_privilege('anon', 'public.create_order_for_user(uuid, jsonb, public.dining_mode, text, text)', 'EXECUTE')
+  and not has_function_privilege('authenticated', 'public.create_order_for_user(uuid, jsonb, public.dining_mode, text, text)', 'EXECUTE'),
+  'create_order_for_user 只授服务端角色：public / anon / authenticated 均不可执行'
+);
+select ok(
+  has_function_privilege('service_role', 'public.create_order_for_user(uuid, jsonb, public.dining_mode, text, text)', 'EXECUTE'),
+  '服务端密钥（service_role）可执行包装函数'
 );
 select ok(
   not has_function_privilege('anon', 'public.order_result_json(public.orders, text)', 'EXECUTE')
@@ -128,146 +162,167 @@ insert into public.product_spec_groups (product_id, group_id, sort_order) values
   ('00000000-0000-4000-8000-00000000e031', '00000000-0000-4000-8000-00000000e042', 2),
   ('00000000-0000-4000-8000-00000000e031', '00000000-0000-4000-8000-00000000e043', 3);
 
--- ── 会话身份：未认证连入口都没有；无身份则明确拒绝 ───────────────────────────
+-- ── 会话身份：客户端没有执行入口；身份注入与 fail-closed ────────────────────────
+-- 写路径的身份只由服务端接缝声明（p_user_id）；客户端角色直呼任一函数 → 42501。
 
 set local role anon;
 
 select throws_ok(
   $$ select public.create_order(public.test_spec_items(), 'takeout', null, 'key-anon') $$,
-  '42501', null, '未认证不能执行 create_order'
+  '42501', null, '未认证直呼内核被拒（客户端没有执行权）'
+);
+select throws_ok(
+  $$ select public.create_order_for_user('00000000-0000-4000-8000-00000000e011', public.test_spec_items(), 'takeout', null, 'key-anon') $$,
+  '42501', null, '未认证直呼包装函数被拒（唯一入口是服务端）'
 );
 
 set local role authenticated;
 
 select throws_ok(
-  $$ select public.create_order(public.test_spec_items(), 'takeout', null, 'key-noauth') $$,
-  'P0001', 'not_authenticated', '没有会话身份时拒绝下单（归属没有来源）'
+  $$ select public.create_order(public.test_spec_items(), 'takeout', null, 'key-auth') $$,
+  '42501', null, '已登录身份直呼内核被拒（不存在绕过支付接口的建单路径）'
+);
+select throws_ok(
+  $$ select public.create_order_for_user('00000000-0000-4000-8000-00000000e011', public.test_spec_items(), 'takeout', null, 'key-auth') $$,
+  '42501', null, '已登录身份直呼包装函数被拒（身份只能由服务端声明）'
 );
 
-set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-00000000e011"}';
+-- 服务端接缝：用户 id 为空 fail-closed（表现伪装成会话失效）
+set local role service_role;
 
-select is(
-  (select auth.uid()),
-  '00000000-0000-4000-8000-00000000e011'::uuid,
-  '会话身份注入生效：auth.uid() 指向测试用户'
+select throws_ok(
+  $$ select public.create_order_for_user(null, public.test_spec_items(), 'takeout', null, 'key-null-user') $$,
+  'P0001', 'not_authenticated', '包装函数缺少用户 id 时拒绝下单（fail-closed）'
+);
+
+-- 注入不生效的等价现场：没有身份注入时内核自身 fail-closed
+reset role;
+
+select set_config('request.jwt.claims', '', true);
+
+select throws_ok(
+  $$ select public.create_order(public.test_spec_items(), 'takeout', null, 'key-no-claims') $$,
+  'P0001', 'not_authenticated', '没有身份注入时内核拒绝下单（fail-closed）'
 );
 
 -- ── 非法输入：整单拒绝且不留下任何数据（FR-P2-9） ────────────────────────────
 
+set local role service_role;
+
 select throws_ok(
-  $$ select public.create_order('"nope"'::jsonb, 'dinein', null, 'key-1') $$,
+  $$ select public.create_order_for_user('00000000-0000-4000-8000-00000000e011', '"nope"'::jsonb, 'dinein', null, 'key-1') $$,
   'P0001', 'invalid_request', '商品清单不是数组被拒绝'
 );
 select throws_ok(
-  $$ select public.create_order('[]'::jsonb, 'dinein', null, 'key-2') $$,
+  $$ select public.create_order_for_user('00000000-0000-4000-8000-00000000e011', '[]'::jsonb, 'dinein', null, 'key-2') $$,
   'P0001', 'invalid_request', '商品清单为空被拒绝'
 );
 select throws_ok(
-  $$ select public.create_order('[1]'::jsonb, 'dinein', null, 'key-3') $$,
+  $$ select public.create_order_for_user('00000000-0000-4000-8000-00000000e011', '[1]'::jsonb, 'dinein', null, 'key-3') $$,
   'P0001', 'invalid_request', '商品条目不是对象被拒绝'
 );
 select throws_ok(
-  $$ select public.create_order('[{"quantity":1,"selections":{}}]'::jsonb, 'dinein', null, 'key-4') $$,
+  $$ select public.create_order_for_user('00000000-0000-4000-8000-00000000e011', '[{"quantity":1,"selections":{}}]'::jsonb, 'dinein', null, 'key-4') $$,
   'P0001', 'invalid_request', '缺少商品引用被拒绝'
 );
 select throws_ok(
-  $$ select public.create_order('[{"product_id":"nope","quantity":1,"selections":{}}]'::jsonb, 'dinein', null, 'key-5') $$,
+  $$ select public.create_order_for_user('00000000-0000-4000-8000-00000000e011', '[{"product_id":"nope","quantity":1,"selections":{}}]'::jsonb, 'dinein', null, 'key-5') $$,
   'P0001', 'invalid_request', '商品引用不是合法标识被拒绝'
 );
 select throws_ok(
-  $$ select public.create_order(public.test_spec_items(), 'dinein', null, '') $$,
+  $$ select public.create_order_for_user('00000000-0000-4000-8000-00000000e011', public.test_spec_items(), 'dinein', null, '') $$,
   'P0001', 'invalid_request', '缺少幂等键被拒绝（必填，AD-11）'
 );
 select throws_ok(
-  $$ select public.create_order(public.test_spec_items(), 'dinein', null, '   ') $$,
+  $$ select public.create_order_for_user('00000000-0000-4000-8000-00000000e011', public.test_spec_items(), 'dinein', null, '   ') $$,
   'P0001', 'invalid_request', '幂等键只有空白被拒绝'
 );
 select throws_ok(
-  $$ select public.create_order(
+  $$ select public.create_order_for_user('00000000-0000-4000-8000-00000000e011',
        '[{"product_id":"00000000-0000-4000-8000-00000000e032","quantity":1,"selections":[]}]'::jsonb,
        'dinein', null, 'key-8') $$,
   'P0001', 'invalid_request', '规格选择不是对象被拒绝'
 );
 select throws_ok(
-  $$ select public.create_order(public.test_spec_items(), 'dinein', repeat('备', 31), 'key-9') $$,
+  $$ select public.create_order_for_user('00000000-0000-4000-8000-00000000e011', public.test_spec_items(), 'dinein', repeat('备', 31), 'key-9') $$,
   'P0001', 'invalid_request', '备注超过 30 字被拒绝'
 );
 select throws_ok(
-  $$ select public.create_order('[{"product_id":"00000000-0000-4000-8000-00000000e032","selections":{}}]'::jsonb, 'dinein', null, 'key-10') $$,
+  $$ select public.create_order_for_user('00000000-0000-4000-8000-00000000e011', '[{"product_id":"00000000-0000-4000-8000-00000000e032","selections":{}}]'::jsonb, 'dinein', null, 'key-10') $$,
   'P0001', 'invalid_quantity', '缺少数量被拒绝'
 );
 select throws_ok(
-  $$ select public.create_order('[{"product_id":"00000000-0000-4000-8000-00000000e032","quantity":0,"selections":{}}]'::jsonb, 'dinein', null, 'key-11') $$,
+  $$ select public.create_order_for_user('00000000-0000-4000-8000-00000000e011', '[{"product_id":"00000000-0000-4000-8000-00000000e032","quantity":0,"selections":{}}]'::jsonb, 'dinein', null, 'key-11') $$,
   'P0001', 'invalid_quantity', '数量为零被拒绝'
 );
 select throws_ok(
-  $$ select public.create_order('[{"product_id":"00000000-0000-4000-8000-00000000e032","quantity":-1,"selections":{}}]'::jsonb, 'dinein', null, 'key-12') $$,
+  $$ select public.create_order_for_user('00000000-0000-4000-8000-00000000e011', '[{"product_id":"00000000-0000-4000-8000-00000000e032","quantity":-1,"selections":{}}]'::jsonb, 'dinein', null, 'key-12') $$,
   'P0001', 'invalid_quantity', '数量为负被拒绝'
 );
 select throws_ok(
-  $$ select public.create_order('[{"product_id":"00000000-0000-4000-8000-00000000e032","quantity":2.5,"selections":{}}]'::jsonb, 'dinein', null, 'key-13') $$,
+  $$ select public.create_order_for_user('00000000-0000-4000-8000-00000000e011', '[{"product_id":"00000000-0000-4000-8000-00000000e032","quantity":2.5,"selections":{}}]'::jsonb, 'dinein', null, 'key-13') $$,
   'P0001', 'invalid_quantity', '数量不是整数被拒绝'
 );
 select throws_ok(
-  $$ select public.create_order('[{"product_id":"00000000-0000-4000-8000-00000000e032","quantity":3000000000,"selections":{}}]'::jsonb, 'dinein', null, 'key-14') $$,
+  $$ select public.create_order_for_user('00000000-0000-4000-8000-00000000e011', '[{"product_id":"00000000-0000-4000-8000-00000000e032","quantity":3000000000,"selections":{}}]'::jsonb, 'dinein', null, 'key-14') $$,
   'P0001', 'invalid_quantity', '数量超出可存储范围被拒绝（不会写错金额）'
 );
 select throws_ok(
-  $$ select public.create_order('[{"product_id":"00000000-0000-4000-8000-00000000ee99","quantity":1,"selections":{}}]'::jsonb, 'dinein', null, 'key-15') $$,
+  $$ select public.create_order_for_user('00000000-0000-4000-8000-00000000e011', '[{"product_id":"00000000-0000-4000-8000-00000000ee99","quantity":1,"selections":{}}]'::jsonb, 'dinein', null, 'key-15') $$,
   'P0001', 'product_unavailable', '商品不存在被拒绝'
 );
 select throws_ok(
-  $$ select public.create_order('[{"product_id":"00000000-0000-4000-8000-00000000e033","quantity":1,"selections":{}}]'::jsonb, 'dinein', null, 'key-16') $$,
+  $$ select public.create_order_for_user('00000000-0000-4000-8000-00000000e011', '[{"product_id":"00000000-0000-4000-8000-00000000e033","quantity":1,"selections":{}}]'::jsonb, 'dinein', null, 'key-16') $$,
   'P0001', 'product_unavailable', '售罄商品被拒绝'
 );
 select throws_ok(
-  $$ select public.create_order('[{"product_id":"00000000-0000-4000-8000-00000000e034","quantity":1,"selections":{}}]'::jsonb, 'dinein', null, 'key-17') $$,
+  $$ select public.create_order_for_user('00000000-0000-4000-8000-00000000e011', '[{"product_id":"00000000-0000-4000-8000-00000000e034","quantity":1,"selections":{}}]'::jsonb, 'dinein', null, 'key-17') $$,
   'P0001', 'product_unavailable', '下架商品被拒绝'
 );
 select throws_ok(
-  $$ select public.create_order(
+  $$ select public.create_order_for_user('00000000-0000-4000-8000-00000000e011',
        '[{"product_id":"00000000-0000-4000-8000-00000000e031","quantity":1,"selections":{}}]'::jsonb,
        'dinein', null, 'key-18') $$,
   'P0001', 'invalid_selection', '漏掉商品挂的规格组被拒绝（严格校验）'
 );
 select throws_ok(
-  $$ select public.create_order(
+  $$ select public.create_order_for_user('00000000-0000-4000-8000-00000000e011',
        '[{"product_id":"00000000-0000-4000-8000-00000000e032","quantity":1,"selections":{"00000000-0000-4000-8000-00000000e041":"00000000-0000-4000-8000-00000000e051"}}]'::jsonb,
        'dinein', null, 'key-19') $$,
   'P0001', 'invalid_selection', '提交了商品没有挂的规格组被拒绝'
 );
 select throws_ok(
-  $$ select public.create_order(
+  $$ select public.create_order_for_user('00000000-0000-4000-8000-00000000e011',
        '[{"product_id":"00000000-0000-4000-8000-00000000e031","quantity":1,"selections":{"00000000-0000-4000-8000-00000000e041":["00000000-0000-4000-8000-00000000e052"],"00000000-0000-4000-8000-00000000e042":"00000000-0000-4000-8000-00000000e053","00000000-0000-4000-8000-00000000e043":[]}}]'::jsonb,
        'dinein', null, 'key-20') $$,
   'P0001', 'invalid_selection', '单选组给了数组被拒绝（形状必须与组的多选标记一致）'
 );
 select throws_ok(
-  $$ select public.create_order(
+  $$ select public.create_order_for_user('00000000-0000-4000-8000-00000000e011',
        '[{"product_id":"00000000-0000-4000-8000-00000000e031","quantity":1,"selections":{"00000000-0000-4000-8000-00000000e041":"00000000-0000-4000-8000-00000000e052","00000000-0000-4000-8000-00000000e042":"00000000-0000-4000-8000-00000000e053","00000000-0000-4000-8000-00000000e043":"00000000-0000-4000-8000-00000000e055"}}]'::jsonb,
        'dinein', null, 'key-21') $$,
   'P0001', 'invalid_selection', '多选组给了字符串被拒绝'
 );
 select throws_ok(
-  $$ select public.create_order(
+  $$ select public.create_order_for_user('00000000-0000-4000-8000-00000000e011',
        '[{"product_id":"00000000-0000-4000-8000-00000000e031","quantity":1,"selections":{"00000000-0000-4000-8000-00000000e041":"00000000-0000-4000-8000-00000000e052","00000000-0000-4000-8000-00000000e042":"00000000-0000-4000-8000-00000000e053","00000000-0000-4000-8000-00000000e043":["00000000-0000-4000-8000-00000000e057"]}}]'::jsonb,
        'dinein', null, 'key-22') $$,
   'P0001', 'invalid_selection', '选项不属于所提交的规格组被拒绝'
 );
 select throws_ok(
-  $$ select public.create_order(
+  $$ select public.create_order_for_user('00000000-0000-4000-8000-00000000e011',
        '[{"product_id":"00000000-0000-4000-8000-00000000e031","quantity":1,"selections":{"00000000-0000-4000-8000-00000000e041":"00000000-0000-4000-8000-00000000e052","00000000-0000-4000-8000-00000000e042":"00000000-0000-4000-8000-00000000e053","00000000-0000-4000-8000-00000000e043":["00000000-0000-4000-8000-00000000e055","00000000-0000-4000-8000-00000000e055"]}}]'::jsonb,
        'dinein', null, 'key-23') $$,
   'P0001', 'invalid_selection', '多选组里重复选同一个选项被拒绝'
 );
 select throws_ok(
-  $$ select public.create_order(
+  $$ select public.create_order_for_user('00000000-0000-4000-8000-00000000e011',
        '[{"product_id":"00000000-0000-4000-8000-00000000e031","quantity":1,"selections":{"00000000-0000-4000-8000-00000000e041":"00000000-0000-4000-8000-00000000e999","00000000-0000-4000-8000-00000000e042":"00000000-0000-4000-8000-00000000e053","00000000-0000-4000-8000-00000000e043":[]}}]'::jsonb,
        'dinein', null, 'key-24') $$,
   'P0001', 'invalid_selection', '不存在的选项被拒绝'
 );
 select throws_ok(
-  $$ select public.create_order(public.test_spec_items(), 'eat', null, 'key-25') $$,
+  $$ select public.create_order_for_user('00000000-0000-4000-8000-00000000e011', public.test_spec_items(), 'eat', null, 'key-25') $$,
   '22P02', null, '就餐方式取值非法由类型层拒绝（进不了函数）'
 );
 
@@ -285,47 +340,47 @@ select is(
 -- ── 成功路径：金额、快照、订单号、门店快照与推进时刻 ──────────────────────────
 
 select is(
-  (select public.create_order(public.test_spec_items(), 'takeout', '少冰', 'key-specs')->>'status'),
+  (select public.create_order_for_user('00000000-0000-4000-8000-00000000e011', public.test_spec_items(), 'takeout', '少冰', 'key-specs')->>'status'),
   'cooking',
   '首次下单返回新订单：状态为 cooking'
 );
 select matches(
-  (select public.create_order(public.test_spec_items(), 'takeout', '少冰', 'key-specs')->>'order_number'),
+  (select public.create_order_for_user('00000000-0000-4000-8000-00000000e011', public.test_spec_items(), 'takeout', '少冰', 'key-specs')->>'order_number'),
   '^[0-9]{18}$',
   '订单号是 18 位纯数字（门店本地时间 + 随机尾号，FR-P2-9）'
 );
 select matches(
-  (select public.create_order(public.test_spec_items(), 'takeout', '少冰', 'key-specs')->>'pickup_code'),
+  (select public.create_order_for_user('00000000-0000-4000-8000-00000000e011', public.test_spec_items(), 'takeout', '少冰', 'key-specs')->>'pickup_code'),
   '^[A-Z]-[0-9]{4}$',
   '新订单在下单时即取得取杯号：外形为字母前缀 + 四位数字（Story 4.4）'
 );
 select is(
-  (select public.create_order(public.test_spec_items(), 'takeout', '少冰', 'key-specs')->>'total_amount'),
+  (select public.create_order_for_user('00000000-0000-4000-8000-00000000e011', public.test_spec_items(), 'takeout', '少冰', 'key-specs')->>'total_amount'),
   '86.00',
   '返回的总额 = 行小计（32 + 10）× 2 + 外带包装费 2'
 );
 select is(
-  (select public.create_order(public.test_spec_items(), 'takeout', '少冰', 'key-specs')->>'packaging_fee'),
+  (select public.create_order_for_user('00000000-0000-4000-8000-00000000e011', public.test_spec_items(), 'takeout', '少冰', 'key-specs')->>'packaging_fee'),
   '2.00',
   '返回的包装费来自门店配置'
 );
 select is(
-  (select public.create_order(public.test_spec_items(), 'takeout', '少冰', 'key-specs')->>'dining_mode'),
+  (select public.create_order_for_user('00000000-0000-4000-8000-00000000e011', public.test_spec_items(), 'takeout', '少冰', 'key-specs')->>'dining_mode'),
   'takeout',
   '返回的就餐方式与提交一致'
 );
 select is(
-  (select public.create_order(public.test_spec_items(), 'takeout', '少冰', 'key-specs')->>'notes'),
+  (select public.create_order_for_user('00000000-0000-4000-8000-00000000e011', public.test_spec_items(), 'takeout', '少冰', 'key-specs')->>'notes'),
   '少冰',
   '返回的备注与提交一致'
 );
 select is(
-  (select public.create_order(public.test_spec_items(), 'takeout', '少冰', 'key-specs')->>'created_at'),
+  (select public.create_order_for_user('00000000-0000-4000-8000-00000000e011', public.test_spec_items(), 'takeout', '少冰', 'key-specs')->>'created_at'),
   to_char(now() at time zone 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS'),
   '创建时间取服务端时钟并按门店时区格式化（AD-10）'
 );
 select matches(
-  (select public.create_order(public.test_spec_items(), 'takeout', '少冰', 'key-specs')->>'id'),
+  (select public.create_order_for_user('00000000-0000-4000-8000-00000000e011', public.test_spec_items(), 'takeout', '少冰', 'key-specs')->>'id'),
   '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
   '返回的订单标识可用于后续按 id 读取'
 );
@@ -337,7 +392,7 @@ select is(
 select is(
   (select user_id from public.orders),
   '00000000-0000-4000-8000-00000000e011'::uuid,
-  '归属取自会话身份，而不是任何入参'
+  '归属 = 服务端接缝声明的 p_user_id，而不是请求内容里的任何字段'
 );
 select is(
   (select status::text from public.orders),
@@ -354,6 +409,11 @@ select is(
   (now() at time zone 'Asia/Shanghai')::date,
   '发号日期取下单时刻的门店本地自然日（AD-10）'
 );
+select is(
+  (select auth.uid()),
+  '00000000-0000-4000-8000-00000000e011'::uuid,
+  '注入生效：包装函数调用后 auth.uid() 指向 p_user_id'
+);
 
 -- 计数器是内部表（客户端不可读）：以下读操作以库所有者身份执行
 reset role;
@@ -366,7 +426,7 @@ select is(
   '下单消耗「门店 + 当日」计数器一次：取号与建单在同一条 INSERT 内'
 );
 
-set local role authenticated;
+set local role service_role;
 
 select is(
   (select notes from public.orders),
@@ -454,7 +514,7 @@ select is(
   '明细保存商品引用供「再来一单」使用'
 );
 select is(
-  (select public.create_order(public.test_spec_items(), 'takeout', '少冰', 'key-specs')->>'order_number'),
+  (select public.create_order_for_user('00000000-0000-4000-8000-00000000e011', public.test_spec_items(), 'takeout', '少冰', 'key-specs')->>'order_number'),
   (select order_number from public.orders),
   '同一幂等键重放返回同一张订单（不重复写入）'
 );
@@ -467,7 +527,7 @@ select is(
 -- ── 无规格商品、堂食、备注默认与「金额字段被忽略」 ──────────────────────────
 
 select is(
-  (select public.create_order(
+  (select public.create_order_for_user('00000000-0000-4000-8000-00000000e011',
      '[{"product_id":"00000000-0000-4000-8000-00000000e032","quantity":1,"selections":{},
         "unit_price":0.01,"total_amount":0.01,"price":0.01}]'::jsonb,
      'dinein', null, 'key-plain')->>'total_amount'),
@@ -475,7 +535,7 @@ select is(
   '请求里携带的金额字段被忽略：落库金额等于重算结果'
 );
 select is(
-  (select public.create_order(
+  (select public.create_order_for_user('00000000-0000-4000-8000-00000000e011',
      '[{"product_id":"00000000-0000-4000-8000-00000000e032","quantity":1,"selections":{}}]'::jsonb,
      'dinein', null, 'key-plain')->>'packaging_fee'),
   '0.00',
@@ -531,7 +591,7 @@ select is(
 update public.products set name = '改名后的拿铁', price = 1.00
  where id = '00000000-0000-4000-8000-00000000e031';
 
-set local role authenticated;
+set local role service_role;
 
 select is(
   (select product_name from public.order_items
@@ -557,10 +617,10 @@ reset role;
 
 update public.stores set takeout_packaging_fee = 5.00, ready_delay_seconds = 7;
 
-set local role authenticated;
+set local role service_role;
 
 select is(
-  (select public.create_order(
+  (select public.create_order_for_user('00000000-0000-4000-8000-00000000e011',
      '[{"product_id":"00000000-0000-4000-8000-00000000e032","quantity":1,"selections":{}}]'::jsonb,
      'takeout', null, 'key-config')->>'packaging_fee'),
   '5.00',
@@ -603,10 +663,10 @@ $$;
 create trigger test_order_number_collision before insert on public.orders
 for each row execute function public.test_order_number_collision();
 
-set local role authenticated;
+set local role service_role;
 
 select lives_ok(
-  $$ select public.create_order(
+  $$ select public.create_order_for_user('00000000-0000-4000-8000-00000000e011',
        '[{"product_id":"00000000-0000-4000-8000-00000000e032","quantity":1,"selections":{}}]'::jsonb,
        'dinein', null, 'key-collision') $$,
   '订单号撞号时换号重试：下单仍然成功'
@@ -636,10 +696,10 @@ reset role;
 insert into public.stores (id, name, address, phone, timezone)
 values ('00000000-0000-4000-8000-00000000e002', '第二家门店', '测试地址 2 号', '000-00000001', 'Asia/Shanghai');
 
-set local role authenticated;
+set local role service_role;
 
 select throws_ok(
-  $$ select public.create_order(
+  $$ select public.create_order_for_user('00000000-0000-4000-8000-00000000e011',
        '[{"product_id":"00000000-0000-4000-8000-00000000e032","quantity":1,"selections":{}}]'::jsonb,
        'dinein', null, 'key-two-stores') $$,
   'P0001', 'store_unavailable', '门店不止一家时拒绝下单（FR-P2-8）'

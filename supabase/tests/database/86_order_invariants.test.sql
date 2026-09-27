@@ -5,7 +5,7 @@
 --   * 下单函数的逐项校验、快照与订单号在 80_create_order.test.sql；
 --   * 幂等重放与用户绑定在 85_idempotency.test.sql。
 -- 本文件只补这些文件没有覆盖的跨故事不变量：
---   1) 归属取自会话身份——请求条目里伪造的 user_id / order_number 被忽略；
+--   1) 归属取自服务端接缝声明的身份（p_user_id → 注入内核的 auth.uid()）——请求条目里伪造的 user_id / order_number 被忽略；
 --   2) 落库金额 = 用库内价目（商品基础价 + 规格选项加价）重算的结果，按公式交叉验算，
 --      而不是只跟硬编码期望值比；
 --   3) 非法输入（混合清单、null 就餐方式）整单被拒，且已有订单的行数与金额不被改动；
@@ -142,22 +142,20 @@ insert into public.product_spec_groups (product_id, group_id, sort_order) values
   ('00000000-0000-4000-8000-00000000c031', '00000000-0000-4000-8000-00000000c041', 1),
   ('00000000-0000-4000-8000-00000000c031', '00000000-0000-4000-8000-00000000c042', 2);
 
--- ── 归属：会话身份是唯一来源，入参里的用户标识被忽略（FR-P2-9、AD-3）──────────
+-- ── 归属：服务端接缝声明的身份是唯一来源，入参里的用户标识被忽略（FR-P2-9、P3 FR-P3-8；AD-3、AD-12）──
 -- 两个身份提交完全相同的内容（含伪造的 user_id / order_number），应各归各的。
 
-set local role authenticated;
-set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-00000000c011"}';
-select public.create_order(public.test_inv_payload(), 'takeout', null, 'inv-owner-a');
+set local role service_role;
 
-set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-00000000c012"}';
-select public.create_order(public.test_inv_payload(), 'takeout', null, 'inv-owner-b');
+select public.create_order_for_user('00000000-0000-4000-8000-00000000c011', public.test_inv_payload(), 'takeout', null, 'inv-owner-a');
+select public.create_order_for_user('00000000-0000-4000-8000-00000000c012', public.test_inv_payload(), 'takeout', null, 'inv-owner-b');
 
 reset role;
 
 select is(
   (select user_id from public.orders where idempotency_key = 'inv-owner-a'),
   '00000000-0000-4000-8000-00000000c011'::uuid,
-  'create_order 归属取自会话身份：条目里伪造的 user_id 被忽略'
+  '服务端接缝建单归属 = p_user_id：条目里伪造的 user_id 被忽略'
 );
 select ok(
   (select user_id <> '00000000-0000-4000-8000-00000000c012'::uuid
@@ -167,7 +165,7 @@ select ok(
 select is(
   (select user_id from public.orders where idempotency_key = 'inv-owner-b'),
   '00000000-0000-4000-8000-00000000c012'::uuid,
-  '同一份请求由第二个会话提交时归属第二个会话'
+  '同一份请求由第二个身份（p_user_id = c012）提交时归属第二个用户'
 );
 select is(
   (select count(*)::int from public.orders),
@@ -208,11 +206,10 @@ select is(
 -- ── 非法输入：整单被拒且不留下数据、不改动已有订单（FR-P2-9、NFR3）───────────
 -- 混合清单：第一条合法、第二条非法——证明拒绝的是整单，而不是逐条丢弃。
 
-set local role authenticated;
-set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-00000000c011"}';
+set local role service_role;
 
 select throws_ok(
-  $$ select public.create_order(
+  $$ select public.create_order_for_user('00000000-0000-4000-8000-00000000c011',
        '[
           {"product_id":"00000000-0000-4000-8000-00000000c032","quantity":1,"selections":{}},
           {"product_id":"00000000-0000-4000-8000-00000000c033","quantity":1,"selections":{}}
@@ -222,7 +219,7 @@ select throws_ok(
   '混合清单中第二条售罄：整单被拒（product_unavailable）'
 );
 select throws_ok(
-  $$ select public.create_order(
+  $$ select public.create_order_for_user('00000000-0000-4000-8000-00000000c011',
        '[
           {"product_id":"00000000-0000-4000-8000-00000000c031","quantity":1,"selections":{
              "00000000-0000-4000-8000-00000000c041":"00000000-0000-4000-8000-00000000c052",
@@ -235,7 +232,7 @@ select throws_ok(
   '混合清单中第二条提交了未挂到商品的规格组：整单被拒（invalid_selection）'
 );
 select throws_ok(
-  $$ select public.create_order(public.test_inv_payload(), null, null, 'inv-null-mode') $$,
+  $$ select public.create_order_for_user('00000000-0000-4000-8000-00000000c011', public.test_inv_payload(), null, null, 'inv-null-mode') $$,
   'P0001', 'invalid_request',
   '就餐方式为 null 被归类为 invalid_request（而不是数据库 not-null 报错）'
 );

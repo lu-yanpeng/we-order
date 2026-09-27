@@ -1,4 +1,6 @@
 -- 重复提交防护：幂等重放、标识与用户绑定、重放先于校验（Story 3.4；FR-P2-10；AD-11）
+-- 写路径自 P3 Story 3.1 起经服务端接缝调用（service_role + fixture 用户 UUID）；「B 只看得见自己的单」
+-- 等可见性断言仍以客户端身份（authenticated + claim 注入）读取。
 -- 「同一标识只落一张订单」的最终保证是 (user_id, idempotency_key) 唯一约束；下单函数插入冲突的
 -- 捕获分支只在真并发时走到，单连接的 pgTAP 覆盖不到——按 FR-P2-19，该行为以「实现方式说明 +
 -- 人工验证记录」为证据：scripts/verify-idempotency.ts（deno task verify:idempotency）。
@@ -43,12 +45,11 @@ insert into public.products (id, category_id, name, price, availability) values
 
 -- ── 顺序重放：同一标识重复提交返回同一张订单，且不重复写入、不覆盖原内容 ─────────
 
-set local role authenticated;
-set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-00000000f011"}';
+set local role service_role;
 
 -- 首次下单：作为后续重放的基准，同时断言订单真的落下了（32 × 2 + 外带包装费 2 = 66）
 select is(
-  (select public.create_order(
+  (select public.create_order_for_user('00000000-0000-4000-8000-00000000f011',
      '[{"product_id":"00000000-0000-4000-8000-00000000f031","quantity":2,"selections":{}}]'::jsonb,
      'takeout', '第一次备注', 'idem-replay')->>'total_amount'),
   '66.00',
@@ -57,14 +58,14 @@ select is(
 
 -- 重放：故意换商品、数量、就餐方式与备注（同一个幂等标识）
 select is(
-  (select public.create_order(
+  (select public.create_order_for_user('00000000-0000-4000-8000-00000000f011',
      '[{"product_id":"00000000-0000-4000-8000-00000000f032","quantity":1,"selections":{}}]'::jsonb,
      'dinein', '换了内容', 'idem-replay')->>'id'),
   (select id::text from public.orders where idempotency_key = 'idem-replay'),
   '同一标识重放返回同一张订单（请求内容不同也一样）'
 );
 select is(
-  (select public.create_order(
+  (select public.create_order_for_user('00000000-0000-4000-8000-00000000f011',
      '[{"product_id":"00000000-0000-4000-8000-00000000f032","quantity":1,"selections":{}}]'::jsonb,
      'dinein', '换了内容', 'idem-replay')->>'order_number'),
   (select order_number from public.orders where idempotency_key = 'idem-replay'),
@@ -119,18 +120,17 @@ reset role;
 update public.products set availability = 'delisted'
  where id = '00000000-0000-4000-8000-00000000f031';
 
-set local role authenticated;
-set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-00000000f011"}';
+set local role service_role;
 
 select is(
-  (select public.create_order(
+  (select public.create_order_for_user('00000000-0000-4000-8000-00000000f011',
      '[{"product_id":"00000000-0000-4000-8000-00000000f031","quantity":2,"selections":{}}]'::jsonb,
      'takeout', null, 'idem-replay')->>'order_number'),
   (select order_number from public.orders where idempotency_key = 'idem-replay'),
   '商品下架后重放仍返回原单（重放发生在商品校验之前）'
 );
 select throws_ok(
-  $$ select public.create_order(
+  $$ select public.create_order_for_user('00000000-0000-4000-8000-00000000f011',
        '[{"product_id":"00000000-0000-4000-8000-00000000f031","quantity":1,"selections":{}}]'::jsonb,
        'takeout', null, 'idem-after-delist') $$,
   'P0001', 'product_unavailable',
@@ -144,10 +144,9 @@ update public.products set availability = 'on_sale'
 
 -- ── 不同标识：两次提交产生两张订单 ─────────────────────────────────────────────
 
-set local role authenticated;
-set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-00000000f011"}';
+set local role service_role;
 
-select public.create_order(
+select public.create_order_for_user('00000000-0000-4000-8000-00000000f011',
   '[{"product_id":"00000000-0000-4000-8000-00000000f032","quantity":1,"selections":{}}]'::jsonb,
   'dinein', null, 'idem-other'
 );
@@ -173,19 +172,23 @@ do $$ begin
   );
 end $$;
 
-set local role authenticated;
-set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-00000000f012"}';
+-- 写：服务端接缝 + 显式用户 id（B）——身份只能由服务端声明
+set local role service_role;
 
 -- 先下单并记下返回的订单标识（放在独立语句里：同一条语句内的子查询看不到刚插入的行）
 do $$ begin
   perform set_config(
     'weorder_test.b_order_id',
-    (public.create_order(
+    (public.create_order_for_user('00000000-0000-4000-8000-00000000f012',
       '[{"product_id":"00000000-0000-4000-8000-00000000f032","quantity":1,"selections":{}}]'::jsonb,
       'dinein', null, 'idem-replay'))->>'id',
     true
   );
 end $$;
+
+-- 读：B 的客户端身份（RLS 可见性断言语义不变：标识不跨用户取回）
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-00000000f012"}';
 
 select is(
   current_setting('weorder_test.b_order_id'),
@@ -229,11 +232,10 @@ select is(
   'B 下单后 A 的原单内容未被改动'
 );
 
-set local role authenticated;
-set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-00000000f011"}';
+set local role service_role;
 
 select is(
-  (select public.create_order(
+  (select public.create_order_for_user('00000000-0000-4000-8000-00000000f011',
      '[{"product_id":"00000000-0000-4000-8000-00000000f032","quantity":3,"selections":{}}]'::jsonb,
      'dinein', null, 'idem-replay')->>'id'),
   current_setting('weorder_test.a_order_id'),
@@ -243,14 +245,14 @@ select is(
 -- ── 被拒的请求不占用标识：整单拒绝不留数据，同一标识可以再次使用 ───────────────
 
 select throws_ok(
-  $$ select public.create_order(
+  $$ select public.create_order_for_user('00000000-0000-4000-8000-00000000f011',
        '[{"product_id":"00000000-0000-4000-8000-00000000f099","quantity":1,"selections":{}}]'::jsonb,
        'dinein', null, 'idem-after-fail') $$,
   'P0001', 'product_unavailable',
   '商品不存在时整单被拒（标识 idem-after-fail 未被占用）'
 );
 select is(
-  (select public.create_order(
+  (select public.create_order_for_user('00000000-0000-4000-8000-00000000f011',
      '[{"product_id":"00000000-0000-4000-8000-00000000f032","quantity":1,"selections":{}}]'::jsonb,
      'dinein', null, 'idem-after-fail')->>'status'),
   'cooking',

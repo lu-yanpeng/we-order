@@ -446,6 +446,16 @@ export type Database = {
         }
         Returns: Json
       }
+      create_order_for_user: {
+        Args: {
+          p_dining_mode: Database["public"]["Enums"]["dining_mode"]
+          p_idempotency_key: string
+          p_items: Json
+          p_notes: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
       find_user_by_email: { Args: { p_email: string }; Returns: string }
       get_my_order_detail: { Args: { p_order_id: string }; Returns: Json }
       get_my_orders: {
