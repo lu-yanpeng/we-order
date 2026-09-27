@@ -4,12 +4,14 @@
  * 职责：
  * 1. 通过 API 层加载商品分类数据
  * 2. 管理侧边栏分类与右侧商品列表的双向滚动联动
+ * 3. 加载失败时产出失败文案（唯一翻译 `utils/error-copy.ts`）供页面失败态渲染（Story 2.2）
  *
  * 遵循 AD-3：页面仅负责组件编排，业务逻辑封装在此。
  */
 import { ref, nextTick } from 'vue'
 import type { MenuCategory } from '@/types/api-contracts'
 import { fetchCategories, productImageUrl } from '@/api/catalog'
+import { errorCopy, isAppError } from '@/utils/error-copy'
 
 /**
  * 分类锚点 id：真实分类 id 是 UUID（数字开头），而 `scroll-into-view` 与选择器
@@ -34,17 +36,23 @@ export function useProducts() {
   /** 是否为程序触发的滚动（防止与用户滚动互相干扰） */
   const isProgrammaticScroll = ref(false)
 
-  /** 加载分类数据 */
+  /** 加载分类数据：成功渲染完整目录；失败产出文案、保留失败态供页面渲染（Story 2.2） */
   const loadCategories = async () => {
+    // 防重复：重试按钮已禁用，这里再兜一层（不产生并发请求）
+    if (loading.value) return
     loading.value = true
-    error.value = null
     try {
       categories.value = await fetchCategories()
       if (categories.value.length > 0) {
         activeCategory.value = categories.value[0].id
       }
-    } catch {
-      error.value = '加载商品失败'
+      // 成功才清错误：重试期间失败态保持可见、按钮呈 loading（而非闪回空目录）
+      error.value = null
+    } catch (err) {
+      // transport 只会抛 AppError；文案唯一来源 utils/error-copy.ts（AR-P3-20）
+      const message = isAppError(err) ? errorCopy(err) : ''
+      // 空文案（request_cancelled 不展示）与未知异常兜底，保证失败态始终可渲染
+      error.value = message !== '' ? message : '加载失败，请重试'
     } finally {
       loading.value = false
     }

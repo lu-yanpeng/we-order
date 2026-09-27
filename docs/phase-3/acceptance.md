@@ -338,3 +338,60 @@ alova 在本 story 第一次真正进入小程序包（此前无调用方），�
 5. **订单侧仍是 Mock**：结算页门店信息已真实，但订单快照仍由本地 `buildOrder` 造（Epic 3 换 `pay-order`、Epic 4 换真实读取）；本 story 不改变该行为。
 6. **`lazy-load` 为新增实现细节**：图片进入视口才加载；若真机上希望首屏全载可去掉该属性（不影响验收点）。
 7. **`#3` 的自然路径复验**：首页仍为 `pages/auth-check`；Story 2.3 把首页切到 `pages/home/index` 后，重启即可在自然路径观察「登录与目录请求并行、互不阻塞」，届时顺手复验一次。
+
+## Story 2.2 目录加载失败态与重试
+
+- 日期：2026-09-27
+- 环境：本地 Supabase 栈（CLI 2.117.0 / Postgres 17）；mp 侧 `pnpm type-check`（vue-tsc 3.3.6）、`pnpm lint`、`pnpm test`（vitest 3.2.7）、`pnpm build:mp-weixin`
+- 范围：点餐 tab 首屏目录加载失败的页面内失败态（文案 + 「重试」）与防重复；**后端零改动**；`utils/error-copy.ts` 与 `core/transport` 零改动（REST 失败归一链路 1.2 已就绪）
+- 裁定记录（Ly）：① 失败态做成页面局部组件 `pages/home/components/load-failure/`（1A，P1 AD-5「先放页面目录」）；② 文案只显示 `errorCopy` 结果、不加场景前缀（2A）；③ 首次加载等待期不加 loading 占位（3A，严格最小 UI 规范）
+
+### 交付物
+
+| 类别 | 内容 |
+| --- | --- |
+| 新增（客户端） | `pages/home/components/load-failure/index.vue`：纯展示失败态（`message` / `loading` props + `retry` 事件）；形态 = 文案 + 「重试」按钮（loading + 禁用） |
+| 修改（客户端） | `pages/home/composables/use-products.ts`：失败时经 `isAppError` + `errorCopy` 产出文案（全客户端唯一翻译）；`loading` in-flight 守卫；「清错误」从加载开始移到成功分支（重试期间失败态常驻、按钮呈 loading）；空文案 / 未知异常兜底 |
+| 修改（客户端） | `pages/home/index.vue`：点餐区条件渲染——`productsError && categories 为空` → 失败态，否则双栏目录；重试复用 `init()`（成功后重算双栏位置与底部留白） |
+| 未改动 | `utils/error-copy.ts`、`core/transport`、`api/catalog.ts`、后端；订单 tab、结算栏分包、确认订单页 |
+
+### 行为设计落点
+
+- **失败**：错误经 transport 归一 → Composable 用 `isAppError` + `errorCopy` 翻译 → `error` 置文案、分类保持空 → 页面渲染失败态；不渲染半截目录、不弹 toast、不写存储。
+- **重试**：失败态保持可见（错误不清）、按钮 loading/禁用；`loadCategories` 内 in-flight 守卫再兜一层，不产生并发请求。
+- **成功**：清 `error` → 完整目录挂载 → `init()` 的延时测量重算双栏位置。
+- **类别 → 文案**（均由既有链路产出，未新增映射）：网络不可达 → `client.network_unreachable`「网络不可用，请检查网络后重试」；超时 → `client.timeout`「请求超时，请重试」；5xx → `order.unknown`「操作失败，请稍后重试」（REST 无独立域，1.2 裁定）。
+- **兜底**：空文案（`request_cancelled` 不展示）与非 `AppError` 异常用「加载失败，请重试」，保证失败态始终可渲染；目录请求当前没有取消入口，属防御分支。
+
+### 验收点与证据
+
+| Story 2.2 验收点 | 证据 |
+| --- | --- |
+| 失败态：文案来自 `utils/error-copy.ts`（按类别）+「重试」入口；不白屏、不渲染半截目录、不写本地缓存 | `use-products.ts` 失败分支：`isAppError(err) ? errorCopy(err) : ''`（第 53 行）→ 失败文案入 `error`；`grep -rn "errorCopy(" src`：目录链路唯一调用点即此处（另有 `auth-check` 临时页）。页面 wxml：`load-failure wx:if="{{e}}" bindretry="{{f}}"` + 目录区 `wx:else`（失败时不渲染目录）。目录链路（`use-products.ts` / `api/catalog.ts` / `core/transport` / 组件）`grep "showToast\|setStorageSync"` 无命中——不弹提示、不写缓存 |
+| 重试成功后恢复完整目录 | 重试按钮绑定页面 `initProducts`（`use-products.init()`）→ 成功后清 `error`、分类整体渲染并重算双栏位置；运行时复验见手动 #3 |
+| 重试进行中按钮禁用 / loading，防重复提交 | `load-failure` 的 `t-button :loading="loading" :disabled="loading"`；`loadCategories` 开头 `if (loading.value) return`；成功才清错误 → 重试期间失败态与 loading 同时可见（不会闪回空目录）；运行时复验见手动 #2 |
+| 失败文案不含内部堆栈 / 数据库细节 / 密钥；同一失败只提示一次 | 文案全部出自 `error-copy.ts` 的域表（1.2 已单测断言无敏感信息），兜底串为固定文案；页面级失败态为持续呈现、不经 toast，单次失败只出现一处提示 |
+| 客户端全量编译与构建 | `pnpm type-check` 0 错误；`pnpm lint` 0 错误 / 0 警告；`pnpm format` 仅格式化新增组件；`pnpm build:mp-weixin` → `Build complete.`；产物含 `pages/home/components/load-failure/*`，`use-products.js` 含 `errorCopy` / `isAppError` / 兜底串 |
+| 单元测试全绿（既有不回归） | `pnpm test`：5 个文件 62 项全过；REST 5xx → `order.unknown` 由既有 `normalize.test.ts` 覆盖（未新增测试） |
+
+### 手动验证结果（2026-09-27 演示者执行）
+
+前置：本地栈在跑（`supabase start`）、`mp/.env.local` 指向本地栈、开发者工具已勾选「不校验合法域名」；建议先「清缓存并重启」。
+
+| # | 操作 | 预期 | 结果 |
+| --- | --- | --- | --- |
+| 1 | `supabase stop` → 清缓存重启 → 进点餐 tab | 出现失败态：「网络不可用，请检查网络后重试」+「重试」；不白屏、无全局提示；顶部 tab 正常，订单 tab 仍可用 | 通过 |
+| 2 | 停栈状态下点「重试」 | 按钮 loading 且不可点；网络面板每次重试只发一条 `/rest/v1/menu`，无并发重复请求 | 通过 |
+| 3 | `supabase start` → 点「重试」 | 失败态消失、完整目录回来（16 分类）；双栏联动与 2.1 验收一致 | 通过 |
+| 4 | 超时文案：停栈后运行 `node -e "require('net').createServer(()=>{}).listen(54321)"` → 重启 | 约 10 秒后出现「请求超时，请重试」；验证后关掉该 node 进程 | 通过 |
+| 5 | 回归：正常后端下完整走一遍点餐主流程（分类 / 规格 / 计价 / 加购 / 结算栏） | 与 Story 2.1 验收一致，无新增异常 | 通过 |
+
+> 2026-09-27 由演示者在微信开发者工具按上表执行，5 项全部通过（含超时文案）。
+
+### 有意偏差与遗留
+
+1. **首次加载等待期不加 loading 占位**（3A）：后端超时场景需等约 10 秒才出失败态，期间目录区为空；属最小 UI 规范之外的界面增量，后续需要再评估。
+2. **兜底文案「加载失败，请重试」**：用于空文案（`request_cancelled`）与非 `AppError` 异常两个防御分支；目录请求当前没有取消入口，正常路径不会出现。
+3. **确认订单页门店读取失败**仍是 2.1 的静默兜底（失败态收口在 Epic 4；确认订单页不在本 story 场景清单内）。
+4. **订单 tab 的失败态与空态**属 Epic 4（Story 4.1）；`load-failure` 组件先放页面目录，届时同页（订单 tab）可直接复用。
+5. **REST 5xx 文案沿用订单域 `unknown`**（「操作失败，请稍后重试」），若演示体验不合适再评估（与 2.1 遗留一致）。

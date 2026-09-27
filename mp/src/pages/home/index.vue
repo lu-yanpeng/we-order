@@ -19,6 +19,7 @@ import { useHomeTabs } from '@/composables/use-home-tabs'
 import ProductCard from './components/product-card/index.vue'
 import SpecSheet from './components/spec-sheet/index.vue'
 import OrderCard from './components/order-card/index.vue'
+import LoadFailure from './components/load-failure/index.vue'
 import CheckoutBar from '@/sub-components/checkout-bar/index.vue'
 
 const {
@@ -31,6 +32,8 @@ const {
   init: initProducts,
   anchorId,
   productImageUrl,
+  loading: productsLoading,
+  error: productsError,
 } = useProducts()
 
 const {
@@ -151,7 +154,13 @@ onShow(() => {
 
     <swiper class="swiper flex-1" :current="swiperIndex" :duration="250" @change="onSwiperChange">
       <swiper-item>
-        <view class="flex h-full overflow-hidden">
+        <load-failure
+          v-if="productsError && categories.length === 0"
+          :message="productsError"
+          :loading="productsLoading"
+          @retry="initProducts"
+        />
+        <view v-else class="flex h-full overflow-hidden">
           <view class="sidebar flex w-1/5 shrink-0 flex-col bg-[#f7f8fa]">
             <scroll-view class="min-h-0 flex-1" scroll-y :enhanced="true" :show-scrollbar="false">
               <view
