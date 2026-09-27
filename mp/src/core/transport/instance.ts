@@ -3,7 +3,8 @@
  *
  * - alova 实例与全部拦截器只存在于本文件（`core/transport` 内）；
  * - 实例级关闭响应缓存与请求共享（`cacheFor: null`、`shareRequest: false`），
- *   方法作者不得依赖默认值或逐方法覆盖；
+ *   方法作者不得依赖默认值或逐方法覆盖；不共享原因：订单读取要求每次真实读取
+ *   （读时推进 / 手动刷新 / 推送补读），并发合并会拿到更早的响应，且替代不了业务层防重。
  * - 业务通道：请求前构造唯一请求头（apikey 恒带、按 meta.auth 附 Authorization），
  *   非 2xx / 传输失败统一归一为 `AppError`；会话类失败（401 / PGRST301 / not_authenticated）
  *   经 provider 续期后**只重放一次**，恢复失败 → `client.session_expired`；
