@@ -6,6 +6,8 @@
  * - `rawTransport`：裸通道（不等待会话、不续期、不重放），仅 `core/session` 使用。
  * - `registerSessionProvider`：会话插槽注册；唯一调用方是 `core/session`，在装载时注入
  *   取凭证与会合会话两个动作（避免 transport 反向依赖 session）。
+ * - `supabaseUrl`：项目地址（构建变量，唯一读取点仍是 `config.ts`）；供 api/ 拼对象存储
+ *   直读 URL 等非请求用途，不产生 alova 请求。
  *
  * api/ 方法示例（Story 2.1 起）：
  *   transport.Get<MenuCategory[]>('/rest/v1/menu', { meta: { auth: 'anonymous' } })
@@ -15,6 +17,7 @@ import { supabasePublishableKey, supabaseUrl } from './config'
 import { createTransport } from './instance'
 
 export { registerSessionProvider } from './provider'
+export { supabaseUrl } from './config'
 export type { SessionProvider } from './provider'
 export type { RawTransportMeta, TransportMeta } from './meta'
 export type {

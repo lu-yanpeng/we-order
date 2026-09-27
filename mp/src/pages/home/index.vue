@@ -29,6 +29,8 @@ const {
   handleContentScroll,
   footerHeight,
   init: initProducts,
+  anchorId,
+  productImageUrl,
 } = useProducts()
 
 const {
@@ -178,7 +180,12 @@ onShow(() => {
             :scroll-with-animation="true"
             @scroll="handleContentScroll"
           >
-            <view v-for="cat in categories" :key="cat.id" :id="cat.id" class="category-section">
+            <view
+              v-for="cat in categories"
+              :key="cat.id"
+              :id="anchorId(cat.id)"
+              class="category-section"
+            >
               <view
                 class="category-title sticky top-0 z-10 bg-[rgba(255,255,255,0.85)] py-[24rpx] pl-[32rpx] font-semibold tracking-[0.05em] text-[26rpx] text-ink-soft backdrop-blur-[12rpx]"
               >
@@ -186,7 +193,11 @@ onShow(() => {
               </view>
               <view class="pr-5 pl-4">
                 <view v-for="product in cat.products" :key="product.id">
-                  <ProductCard :product="product" @add-to-cart="handleAddToCart" />
+                  <ProductCard
+                    :product="product"
+                    :image-url="productImageUrl(product.image_path)"
+                    @add-to-cart="handleAddToCart"
+                  />
                 </view>
               </view>
             </view>

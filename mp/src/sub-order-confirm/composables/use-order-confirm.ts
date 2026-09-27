@@ -20,7 +20,7 @@ import { computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useCartStore } from '@/stores/cart'
 import { createOrder } from '@/api/orders'
-import { fetchStore } from '@/api/store'
+import { fetchStore } from '@/api/catalog'
 import { calcPackagingFee } from '@/utils/price'
 import type { DiningMode, OrderDetail, StoreInfo } from '@/types/api-contracts'
 
@@ -41,7 +41,7 @@ export function useOrderConfirm() {
   const diningMode = ref<DiningMode>('dinein')
   /** 备注偏好，随订单一并保存到本地订单记录（FR-8） */
   const notes = ref('')
-  /** 门店信息（数据源仍是 Mock，形状同服务端 `stores` 行） */
+  /** 门店信息（真实后端 `stores` 行；读取失败保持空、页面以空文案呈现） */
   const store = ref<StoreInfo | null>(null)
 
   /** 包装费：外带 ¥2，堂食免收（展示口径；订单金额以服务端重算为准） */
@@ -57,9 +57,16 @@ export function useOrderConfirm() {
     diningMode.value = mode
   }
 
-  /** 加载门店信息 */
+  /**
+   * 加载门店信息：数据来自真实后端（api/catalog.ts）。
+   * 失败静默兜底（门店区留空）——页面级失败态收口在 Epic 4，本页不阻断支付模拟。
+   */
   async function initStore() {
-    store.value = await fetchStore()
+    try {
+      store.value = await fetchStore()
+    } catch {
+      store.value = null
+    }
   }
 
   /** 模拟支付阶段（FR-10）：idle → verifying → success */

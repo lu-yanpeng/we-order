@@ -5,16 +5,16 @@
 
 ## 文件
 
-| 文件             | 职责                                                                                                       |
-| ---------------- | ---------------------------------------------------------------------------------------------------------- |
-| `index.ts`       | 对外出口：`transport`（业务通道）、`rawTransport`（裸通道）、`registerSessionProvider`；只允许 `api/` 引用 |
-| `instance.ts`    | alova 实例与全部拦截器（请求头、错误归一接线、会话续期重放）                                               |
-| `headers.ts`     | **全仓唯一**的请求头构造（apikey 恒带、按需 Authorization、有体才带 Content-Type）                         |
-| `normalize.ts`   | **全仓唯一**的错误归一表（原始失败 → `AppError`，纯函数、可单测）                                          |
-| `error-codes.ts` | 服务端类别的运行时允许清单 + 与生成枚举的编译期穷尽检查                                                    |
-| `provider.ts`    | 会话插槽：`SessionProvider` 类型与 `registerSessionProvider()`                                             |
-| `meta.ts`        | `TransportMeta`（api/ 方法在 `config.meta` 里声明的身份要求）                                              |
-| `config.ts`      | 构建变量 `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY`                                             |
+| 文件             | 职责                                                                                                                                                              |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `index.ts`       | 对外出口：`transport`（业务通道）、`rawTransport`（裸通道）、`registerSessionProvider`、`supabaseUrl`（供 api/ 拼对象存储直读 URL，不发请求）；只允许 `api/` 引用 |
+| `instance.ts`    | alova 实例与全部拦截器（请求头、错误归一接线、会话续期重放）                                                                                                      |
+| `headers.ts`     | **全仓唯一**的请求头构造（apikey 恒带、按需 Authorization、有体才带 Content-Type）                                                                                |
+| `normalize.ts`   | **全仓唯一**的错误归一表（原始失败 → `AppError`，纯函数、可单测）                                                                                                 |
+| `error-codes.ts` | 服务端类别的运行时允许清单 + 与生成枚举的编译期穷尽检查                                                                                                           |
+| `provider.ts`    | 会话插槽：`SessionProvider` 类型与 `registerSessionProvider()`                                                                                                    |
+| `meta.ts`        | `TransportMeta`（api/ 方法在 `config.meta` 里声明的身份要求）                                                                                                     |
+| `config.ts`      | 构建变量 `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY`                                                                                                    |
 
 ## 用法（api/ 方法，Story 2.1 起）
 

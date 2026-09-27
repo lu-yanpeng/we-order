@@ -265,3 +265,76 @@ alova 在本 story 第一次真正进入小程序包（此前无调用方），�
 | 7 | 回归冒烟：点餐页双栏联动 / 规格弹窗 / 加购、订单 tab（Mock 阶段行为不变）、结算页 | 与 Story 1.3 验收时一致，无新增异常 | 通过 |
 
 > 2026-09-27 由演示者在微信开发者工具按上表执行，报告全部通过（存量清理、空水合、版本 3 空转、启动自动登录、后端停机不阻塞、回归冒烟）。#1 的存储快照按提示在打开订单 tab 前检查，未混入 Mock seed 回填。
+
+## Story 2.1 目录读取切到真实数据
+
+- 日期：2026-09-27
+- 环境：本地 Supabase 栈（CLI 2.117.0 / Postgres 17，迁移 + 种子已应用）；mp 侧 `pnpm type-check`（vue-tsc 3.3.6）、`pnpm lint`、`pnpm test`（vitest 3.2.7）、`pnpm build:mp-weixin`
+- 范围：客户端目录 / 门店切换真实后端（`menu` 视图 + `stores` 行，REST、`anonymous`）；商品图片由 `image_path` 构造对象存储 URL + 缺图色块占位；**后端零改动、无迁移**；旧 `api/products.ts` / `api/store.ts` 与 `src/mock/**` 保留（Story 2.3 删除）
+- 裁定记录（Ly）：① 图片 URL 拼接落 `api/catalog.ts`、`core/transport` 只导出既有 `supabaseUrl`（1A）；② 目录方法直接返回 alova Method，不用 async 包装（2A）；③ `fetchStore()` 无行返回 `null`（3A）；④ 验收准备一张真实图片验证图片链路（4A）；⑤ 旧 Mock 实现按 epic 切分保留到 Story 2.3（5A）；⑥ 确认订单页门店读取失败静默兜底（6A，超 AC 字面的必要处理）；⑦ 手动验收由演示者执行（7）
+
+### 交付物
+
+| 类别 | 内容 |
+| --- | --- |
+| 新增（客户端） | `src/api/catalog.ts`：`fetchCategories()`（`public.menu`，REST、anonymous，返回 alova Method）、`fetchStore()`（`public.stores` 只取四列、固定顺序取第一行、无行返回 null）、`productImageUrl()`（`image_path` → 对象存储公开读 URL，缺图返回空串） |
+| 修改（客户端） | `core/transport/index.ts` 多导出 `supabaseUrl`（构建变量唯一读取点仍是 `config.ts`，不产生请求）；`core/transport/README.md` 同步（prettier 顺带重排表格对齐） |
+| 修改（客户端） | `pages/home/composables/use-products.ts`：改调 `api/catalog`；分类锚点引出 `anchorId()`（`cat-` 前缀，见下）；导出 `anchorId` / `productImageUrl` 供页面注入组件 |
+| 修改（客户端） | `pages/home/index.vue`：分类区块 `:id="anchorId(cat.id)"`；`ProductCard` 多传 `image-url` |
+| 修改（客户端） | `pages/home/components/product-card/index.vue`：容器仍是色块，内部新增 `<image>`（`mode="aspectFill"`、`lazy-load`、`binderror` 回退）；组件保持纯展示（不 import api/，URL 由页面经 composable 注入） |
+| 修改（客户端） | `sub-order-confirm/composables/use-order-confirm.ts`：改调 `api/catalog`；`initStore` 失败静默兜底（门店区留空，不产生未捕获异常） |
+| 未改动 | `api/products.ts`、`api/store.ts`、`src/mock/**`、`api/orders.ts`、页面结构与交互、结算栏分包相关文件；后端零改动 |
+
+### 关键实现点
+
+1. **分类锚点 `cat-` 前缀（真实数据暴露的坑）**：分类 id 是 UUID（数字开头），微信规定 `scroll-into-view` 与 `#` 选择器指向的 id 不能以数字开头，直接使用会静默失去双栏联动。处理：DOM 锚点统一 `cat-<uuid>`，`scrollIntoViewId` 与 `createSelectorQuery` 共用 `anchorId()`；数据层（`activeCategory` 比较、`:key`）仍用原始 UUID。
+2. **图片 URL**：`<项目地址>/storage/v1/object/public/product-images/<image_path>`；`image_path` 为相对路径（种子里全为 NULL），空串或加载失败都退回容器色块，不阻塞列表渲染。
+3. **anonymous 身份**：目录 / 门店方法显式声明 `meta.auth = 'anonymous'`，transport 请求前不调用 `ensureSession()`，只带 `apikey`、不带 `Authorization`（响应头构造逻辑未变，Story 1.2 已单测）。
+4. **组件分层**：`product-card` 不 import `api/`，图片地址由 `use-products` 从 `api/catalog` 取出后经页面注入，维持 P1 AD-3「组件纯展示」。
+
+### 验收点与证据
+
+| Story 2.1 验收点 | 证据 |
+| --- | --- |
+| 分类 / 商品 / 规格 / 门店来自后端；下架不返回、售罄保留带 availability；排序由视图保证 | anonymous `curl` 抽查：`/rest/v1/menu` 返回 **16 分类 / 50 商品**；「周边好物」不返回（唯一商品已下架整类过滤）；「提拉米苏」保留且 `availability=sold_out`；「城市随行杯」不返回；「推荐今日咖啡」为首分类、首商品价 28（JSON 数字）；`/rest/v1/stores?select=id,name,address,phone&order=id.asc&limit=1` 返回唯一门店四列 |
+| 目录 / 门店均 `anonymous`，不等待会话、登录失败不阻塞 | `api/catalog.ts` 两个方法均 `meta: { auth: 'anonymous' }`；transport 的 anonymous 分支不调用 `ensureSession`（Story 1.2 单测已断言 anonymous 无 `Authorization`）；运行时证据见手动 #3 |
+| 目录形状按 `types/api-contracts.ts` 消费，类型化而非 any | `fetchCategories()` 泛型 `MenuCategory[]`，调用方 `categories.value = await fetchCategories()` 经 `pnpm type-check` 0 错误；新增代码无 `any` |
+| 旧 `api/products.ts` / `api/store.ts` 不再被调用 | `grep -rn "@/api/products\|@/api/store" mp/src` 无结果；`api/catalog` 调用方仅 `use-products.ts` 与 `use-order-confirm.ts` |
+| Mock 数据不再进包 | 构建产物 `dist/build/mp-weixin` 检索 Mock 特征串（`section-coffee` / `prod-001`）**0 命中**；`dist/build/mp-weixin/api/catalog.js` 含 `/rest/v1/menu`、`/rest/v1/stores`、`product-images` |
+| 图片由 `image_path` 构造对象存储 URL；缺图 / 失败色块占位、不阻塞渲染 | `product-card/index.wxml`：色块容器 + `<image wx:if mode="aspectFill" lazy-load binderror>`；`imageUrl` 空串或 `imageFailed` 时不渲染 image、保留色块；真实 URL 显示见手动 #7 |
+| 双栏联动 / 规格定制 / 实时计价与 P1 一致；展示价与计价同源 | 交互代码未改（仅数据来源与锚点前缀）；构建产物 `use-products.js`：`handleSidebarClick` 与 `createSelectorQuery` 均经 `cat-${id}`，`index.js` 的 id 绑定为 `anchorId(cat.id)`；计价仍用 `utils/price.ts` 消费同一份 `price` / `price_extra`；运行时复验见手动 #4 / #5 |
+| 新增文件落位符合 P1 AD-9；结算栏分包按需加载不回归 | 新增 `api/catalog.ts` 在主包目录树（被主包 `use-products` 使用）；结算栏相关文件零改动（`git diff --stat`：6 改 1 增）；冒烟见手动 #9，六分支完整复验留验证矩阵 #9 |
+| 客户端全量编译与构建 | `pnpm type-check` 0 错误；`pnpm lint` 0 错误 / 0 警告；`pnpm format` 无待格式化项（本 story 首次运行重排了 `README.md` 表格对齐）；`pnpm build:mp-weixin` → `Build complete.` |
+| 单元测试全绿（既有不回归） | `pnpm test`：5 个文件 62 项全过（未新增测试） |
+
+### 手动验证结果（2026-09-27 演示者执行）
+
+前置：本地栈在跑（`supabase start`）、`mp/.env.local` 指向本地栈、开发者工具已勾选「不校验合法域名」；建议先「清缓存并重启」。
+
+| # | 操作 | 预期 | 结果 |
+| --- | --- | --- | --- |
+| 1 | 打开点餐 tab，对照数据库看分类与商品 | 分类为库中数据（16 个：推荐今日咖啡 → 茶饮 → … → 蛋糕专区 → 瓶装饮品，无「周边好物」）；「提拉米苏」在、「城市随行杯」不在；「美式咖啡」¥28 | 通过 |
+| 2 | 网络面板查看目录请求 | `/rest/v1/menu` 200，请求头只有 `apikey`、无 `Authorization`、无 `Bearer` | 通过 |
+| 3 | 清掉 `weorder_session` → 重启 | `/rest/v1/menu` 不等 `wechat-login` 完成、只带 `apikey`；登录无弹窗、无全局提示（预期修正：见下注） | 通过（预期修正） |
+| 4 | 点侧边栏「甜品」「烘焙」等分类；再手动缓慢滚回顶部 | 右侧滚动到对应区块；滚动时高亮随区块变化、回顶部高亮回「推荐今日咖啡」（锚点修复复验） | 通过 |
+| 5 | 打开「美式咖啡」规格弹窗，切换杯型 / 加料；再看「卡布奇诺」 | 实时计价随规格加价变化（大杯 Grande +3 → ¥31；加料多选叠加）；无规格商品只显示数量步进器 | 通过 |
+| 6 | 观察商品图片区（`image_path` 尚未填写时） | 全部为色块占位；列表滚动顺畅、无阻塞、无报错 | 通过 |
+| 7 | Studio（`http://127.0.0.1:54323`）→ Storage → `product-images` 上传一张图；`update public.products set image_path='<对象路径>' where id='00000000-0000-4000-8000-000000000201';` → 重启 | 「美式咖啡」显示该图片 | 通过（演示者已准备真实图片，渲染正常） |
+| 8 | 加购后进确认订单页 | 门店名称 / 地址 / 电话来自库（星巴克 啡快自提店 / 北京市朝阳区创意产业园 A 座 1 层 / 010-88888888） | 通过 |
+| 9 | 结算栏分包回归：清缓存重启（空购物车）→ 再首次加购 | 冷启动不下载结算栏分包、不出现结算栏；首次加购触发分包下载并从底部滑入；展开 / 收起 / 数量步进正常 | 通过 |
+
+> 2026-09-27 由演示者在微信开发者工具按上表执行，9 项全部通过（含真实图片渲染、双栏联动锚点修复、结算栏分包回归）。
+>
+> **#3 预期修正**：当前 `pages.json` 首页仍是 `pages/auth-check`（Phase 2 验证入口，Story 2.3 才删除并把首页切换为 `pages/home/index`），重启后只执行静默登录、不进入点餐页，menu 请求要手动进入点餐页才发生——原始预期「重启即同时观察 menu 与 login 并发」在 2.3 之前无法在自然路径上复现。实际观察：进入点餐页后 `/rest/v1/menu` 只带 `apikey`、不等待登录结果，目录正常渲染，`anonymous` 语义成立；Story 2.3 首页切换后可在自然路径复验一次（已记入遗留）。
+>
+> **#7 补充**：真实图片验证了 URL 拼接与渲染；「`image_path` 改成不存在路径 → 回退色块」未单独复验（与缺图占位同归色块呈现分支）。
+
+### 有意偏差与遗留
+
+1. **失败态留给 Story 2.2**：目录加载失败时当前仍是「空列表 + 已置位的 error 状态」，无失败文案 / 重试入口（本 story AC 不含）；Story 2.2 按 `utils/error-copy.ts` 收口（含 REST 域暂用 `order.unknown` 兜底文案的 1.2 遗留）。
+2. **旧实现与 Mock 保留到 Story 2.3**：`api/products.ts` / `api/store.ts` 已成为无调用方的死代码；`src/mock/**` 仍在仓库但已不进包（证据见上）。
+3. **`mock/orders.ts` 仍引用 `mock/store.ts`**：Story 2.3 删除 `mock/store.ts` 前需先把该引用解耦（内联门店快照或改用文本常量），否则订单侧 Mock 构建报错——记录给 Story 2.3。
+4. **图片对象未入仓**：演示图片由 Ly 自行准备（本阶段不做上传）；本次已用一张真实图片（美式咖啡）验证「URL 拼接 + 渲染」，「加载失败回退」未单独复验。
+5. **订单侧仍是 Mock**：结算页门店信息已真实，但订单快照仍由本地 `buildOrder` 造（Epic 3 换 `pay-order`、Epic 4 换真实读取）；本 story 不改变该行为。
+6. **`lazy-load` 为新增实现细节**：图片进入视口才加载；若真机上希望首屏全载可去掉该属性（不影响验收点）。
+7. **`#3` 的自然路径复验**：首页仍为 `pages/auth-check`；Story 2.3 把首页切到 `pages/home/index` 后，重启即可在自然路径观察「登录与目录请求并行、互不阻塞」，届时顺手复验一次。

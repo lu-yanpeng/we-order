@@ -9,7 +9,13 @@
  */
 import { ref, nextTick } from 'vue'
 import type { MenuCategory } from '@/types/api-contracts'
-import { fetchCategories } from '@/api/products'
+import { fetchCategories, productImageUrl } from '@/api/catalog'
+
+/**
+ * 分类锚点 id：真实分类 id 是 UUID（数字开头），而 `scroll-into-view` 与选择器
+ * 都要求 id 首字符不能是数字——统一加 `cat-` 前缀，数据层仍用原始 id。
+ */
+const anchorId = (categoryId: string) => `cat-${categoryId}`
 
 export function useProducts() {
   /** 商品分类列表（含各分类下的商品） */
@@ -53,7 +59,7 @@ export function useProducts() {
     isProgrammaticScroll.value = true
     scrollIntoViewId.value = ''
     nextTick(() => {
-      scrollIntoViewId.value = categoryId
+      scrollIntoViewId.value = anchorId(categoryId)
       // 程序滚动完成后，延时重置 isProgrammaticScroll 标志
       setTimeout(() => {
         isProgrammaticScroll.value = false
@@ -93,7 +99,7 @@ export function useProducts() {
     const query = uni.createSelectorQuery()
     query.select('.content-area').boundingClientRect()
     categories.value.forEach((cat) => {
-      query.select(`#${cat.id}`).boundingClientRect()
+      query.select(`#${anchorId(cat.id)}`).boundingClientRect()
     })
     query.exec((res: UniApp.NodeInfo[]) => {
       const scrollViewRect = res[0]
@@ -158,5 +164,9 @@ export function useProducts() {
     handleContentScroll,
     computeSectionPositions,
     init,
+    /** 模板锚点 id（`cat-` 前缀）；同一规则由 handleSidebarClick / 位置测量共用 */
+    anchorId,
+    /** 商品图片地址构造（经 api/ 出口）：缺图返回空串，卡片以色块占位 */
+    productImageUrl,
   }
 }
