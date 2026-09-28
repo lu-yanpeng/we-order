@@ -1,8 +1,8 @@
 // Story 5.4 重建后端到端验证：干净重建后立即可以完成登录、下单与订单查询（FR-P2-16；AR-3、AR-6）
 //
 // 覆盖：未登录读目录与门店 → 登录（驱动真实 handler，微信那一跳注入为受控响应）→
-//      携带真实会话下单（真实 HTTP + 真实会话）→ 我的订单列表与详情 → 第二个身份读不到 →
-//      与「不存在」同一拒绝结果 → 清理测试用户。
+//      携带真实会话经 pay-order 下单（唯一客户端入口，Story 3.3）→ 我的订单列表与详情 →
+//      第二个身份读不到 → 与「不存在」同一拒绝结果 → 清理测试用户。
 // 不覆盖：并发与时间行为（各有专门脚本）；图片对象入仓不在本阶段交付（见 Story 5.4 验收记录）。
 //
 // 需要本地栈在跑（supabase start），且数据库已应用迁移与种子（supabase db reset）。
@@ -121,6 +121,41 @@ function sessionClient(session: LoginSession): Client {
       headers: { Authorization: `Bearer ${session.access_token}` },
     },
   });
+}
+
+// ── 下单：POST /functions/v1/pay-order（客户端创建订单的唯一入口，Story 3.3） ─────
+
+type PayOrderBody = {
+  items: Array<{ product_id: string; quantity: number; selections: Json }>;
+  dining_mode: "takeout";
+  notes: string;
+  idempotency_key: string;
+};
+
+/** 携带会话调 pay-order：与 verify-pay-order 同款 HTTP 形状（apikey + Bearer 会话）。 */
+async function postPayOrder(
+  orderBody: PayOrderBody,
+  accessToken: string,
+): Promise<Record<string, Json>> {
+  const response = await fetch(`${url}/functions/v1/pay-order`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: anonKey,
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(orderBody),
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(
+      `FAIL: pay-order 未成功（HTTP ${response.status}）：${text.slice(0, 300)}`,
+    );
+  }
+  return asObject(
+    text === "" ? null : (JSON.parse(text) as Json),
+    "pay-order 成功响应",
+  );
 }
 
 // ── 菜单：匿名读取后按种子里可下单的商品构造请求（不写死种子 id） ─────────────────
@@ -269,18 +304,18 @@ try {
   }
 
   const orderNotes = "重建验证";
-  const { data: orderData, error: orderError } = await clientA.rpc("create_order", {
-    p_items: [{
+  const orderData = await postPayOrder({
+    items: [{
       product_id: product.id,
       quantity: 1,
       selections: selectionsFor(product),
     }],
-    p_dining_mode: "takeout",
-    p_notes: orderNotes,
-    p_idempotency_key: idempotencyKey,
-  });
-  check(orderError === null, "携带真实会话经真实 HTTP 下单成功");
-  const order = asObject(orderData, "下单") as unknown as OrderJson;
+    dining_mode: "takeout",
+    notes: orderNotes,
+    idempotency_key: idempotencyKey,
+  }, sessionA.access_token);
+  check(true, "携带真实会话经 pay-order 下单成功");
+  const order = orderData as unknown as OrderJson;
   check(ORDER_NUMBER_RE.test(order.order_number), "订单号是 18 位纯数字（服务端生成）");
   check(order.status === "cooking", "新订单初始状态为「制作中」");
   check(

@@ -13,6 +13,7 @@
 // 并发通道：推进与超时兜底不向客户端暴露（pgTAP 已断言 anon/authenticated 不可执行），
 // 脚本用 service_role 调用它们——服务端钥匙不是客户端边界的一部分，它模拟的是
 // 「周期扫描正在跑」。用户操作（催单、确认取杯）仍走真实会话与真实 HTTP。
+// 建单统一经 pay-order（客户端创建订单的唯一入口，Story 3.3）——脚本与小程序走同一条路径。
 //
 // 演示参数：脚本开始时临时把门店的推进时长/催单提前量/自动完成时长调小（结束恢复，含失败时），
 // 顺带证明这些配置确实被服务端读取而不是写死。
@@ -228,24 +229,26 @@ async function waitForStatus(
   );
 }
 
-/** 下单辅助：真实 HTTP + 真实会话。 */
+/** 下单辅助：真实 HTTP + 真实会话，经 pay-order（客户端创建订单的唯一入口）。 */
 async function placeOrder(
   user: VerifyUser,
   product: MenuProduct,
   notes: string,
 ): Promise<OrderResult> {
-  const { data, error } = await user.client.rpc("create_order", {
-    p_items: [{
-      product_id: product.id,
-      quantity: 1,
-      selections: selectionsFor(product),
-    }],
-    p_dining_mode: "takeout",
-    p_notes: notes,
-    p_idempotency_key: `verify-state-machine-${crypto.randomUUID()}`,
+  const { data, error } = await user.client.functions.invoke("pay-order", {
+    body: {
+      items: [{
+        product_id: product.id,
+        quantity: 1,
+        selections: selectionsFor(product),
+      }],
+      dining_mode: "takeout",
+      notes,
+      idempotency_key: `verify-state-machine-${crypto.randomUUID()}`,
+    },
   });
   if (error !== null) throw error;
-  return asOrderResult(data);
+  return asOrderResult(data as Json | null);
 }
 
 /** 推进机制（service role）：脚本里代表「周期扫描正在跑」。 */
@@ -284,15 +287,19 @@ try {
     .select("id, timezone, ready_delay_seconds, urge_lead_seconds, auto_complete_seconds")
     .single();
   if (storeError !== null) throw storeError;
+  // 闭包里不保留外层 narrowing，捕获为常量；补丁类型用生成类型，避免手写宽 Record 被拒。
+  const storeId = store.id;
   storeRestore = {
-    id: store.id,
+    id: storeId,
     ready_delay_seconds: store.ready_delay_seconds,
     urge_lead_seconds: store.urge_lead_seconds,
     auto_complete_seconds: store.auto_complete_seconds,
   };
 
-  async function updateStore(patch: Record<string, number>): Promise<void> {
-    const { error } = await serviceClient.from("stores").update(patch).eq("id", store.id);
+  type StoreUpdate = Database["public"]["Tables"]["stores"]["Update"];
+
+  async function updateStore(patch: StoreUpdate): Promise<void> {
+    const { error } = await serviceClient.from("stores").update(patch).eq("id", storeId);
     if (error !== null) throw error;
   }
 
@@ -331,8 +338,8 @@ try {
     "催单把推进时刻提前到「催单时刻 + 门店提前量」：不晚于原定时刻，且确实提前了",
   );
 
-  // 等到催单后的到点时刻，把重复催单与推进同时发出
-  await sleepUntil(urgedReadyAtMs + 80);
+  // 等到催单后的到点时刻（+余量，覆盖 pay-order 一跳与客户端/数据库时钟偏差），把重复催单与推进同时发出
+  await sleepUntil(urgedReadyAtMs + 300);
   const [u11, u12, adv11, adv12, adv13] = await Promise.all([
     userA.client.rpc("urge_order", { p_order_id: o1.id }),
     userA.client.rpc("urge_order", { p_order_id: o1.id }),
@@ -358,14 +365,15 @@ try {
   check(settled1.completed_at === null, "竞态后没有跳级：completed_at 仍为空");
   check(
     Date.parse(settled1.ready_at) === urgedReadyAtMs,
-    "重复催单既不更早也不更晚：ready_at 与第一次催单后完全一致",
+    "重复催单既不更早也不更晚：ready_at 与第一次催单后完全一致" +
+      `（${afterFirstUrge.ready_at} → ${settled1.ready_at}）`,
   );
 
   // ── 2) 确认取杯 vs 推进：待取餐边界上的竞态 ───────────────────────────────
 
   const o2 = await placeOrder(userA, product, "竞态：确认 vs 推进");
   const placed2 = await readOrderRow(userA.client, o2.id);
-  await sleepUntil(Date.parse(placed2.ready_at) + 80);
+  await sleepUntil(Date.parse(placed2.ready_at) + 300);
 
   const [c21, c22, adv21, adv22] = await Promise.all([
     userA.client.rpc("complete_order", { p_order_id: o2.id }),
@@ -459,7 +467,11 @@ try {
   const o4 = await placeOrder(userA, product, "并发兜底：甲");
   const o5 = await placeOrder(userA, product, "并发兜底：乙");
   const placed4 = await readOrderRow(userA.client, o4.id);
-  await sleepUntil(Date.parse(placed4.ready_at) + 60);
+  const placed5 = await readOrderRow(userA.client, o5.id);
+  // 两张单先后下单，到点时刻不同：等到两张都到点（+余量，覆盖 pay-order 一跳与时钟毫秒偏差）再发并发批
+  await sleepUntil(
+    Math.max(Date.parse(placed4.ready_at), Date.parse(placed5.ready_at)) + 300,
+  );
 
   const [row4, row5] = await Promise.all([
     readOrderRow(userA.client, o4.id),
@@ -488,7 +500,7 @@ try {
   const final5 = await readOrderRow(userA.client, o5.id);
   check(
     final4.status === "pickup" && final5.status === "pickup",
-    "并发推进后两张单都进入待取餐（不跳状态）",
+    `并发推进后两张单都进入待取餐（不跳状态：${final4.status} / ${final5.status}）`,
   );
   check(
     final4.completed_at === null && final5.completed_at === null,

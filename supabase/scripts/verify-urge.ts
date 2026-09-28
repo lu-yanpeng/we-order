@@ -10,6 +10,8 @@
 //      推进——改状态的只可能是周期任务（见迁移 20260922130629_advance_due_orders_cron.sql）；
 //   5. 推进后再次催单 → 明确的 invalid_status。
 //
+// 建单统一经 pay-order（客户端创建订单的唯一入口，Story 3.3）——脚本与小程序走同一条路径。
+//
 // 需要本地栈在跑（supabase start），且已应用迁移与种子（supabase db reset）。
 // 运行：cd supabase && deno task verify:urge
 // 会话走平台标准机制（service role 建用户 + 密码登录）；结束（含失败）时删除测试用户，订单随用户
@@ -196,20 +198,25 @@ try {
     `门店时区 ${store.timezone}，推进时长 ${store.ready_delay_seconds} 秒，催单提前量 ${store.urge_lead_seconds} 秒`,
   );
 
-  // 1) 真实 HTTP + 真实会话下一单
+  // 1) 真实 HTTP + 真实会话经 pay-order 下一单（客户端创建订单的唯一入口）
   const product = await pickOnSaleProduct(user.client);
-  const { data: created, error: createError } = await user.client.rpc("create_order", {
-    p_items: [{
-      product_id: product.id,
-      quantity: 1,
-      selections: selectionsFor(product),
-    }],
-    p_dining_mode: "takeout",
-    p_notes: "催单验证",
-    p_idempotency_key: `verify-urge-${crypto.randomUUID()}`,
-  });
+  const { data: created, error: createError } = await user.client.functions.invoke(
+    "pay-order",
+    {
+      body: {
+        items: [{
+          product_id: product.id,
+          quantity: 1,
+          selections: selectionsFor(product),
+        }],
+        dining_mode: "takeout",
+        notes: "催单验证",
+        idempotency_key: `verify-urge-${crypto.randomUUID()}`,
+      },
+    },
+  );
   if (createError !== null) throw createError;
-  const order = asOrderResult(created);
+  const order = asOrderResult(created as Json | null);
 
   const placedRow = await readOrderRow(user.client, order.id);
   check(

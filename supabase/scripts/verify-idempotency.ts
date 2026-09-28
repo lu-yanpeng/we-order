@@ -3,9 +3,13 @@
 // 顺序重放与「标识与用户绑定」由数据库测试覆盖（tests/database/85_idempotency.test.sql）；
 // 「并发下同一标识只落一张订单」单连接测不了，按 FR-P2-19 用本脚本做人工验证。
 //
-// 实现方式说明（并发为什么只落一张）：create_order 里「先查有没有」只是快速通道（覆盖顺序重试），
+// 实现方式说明（并发为什么只落一张）：内核 create_order 里「先查有没有」只是快速通道（覆盖顺序重试），
 // 它不承担并发正确性——两个请求可以同时查不到；真正的保证是 orders 上 (user_id, idempotency_key)
 // 唯一约束：并发插入里只有一个能成功，其余撞唯一约束后在捕获分支里把已落库的那张单原样返回。
+//
+// 建单路径（Story 3.3）：所有请求都走 pay-order（客户端创建订单的唯一入口），由它用服务端密钥调
+// create_order_for_user → create_order；脚本与小程序走同一条路径。并发批之前先打一发无效请求
+// 预热函数，避免边缘运行时冷启动把某个请求推迟到赢家提交之后、破坏下面的「都等到同一个事务」判定。
 //
 // 并发轮怎么保证「真的同时到达」：
 //   1. 每个请求各自建立一条 TCP 连接（HTTP 客户端连接池会把请求排队，那样就先查后插地"错开"了）；
@@ -138,7 +142,7 @@ type OrderResult = {
 
 function asOrderResult(data: Json | null): OrderResult {
   if (data === null || typeof data !== "object" || Array.isArray(data)) {
-    throw new Error("下单 RPC 的返回形状不是对象");
+    throw new Error("pay-order 的返回形状不是对象");
   }
   return data as unknown as OrderResult;
 }
@@ -178,7 +182,7 @@ type ConcurrentCall = {
   json: Json | null;
 };
 
-async function postCreateOrderOnOwnConnection(
+async function postPayOrderOnOwnConnection(
   items: OrderItemInput[],
   accessToken: string,
 ): Promise<ConcurrentCall> {
@@ -187,10 +191,10 @@ async function postCreateOrderOnOwnConnection(
   }
 
   const payload = new TextEncoder().encode(JSON.stringify({
-    p_items: items,
-    p_dining_mode: "takeout",
-    p_notes: "并发验证",
-    p_idempotency_key: idempotencyKey,
+    items,
+    dining_mode: "takeout",
+    notes: "并发验证",
+    idempotency_key: idempotencyKey,
   }));
 
   const startedAt = performance.now();
@@ -200,7 +204,7 @@ async function postCreateOrderOnOwnConnection(
   });
   try {
     await connection.write(new TextEncoder().encode([
-      "POST /rest/v1/rpc/create_order HTTP/1.1",
+      "POST /functions/v1/pay-order HTTP/1.1",
       `Host: ${apiUrl.host}`,
       `apikey: ${anonKey}`,
       `Authorization: Bearer ${accessToken}`,
@@ -235,6 +239,30 @@ async function postCreateOrderOnOwnConnection(
   }
 }
 
+/** 预热 pay-order（无效请求 → 400，不落库）：把边缘运行时从冷启动唤醒，避免噪声污染耗时判定。 */
+async function warmUpPayOrder(accessToken: string): Promise<void> {
+  const response = await fetch(`${url}/functions/v1/pay-order`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: anonKey,
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      items: [],
+      dining_mode: "takeout",
+      notes: "",
+      idempotency_key: "verify-idempotency-warmup",
+    }),
+  });
+  await response.text();
+  if (response.status !== 400) {
+    console.warn(
+      `WARN: pay-order 预热返回 HTTP ${response.status}（期望 400 invalid_request）`,
+    );
+  }
+}
+
 const anonClient = createClient<Database>(url, anonKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
@@ -257,11 +285,13 @@ try {
     user: VerifyUser,
     payload: { items: OrderItemInput[]; diningMode: "dinein" | "takeout"; notes: string },
   ) =>
-    user.client.rpc("create_order", {
-      p_items: payload.items,
-      p_dining_mode: payload.diningMode,
-      p_notes: payload.notes,
-      p_idempotency_key: idempotencyKey,
+    user.client.functions.invoke("pay-order", {
+      body: {
+        items: payload.items,
+        dining_mode: payload.diningMode,
+        notes: payload.notes,
+        idempotency_key: idempotencyKey,
+      },
     });
 
   const { data: { session }, error: sessionError } = await userA.client.auth.getSession();
@@ -269,11 +299,14 @@ try {
     throw new Error("拿不到 A 的访问凭证（会话签发失败）");
   }
 
+  // 0) 预热 pay-order：无效请求（400，不落库），避免冷启动噪声污染「等待同一事务」的耗时判定
+  await warmUpPayOrder(session.access_token);
+
   // 1) 同一标识的并发请求：独立连接同时发出，赢家插入、其余撞唯一约束后取回赢家的订单
   const startedAt = performance.now();
   const batch = await Promise.all(
     Array.from({ length: CONCURRENCY }, () =>
-      postCreateOrderOnOwnConnection(concurrentItems, session.access_token)
+      postPayOrderOnOwnConnection(concurrentItems, session.access_token)
     ),
   );
   const elapsedMs = Math.round(performance.now() - startedAt);

@@ -6,8 +6,9 @@
 // 从 wechat_identities 读回 openid（只在内存里用于派生合成 email），用与登录边缘函数
 // 相同的平台标准机制（admin.generateLink → auth.verifyOtp）为这两个真实用户签发会话，
 // 再走真实 HTTP 完成：
-//   身份 A 下单 → 身份 B 查订单列表（看不到 A 的单）→ 身份 B 读 A 的订单详情
-//   （order_not_found，与「不存在」同一结果）→ 身份 A 查订单列表（看得到）；
+//   身份 A 经 pay-order 下单（客户端创建订单的唯一入口，Story 3.3）→ 身份 B 查订单列表
+//   （看不到 A 的单）→ 身份 B 读 A 的订单详情（order_not_found，与「不存在」同一结果）
+//   → 身份 A 查订单列表（看得到）；脚本与小程序走同一条建单路径。
 // 同时断言库中订单的归属 = A 的 openid 所映射的用户。
 //
 // 隐私：openid 不写文件、不进文档；输出里的 openid 一律是 SHA-256 指纹（前 12 位十六进制），
@@ -205,6 +206,41 @@ function sessionClient(session: LoginSession): Client {
   });
 }
 
+// ── 下单：POST /functions/v1/pay-order（客户端创建订单的唯一入口，Story 3.3） ─────
+
+type PayOrderBody = {
+  items: Array<{ product_id: string; quantity: number; selections: Json }>;
+  dining_mode: "takeout";
+  notes: string;
+  idempotency_key: string;
+};
+
+/** 携带会话调 pay-order：与 verify-pay-order 同款 HTTP 形状（apikey + Bearer 会话）。 */
+async function postPayOrder(
+  orderBody: PayOrderBody,
+  accessToken: string,
+): Promise<Record<string, Json>> {
+  const response = await fetch(`${url}/functions/v1/pay-order`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: anonKey,
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(orderBody),
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(
+      `FAIL: pay-order 未成功（HTTP ${response.status}）：${text.slice(0, 300)}`,
+    );
+  }
+  return asObject(
+    text === "" ? null : (JSON.parse(text) as Json),
+    "pay-order 成功响应",
+  );
+}
+
 const clientA = sessionClient(sessionA);
 const clientB = sessionClient(sessionB);
 
@@ -283,18 +319,18 @@ const product = await pickOnSaleProduct(anonClient);
 const idempotencyKey = `verify-two-identities-${crypto.randomUUID()}`;
 const orderNotes = "两身份真机验证";
 
-const { data: orderData, error: orderError } = await clientA.rpc("create_order", {
-  p_items: [{
+const orderData = await postPayOrder({
+  items: [{
     product_id: product.id,
     quantity: 1,
     selections: selectionsFor(product),
   }],
-  p_dining_mode: "takeout",
-  p_notes: orderNotes,
-  p_idempotency_key: idempotencyKey,
-});
-check(orderError === null, "身份 A 携带会话经真实 HTTP 下单成功");
-const order = asObject(orderData, "下单") as unknown as OrderJson;
+  dining_mode: "takeout",
+  notes: orderNotes,
+  idempotency_key: idempotencyKey,
+}, sessionA.access_token);
+check(true, "身份 A 携带会话经 pay-order 下单成功");
+const order = orderData as unknown as OrderJson;
 check(ORDER_NUMBER_RE.test(order.order_number), "订单号是 18 位纯数字（服务端生成）");
 check(
   typeof order.pickup_code === "string" && PICKUP_CODE_RE.test(order.pickup_code),

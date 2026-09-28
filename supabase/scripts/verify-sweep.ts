@@ -5,12 +5,14 @@
 // 未提交数据），按 FR-P2-19 用本脚本做人工验证。
 //
 // 实现方式说明（为什么这就是「无人读取也会推进」的证据）：
-//   1. 通过真实 HTTP + 真实会话调 create_order 下一单，随后本脚本不做任何写操作；
+//   1. 通过真实 HTTP + 真实会话经 pay-order 下一单，随后本脚本不做任何写操作；
 //   2. 轮询用的是「裸表读」（PostgREST 直接 SELECT public.orders），不是订单读取函数——
 //      Phase 2 的读时推进只存在于服务端读取函数里（Story 5.1），裸表读不会触发推进；
 //   3. 订单在「到点 + 一个扫描周期」内自己变成「待取餐」，只可能来自 cron 兜底扫描
 //      （本地栈的 pg_cron 任务，见迁移 20260922130629_advance_due_orders_cron.sql）；
 //      取杯号在下单时已拿到，推进只改状态、不改写它（Story 4.4）。
+//
+// 建单统一经 pay-order（客户端创建订单的唯一入口，Story 3.3）——脚本与小程序走同一条路径。
 //
 // 需要本地栈在跑（supabase start），且已应用迁移与种子（supabase db reset）。
 // 运行：cd supabase && deno task verify:sweep
@@ -195,21 +197,26 @@ try {
     `门店时区 ${store.timezone}，推进时长 ${store.ready_delay_seconds} 秒；扫描周期 15 秒（见迁移声明）`,
   );
 
-  // 1) 真实 HTTP + 真实会话下一单
+  // 1) 真实 HTTP + 真实会话经 pay-order 下一单（客户端创建订单的唯一入口）
   const product = await pickOnSaleProduct(user.client);
   const idempotencyKey = `verify-sweep-${crypto.randomUUID()}`;
-  const { data: created, error: createError } = await user.client.rpc("create_order", {
-    p_items: [{
-      product_id: product.id,
-      quantity: 1,
-      selections: selectionsFor(product),
-    }],
-    p_dining_mode: "takeout",
-    p_notes: "兜底扫描验证",
-    p_idempotency_key: idempotencyKey,
-  });
+  const { data: created, error: createError } = await user.client.functions.invoke(
+    "pay-order",
+    {
+      body: {
+        items: [{
+          product_id: product.id,
+          quantity: 1,
+          selections: selectionsFor(product),
+        }],
+        dining_mode: "takeout",
+        notes: "兜底扫描验证",
+        idempotency_key: idempotencyKey,
+      },
+    },
+  );
   if (createError !== null) throw createError;
-  const order = asOrderResult(created);
+  const order = asOrderResult(created as Json | null);
   check(
     order.status === "cooking" && order.pickup_code !== null &&
       /^[A-Z]-[0-9]{4}$/.test(order.pickup_code),

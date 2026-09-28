@@ -13,6 +13,9 @@
 // 本脚本的并发轮：每个请求各自建立一条独立 TCP 连接、同时发出（连接池会把请求排队，
 // 制造不出真并发）；断言 N 个号互不相同、发号日期都是门店本地自然日、计数器恰好 +N。
 //
+// 建单统一经 pay-order（客户端创建订单的唯一入口，Story 3.3）——并发轮的每个请求各自独立
+// TCP 连接打 pay-order，脚本与小程序走同一条建单路径。
+//
 // 需要本地栈在跑（supabase start），且已应用迁移与种子（supabase db reset）。
 // 运行：cd supabase && deno task verify:pickup-codes
 // 会话走平台标准机制（service role 建用户 + 密码登录）；结束（含失败）时删除测试用户，
@@ -158,7 +161,7 @@ const apiUrl = new URL(url);
 
 type ConcurrentCall = { status: number; json: Json | null };
 
-async function postCreateOrderOnOwnConnection(
+async function postPayOrderOnOwnConnection(
   items: Array<{ product_id: string; quantity: number; selections: Json }>,
   accessToken: string,
   idempotencyKey: string,
@@ -168,10 +171,10 @@ async function postCreateOrderOnOwnConnection(
   }
 
   const payload = new TextEncoder().encode(JSON.stringify({
-    p_items: items,
-    p_dining_mode: "takeout",
-    p_notes: "取杯号并发验证",
-    p_idempotency_key: idempotencyKey,
+    items,
+    dining_mode: "takeout",
+    notes: "取杯号并发验证",
+    idempotency_key: idempotencyKey,
   }));
 
   const connection = await Deno.connect({
@@ -180,7 +183,7 @@ async function postCreateOrderOnOwnConnection(
   });
   try {
     await connection.write(new TextEncoder().encode([
-      "POST /rest/v1/rpc/create_order HTTP/1.1",
+      "POST /functions/v1/pay-order HTTP/1.1",
       `Host: ${apiUrl.host}`,
       `apikey: ${anonKey}`,
       `Authorization: Bearer ${accessToken}`,
@@ -215,7 +218,7 @@ type OrderResult = { id: string; order_number: string; status: string; pickup_co
 
 function asOrderResult(data: Json | null): OrderResult {
   if (data === null || typeof data !== "object" || Array.isArray(data)) {
-    throw new Error("下单 RPC 的返回形状不是对象");
+    throw new Error("pay-order 的返回形状不是对象");
   }
   return data as unknown as OrderResult;
 }
@@ -251,7 +254,7 @@ try {
   // 1) N 个请求各自独立连接、同时发出：不同幂等键 → 应该产生 N 张订单、N 个不同的取杯号
   const batch = await Promise.all(
     Array.from({ length: CONCURRENCY }, (_, index) =>
-      postCreateOrderOnOwnConnection(
+      postPayOrderOnOwnConnection(
         [{
           product_id: product.id,
           quantity: 1,
@@ -296,7 +299,7 @@ try {
       return row !== undefined && row.pickup_code === order.pickup_code &&
         row.status === "cooking";
     }),
-    "库中每张订单都是「制作中」且取杯号与 RPC 返回一致",
+    "库中每张订单都是「制作中」且取杯号与 pay-order 返回一致",
   );
   check(
     (rows ?? []).every((row) => row.pickup_code_date === localDate),

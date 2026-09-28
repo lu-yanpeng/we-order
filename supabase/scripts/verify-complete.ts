@@ -11,6 +11,8 @@
 //      且把门店配置改成 600 秒证明「改配置不影响已出的单、时刻是落库数据」；
 //   5. 确认一张已自动完成的订单 → 成功且不改写完成时间。
 //
+// 建单统一经 pay-order（客户端创建订单的唯一入口，Story 3.3）——脚本与小程序走同一条路径。
+//
 // 演示参数：默认（推进 15 秒 + 自动完成 30 秒）下脚本要等一分钟以上才能观察到自动完成；
 // 脚本开始时临时把门店的 ready_delay_seconds / auto_complete_seconds 调小（结束恢复，含失败时），
 // 顺带用它证明自动完成时刻确实按门店配置计算而不是写死。
@@ -206,24 +208,26 @@ async function waitForStatus(
   );
 }
 
-/** 下单辅助：真实 HTTP + 真实会话。 */
+/** 下单辅助：真实 HTTP + 真实会话，经 pay-order（客户端创建订单的唯一入口）。 */
 async function placeOrder(
   user: VerifyUser,
   product: MenuProduct,
   notes: string,
 ): Promise<OrderResult> {
-  const { data, error } = await user.client.rpc("create_order", {
-    p_items: [{
-      product_id: product.id,
-      quantity: 1,
-      selections: selectionsFor(product),
-    }],
-    p_dining_mode: "takeout",
-    p_notes: notes,
-    p_idempotency_key: `verify-complete-${crypto.randomUUID()}`,
+  const { data, error } = await user.client.functions.invoke("pay-order", {
+    body: {
+      items: [{
+        product_id: product.id,
+        quantity: 1,
+        selections: selectionsFor(product),
+      }],
+      dining_mode: "takeout",
+      notes,
+      idempotency_key: `verify-complete-${crypto.randomUUID()}`,
+    },
   });
   if (error !== null) throw error;
-  return asOrderResult(data);
+  return asOrderResult(data as Json | null);
 }
 
 const users: VerifyUser[] = [];

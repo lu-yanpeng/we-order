@@ -186,3 +186,73 @@ x-request-id: 91a1721d-2996-4d7e-ab54-9ffb11727ec4
   - `functions/pay-order/README.md` 与 `functions/tests/README.md` 指向 `contract.ts`。
 - 证据：`deno task test` **34 项通过**（pay-order 14 项；新增 2 项契约解析测试：未知字段剥离 / 可选字段省略 / selections 值域 / 数量类别映射）；`deno task verify:pay-order` **30 项断言通过**（真 HTTP，热加载后复核）；`deno.lock` 记录 zod 4.6.5。
 - 行为差异（唯一一处）：`selections` 的**值类型**在边界即被校验——非字符串 / 字符串数组（如 `{ group: 1 }`）现在得到 `invalid_request`，此前会转发给内核并以 `invalid_selection` 拒绝。类别/状态码/响应形状/凭证边界其余各项与重构前逐项一致。
+
+## Story 3.3 verify 脚本调用面改造与端到端证据链
+
+- 日期：2026-09-28
+- 环境：本地 Supabase 栈（CLI 2.117.0 / Postgres 17）；**全量干净重建** `bash scripts/rebuild.sh`（stop --no-backup → start → db reset → test db；21 条迁移 + 种子）；`deno task test`；10 个 verify 脚本真 HTTP 现场
+- 范围：8 个 verify 脚本的 **9 处建单调用**统一改经 `pay-order`（客户端创建订单的唯一入口）+ 文档同步 + 端到端证据链；**无迁移、无函数改动、客户端零改动**；`verify:two-identities` 按其前置（真机身份）调整到重建前运行（见有意偏差 #1）
+
+### 交付物
+
+| 类别 | 内容 |
+| --- | --- |
+| 修改（脚本） | `verify-rebuild.ts` / `verify-two-identities.ts`：新增 `postPayOrder()`（`fetch` POST `/functions/v1/pay-order`，`apikey` + `Bearer` 会话），建单调用改道；响应形状不变，后续断言零改动 |
+| 修改（脚本） | `verify-state-machine.ts` / `verify-urge.ts` / `verify-sweep.ts` / `verify-complete.ts`：建单改 `client.functions.invoke("pay-order", { body })` |
+| 修改（脚本） | `verify-idempotency.ts`：并发轮改打 `/functions/v1/pay-order`（独立 TCP 连接机制不变）；新增 `warmUpPayOrder()` 预热；顺序重放 / 两身份绑定轮改 `invoke` |
+| 修改（脚本） | `verify-pickup-codes.ts`：并发轮改打 `/functions/v1/pay-order` |
+| 修改（文档） | `supabase/README.md`（verify 表注明建单统一经 pay-order）、`tests/README.md`（当前脚本描述同步） |
+| 未改动 | 数据库（无迁移）；`pay-order` / `create_order` / `create_order_for_user`；客户端全部（`mp/`）；`verify-login.ts` / `verify-pay-order.ts` |
+
+### 关键实现点
+
+1. **9 处调用点清单**：`verify-rebuild`（1）、`verify-two-identities`（1）、`verify-state-machine`（1）、`verify-urge`（1）、`verify-sweep`（1）、`verify-complete`（1）、`verify-idempotency`（2：并发轮手写 HTTP + 顺序轮 RPC）、`verify-pickup-codes`（1：并发轮手写 HTTP）——全部改道，没有脚本需要「service_role + 包装函数」的直呼 fallback。
+2. **改动只在「怎么调」**：`pay-order` 成功响应 = 订单对外形状原样（与 `create_order` 返回同形），各脚本的订单断言未改一行；并发脚本保留「每个请求一条独立 TCP 连接」的机制，仅换 URL 与请求体字段名（`p_*` → wire 形状）。
+3. **幂等并发的预热**：pay-order 多一跳，冷启动可能把某个并发请求推迟到赢家提交之后、破坏「耗时最短的请求也等到同一事务」的断言；并发批前先打一发无效请求（`items: []` → 400 `invalid_request`，不落库）唤醒函数，实测断言保持。
+4. **two-identities 的前置决定顺序**：该脚本要求两个真机登录身份；重建会清除身份与现场订单。按裁定在改完脚本后、重建前先运行取证，再重建跑其余脚本；输出只有 openid 指纹，不含原文。
+
+### 验收点与证据
+
+| Story 3.3 验收点 | 证据 |
+| --- | --- |
+| 重建后的环境（`rebuild.sh` + 边缘函数 serve）运行 8 个 verify 脚本全部可跑通过；9 处调用已改造、优先走 pay-order（保持端到端语义：登录 → 支付建单 → 查询） | `bash scripts/rebuild.sh` exit 0：21 条迁移 + 种子，`supabase test db` **19 文件 / 632 项 PASS**，桶 `product-images` 与 cron `order-sweep`（15s）随重建回来；8 个脚本全绿——`verify:rebuild` 24 项（订单 202609282258462373，链路 = 匿名读目录/门店 → 登录 → pay-order 建单 → 列表与详情 → 他人不可见）、`verify:two-identities` 15 项、`verify:state-machine` 26 项（类型修复与余量适配后连跑两次全绿）、`verify:idempotency` 16 项、`verify:urge` 12 项、`verify:sweep` 8 项、`verify:pickup-codes` 6 项、`verify:complete` 16 项；另有 `verify:login` 40 项、`verify:pay-order` 30 项 |
+| 确需直呼内核的脚本改用 service_role + 包装函数并注明语义变化 | 本 Story 改造后 **9 处全部走 pay-order**，无需直呼 fallback；8 个脚本头部统一注明「建单统一经 pay-order（客户端创建订单的唯一入口）」 |
+| 脚本内不出现客户端身份可用的直呼建单路径；失败输出可定位到具体步骤 | `grep` 证据：`rpc("create_order"` 与 `/rest/v1/rpc/create_order` 在 `scripts/` **0 命中**；旁路现场：anon 直呼两函数均 `401 42501`（transcript 见下）；脚本失败即抛 `FAIL: <具体断言标签>` |
+| 幂等语义保持：重试不产生第二张订单 | `verify:idempotency` 16 项——5 个并发请求各自独立连接全部成功且返回同一张订单（202609282259058188）、耗时 1724–1986ms（「都等到赢家事务」断言保持）、库里该标识仅 1 张；顺序重放 / 两身份绑定 / 跨用户隔离全过 |
+| 类型契约向后兼容 | `supabase gen types typescript --local \| diff - types/database.types.ts` **零差异**；`deno task test` **36 passed / 0 failed** |
+
+### 验证命令与输出（可复现）
+
+```bash
+cd supabase
+bash scripts/rebuild.sh       # 21 迁移 + 种子；Files=19, Tests=632, Result: PASS
+deno task test                # 36 passed | 0 failed
+deno task verify:login        # 40 项断言
+deno task verify:pay-order    # 30 项断言
+deno task verify:rebuild      # 24 项断言（订单 202609282258462373）
+deno task verify:idempotency  # 16 项断言（5 并发 · 1724–1986ms）
+deno task verify:pickup-codes # 6 项断言（取杯号 A-0005…A-0012）
+deno task verify:sweep        # 8 项断言（订单 202609282259306425 在 23.2s 后被兜底推进，A-0013）
+deno task verify:urge         # 12 项断言（订单 202609282259545847 催单后 14.1s 被推进，A-0014）
+deno task verify:complete     # 16 项断言（订单 202609282300280226 / 202609282300284582）
+deno task verify:state-machine # 26 项断言（四轮竞态，A-0018…A-0022）
+deno task verify:two-identities --user-a <idA> --user-b <idB>   # 15 项断言（重建前运行）
+```
+
+HTTP 现场（重建后）：
+
+```text
+anon -> POST /rest/v1/rpc/create_order          401 {"code":"42501","message":"permission denied for function create_order"}
+anon -> POST /rest/v1/rpc/create_order_for_user 401 {"code":"42501","message":"permission denied for function create_order_for_user"}
+重建后核对：orders=0 identities=0 users=0；bucket product-images=1；cron order-sweep=15s；migrations=21
+```
+
+### 有意偏差与遗留
+
+1. **two-identities 在重建前运行**（顺序调整，非缺陷）：其前置是两个真机登录身份，重建会清除它们；按裁定先运行取证（15 项全绿，订单 202609282251069215 / A-0014），再重建跑其余脚本。真机身份与验证订单随重建清除，演示前需重新登录。
+2. **重建后 pay-order 首调 504（冷启动观测）**：首次 `verify:pay-order` 在「只有发布密钥被拒」步骤拿到 HTTP 504（Kong → 边缘运行时的首次调用）；手动预热一发后复跑 **30 项全绿**。属本地栈冷启动现象、非改造引入（Story 3.2 的冷启动复核发生在已有调用之后）。幂等脚本已内置预热；其余脚本是否需要预热留待演示前预检观察。
+3. **演示图片与 `image_path` 随全量重建清除**（Epic 2 手动项 #7 的现场布置）：属全量重建的已知代价（Story 3.1 裁定④的延期项在本次兑现），演示前按 addendum §F 预检重新上传并设置。
+4. **「9 处 vs 10 处」事实校正**：Story 3.1 遗留写「实测 10 处」，静态调用点实为 9 处（7 处 RPC + 2 处手写 HTTP 并发请求），本 Story 已全部改造并同步脚本头注释。
+5. **`verify-state-machine.ts` 的两条既有类型错误已顺带修复**（评审裁定：不遗留）：`update` 的补丁类型改用生成类型 `Database["public"]["Tables"]["stores"]["Update"]`，闭包里改用捕获的 `storeId` 常量（不依赖外层 narrowing 穿透函数体）；`deno check scripts/*.ts` 现全部 0 错误。纯类型层改动，无运行时行为变化。
+6. **`verify-state-machine.ts` 的时序余量适配 pay-order 一跳**：三处「到点 + 60/80ms 就发并发批」的余量放宽到 +300ms（覆盖边缘函数一跳与客户端/数据库毫秒级时钟差），并发兜底轮改为等两张单都到点再发批。放宽前重跑曾出现两次间歇失败（第 1 轮 `ready_at` 一致性、第 4 轮一张单未到点）；适配后**连跑两次 26 项全绿**。属验证脚本对新链路的适配，不涉及产品行为。
+7. **客户端零改动**：客户端下单接入（`api/orders.ts` → pay-order + 幂等键）属 Story 3.4 / 3.5，本 Story 只收口验证脚本与证据链。

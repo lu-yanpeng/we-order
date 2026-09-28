@@ -51,7 +51,7 @@ bash scripts/rebuild.sh
 
 ```bash
 deno task verify:login      # 登录链路：并发首登收敛、重登复用、续期、单次消费
-deno task verify:rebuild    # 重建现场：匿名读目录/门店 → 登录 → 下单 → 列表与详情 → 他人不可见
+deno task verify:rebuild    # 重建现场：匿名读目录/门店 → 登录 → 经 pay-order 下单 → 列表与详情 → 他人不可见
 ```
 
 等价的纯手动步骤（不跑脚本时）：
@@ -65,7 +65,9 @@ supabase test db
 
 ## 本地链路验证脚本
 
-并发与跨事务的时间行为进不了 pgTAP（事务里 `now()` 固定），按 FR-P2-19 以「实现方式说明 + 人工验证记录」为证据：
+并发与跨事务的时间行为进不了 pgTAP（事务里 `now()` 固定），按 FR-P2-19 以「实现方式说明 + 人工验证记录」为证据。
+
+所有脚本的建单统一经 `pay-order`（客户端创建订单的唯一入口，Story 3.3）——脚本内不存在直呼 `create_order` 的路径：
 
 | task | 覆盖 |
 | --- | --- |
