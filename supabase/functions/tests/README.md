@@ -8,7 +8,7 @@
 
 | 文件 | 覆盖 |
 | --- | --- |
-| `wechat-login/wechat-login.test.ts` | wechat-login：微信错误码 → `login_error_code` 映射（含未知码）、请求形状（官方地址与参数）、入参校验、连不上微信/非 JSON/HTTP 5xx、AppSecret 不外泄、成功时返回平台会话形状（两凭证 + 过期信息 + 主体）且不泄露 openid/session_key、身份解析失败 → `identity_failed`、会话签发失败 → `session_failed` 且不泄露内部细节 |
+| `wechat-login/wechat-login.test.ts` | wechat-login：微信错误码 → `login_error_code` 映射（含未知码）、请求形状（官方地址与参数）、入参校验、连不上微信/非 JSON/HTTP 5xx、AppSecret 不外泄、成功时返回平台会话形状（两凭证 + 过期信息 + 主体）且不泄露 openid/session_key、身份解析失败 → `identity_failed`、会话签发失败 → `session_failed` 且不泄露内部细节；契约解析（zod schema）：未知字段剥离、code 首尾空白裁掉（方案 B） |
 | `pay-order/pay-order.test.ts` | pay-order：成功响应 = 订单对外形状原样、多余字段（金额 / 用户标识 / camelCase / 展示字段）忽略且不转发、必填与数量校验（缺/非法 → 类别）、身份失败四类均 401 且不触碰数据库、每个 `order_error_code` → 状态码映射、未知 SQLSTATE / 网络失败 → `unknown` 不泄露内部细节、出站 RPC 的 `apikey` 与 `Authorization` 均为服务端密钥且客户端 JWT 不转发；契约解析（zod schema）：未知字段剥离 / 可选字段省略 / selections 值域 / 数量类别映射 |
 
 本地链路验证（需要 `supabase start`，不在 `deno task test` 内）：

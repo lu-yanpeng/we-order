@@ -10,6 +10,7 @@ import {
   type WechatLoginDeps,
 } from "../../wechat-login/handler.ts";
 import type { LoginSession } from "../../wechat-login/session.ts";
+import { parseWechatLoginRequest } from "../../wechat-login/contract.ts";
 
 const APP_ID = "wx-test-app-id";
 const APP_SECRET = "test-app-secret";
@@ -202,6 +203,38 @@ Deno.test("请求形状：打微信官方地址，四个参数齐全", async () 
   assert.equal(calls[0].searchParams.get("grant_type"), "authorization_code");
 });
 
+Deno.test("契约（parseWechatLoginRequest）：未知字段剥离、code 首尾空白裁掉、空白串与非字符串拒绝", () => {
+  const parsed = parseWechatLoginRequest({ code: " code-ok ", extra: 1 });
+  if (!parsed.ok) throw new Error("应解析成功");
+  assert.deepEqual(parsed.request, { code: "code-ok" });
+
+  const invalidBodies: unknown[] = [
+    {},
+    { code: "" },
+    { code: "   " },
+    { code: 1 },
+    { code: null },
+    [],
+    null,
+  ];
+  for (const body of invalidBodies) {
+    assert.equal(
+      parseWechatLoginRequest(body).ok,
+      false,
+      `body=${JSON.stringify(body)}`,
+    );
+  }
+});
+
+Deno.test("入参 code 首尾空白裁掉后再打微信（方案 B）", async () => {
+  const { status, calls } = await callLogin({ code: " code-ok " }, {
+    payload: { openid: "openid-1" },
+  });
+  assert.equal(status, 200);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].searchParams.get("js_code"), "code-ok");
+});
+
 const wechatErrcodeCases: Array<{
   errcode: number;
   expectedCode: string;
@@ -317,8 +350,15 @@ Deno.test("入参不合法 → invalid_request（400），且不调用微信、�
     code: 123,
   }, []];
   for (const body of bodies) {
-    const { status, payload, requestId, logs, calls, identityCalls, sessionCalls } =
-      await callLogin(body);
+    const {
+      status,
+      payload,
+      requestId,
+      logs,
+      calls,
+      identityCalls,
+      sessionCalls,
+    } = await callLogin(body);
     const label = `body=${JSON.stringify(body)}`;
     assert.equal(status, 400, label);
     assert.equal(payload.code, "invalid_request", label);

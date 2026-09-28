@@ -6,6 +6,7 @@
 
 import type { WechatIdentity } from "./identity.ts";
 import type { LoginSession } from "./session.ts";
+import { parseWechatLoginRequest } from "./contract.ts";
 import { code2Session, type LoginErrorCode } from "./wechat.ts";
 
 /** 失败发生在哪一步（日志用，便于定位） */
@@ -115,10 +116,12 @@ export async function handleRequest(
     return errorResponse("invalid_request", "request");
   }
 
-  const code = (body as { code?: unknown } | null)?.code;
-  if (typeof code !== "string" || code.trim() === "") {
+  // 请求形状见 contract.ts（zod schema 即类型）：code 必填，首尾空白发送前裁掉
+  const parsed = parseWechatLoginRequest(body);
+  if (!parsed.ok) {
     return errorResponse("invalid_request", "request");
   }
+  const { code } = parsed.request;
 
   if (deps.appId === "" || deps.appSecret === "") {
     // 缺配置时快速失败，不拿 undefined 去打微信；只报变量名，不报变量值

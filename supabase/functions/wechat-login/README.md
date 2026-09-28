@@ -32,6 +32,9 @@ Content-Type: application/json
 { "code": "<wx.login 返回的一次性凭证>" }
 ```
 
+- 请求形状与校验的**唯一来源**是 [`contract.ts`](./contract.ts)（zod schema 即类型，导出 `WechatLoginRequest`）：
+  `code` 必填；首尾空白在发送给微信前裁掉（2026-09-28 裁定），空白串视为缺参（400 `invalid_request`）；其余字段忽略。
+
 ## 成功响应（2xx）
 
 与平台 token 端点（登录 / 续期）同构，客户端可对「登录拿到的会话」与「续期换回的会话」
@@ -112,3 +115,10 @@ Content-Type: application/json
 - 离线单元测试：`cd supabase && deno task test`（假 fetch / 假身份解析 / 假会话签发）。
 - 本地链路验证：`cd supabase && deno task verify:login`（需要本地栈；
   驱动真实 handler 与真实平台会话，只把微信那一跳注入为受控响应）。
+
+## 维护记录
+
+- 2026-09-28：请求契约显式化（P3 维护改造，Ly 裁定）：新增 `contract.ts`（zod schema 即类型即校验），
+  `code` 首尾空白在发送给微信前裁掉（方案 B：`" code "` → `"code"`；空白串仍 400 `invalid_request`）；
+  handler 内联解构删除；登录行为、错误类别、日志与成功响应形状其余不变。
+  验证：`deno task test`（22 项）、`deno task verify:login`（现场真链路）。
