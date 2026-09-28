@@ -412,6 +412,7 @@ flowchart TD
 | Postgres | 17（本地容器） |
 | Supabase CLI | 跟随最新（本地栈 / 迁移 / 类型生成 / 部署） |
 | 边缘函数运行时 | Deno 兼容（Supabase Edge Runtime） |
+| zod | 4.x（边缘函数请求体校验：`pay-order` 的 `contract.ts`，schema 即类型即运行时校验） |
 | 定时调度 | Supabase Cron（pg_cron，`3 seconds` 周期；同名替换 `order-sweep`） |
 | 数据库测试框架 | pgTAP（经 `supabase test db`） |
 
@@ -577,3 +578,4 @@ stateDiagram-v2
 - 2026-09-25：spec 收敛回写（Ly 裁定）：Realtime 止损时间盒由「1–2 周」改为「1 天」；演示定位确认 Phase 3 本地为主、公开演示版归 Phase 4；错误类别 `unknown` 保留（加法型），订阅及其它新增类别暂不入库、先在客户端侧记录。
 - 2026-09-26：范围修订（Ly 裁定）：订单页图片化呈现（Story 4.7）——`order_items` 新增图片快照列与读取形状增量（加法型，AR-P3-3 清单已补）；FR-P3-10 / FR-P3-11 展示增量回写 PRD；「最小 UI 规范」形态表补订单图片行；界面结构扩展属对「零变化」约束的显式修订，M1 预演（Story 4.8）覆盖新界面。
 - 2026-09-27：范围修订（Ly 裁定）：加载态呈现——首页点餐 / 订单 tab 首屏骨架（两者分开实现、`delay` 约 250ms 防闪烁、仅首屏无数据），确认订单页 / 订单详情页全屏遮罩（`t-overlay` + 居中 `t-loading`、文案白字）；状态判定「加载 → 失败 → 空 → 内容」；验收以开发者工具网络限速（慢 3G）观察、不在代码中加延迟。界面增量回写 PRD（FR-P3-7/10/11/18）；落点按执行顺序进 Story 3.5 / 4.1 / 4.2（AC 增补），Story 4.8 矩阵补复验项；属对「界面结构与交互零变化」约束的显式修订。
+- 2026-09-28：栈内新增（Ly 裁定）：`pay-order` 请求契约显式化——边缘函数请求体校验引入 zod（`npm:zod@4`，见 Stack）；`functions/pay-order/contract.ts` 的 schema 即请求类型（`z.infer` 导出 `PayOrderRequest` / `PayOrderItem`）即运行时校验，未知字段默认剥离（忽略语义不变）、类别映射不依赖文案；wechat-login 请求类型另行单独改造，不并入本 Story。实现、唯一行为差异与证据见 `docs/phase-3/acceptance/epic-3.md` 的 Story 3.2 补记。

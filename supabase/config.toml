@@ -375,6 +375,11 @@ allow_dynamic_registration = false
 [functions.wechat-login]
 verify_jwt = false
 
+# 支付接口：平台先校验会话，不关闭校验（AD-11）；用户 id 取自平台已验签 JWT 的 sub。
+# 无有效会话的请求返回 401、不产生订单；函数自身也对身份 fail-closed（caller.ts）。
+[functions.pay-order]
+verify_jwt = true
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.

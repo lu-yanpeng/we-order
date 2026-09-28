@@ -1,6 +1,6 @@
 # supabase
 
-We-Order 的 Supabase 子项目：数据库结构（迁移）、目录种子、微信登录边缘函数、数据库测试与本地链路验证脚本。
+We-Order 的 Supabase 子项目：数据库结构（迁移）、目录种子、微信登录与支付接口边缘函数、数据库测试与本地链路验证脚本。
 
 **Phase 2 全程在本地 Docker 栈运行，不部署云端**（原「本地与云端一致」的验收改为「同一批声明在两次从零重建上一致」；图片对象入仓不在本阶段交付）。两项范围偏移的事实与证据见 `tests/README.md` 的 Story 5.4 验收记录。
 
@@ -8,10 +8,11 @@ We-Order 的 Supabase 子项目：数据库结构（迁移）、目录种子、�
 
 | 路径 | 用途 |
 | --- | --- |
-| `config.toml` | 本地栈配置（端口、Postgres 大版本、关闭登录函数的前置 JWT 校验） |
+| `config.toml` | 本地栈配置（端口、Postgres 大版本、登录函数关闭前置 JWT 校验、支付接口要求前置 JWT 校验） |
 | `migrations/` | 全部结构变更：表、策略、函数、桶、`cron.schedule`（AD-17） |
 | `seed.sql` | 目录种子数据（门店、分类、商品、规格）；不含订单 |
-| `functions/wechat-login/` | 唯一边缘函数：code2Session → 身份映射 → 签发平台会话 |
+| `functions/wechat-login/` | 登录边缘函数：code2Session → 身份映射 → 签发平台会话 |
+| `functions/pay-order/` | 支付接口边缘函数：模拟支付 → 创建订单（客户端建单唯一入口） |
 | `functions/tests/` | 边缘函数的离线单元测试与本地链路验证说明 |
 | `scripts/` | 重建脚本与跨事务/并发的人工验证脚本 |
 | `tests/` | pgTAP 数据库测试与各 Story 验收记录 |
@@ -69,6 +70,7 @@ supabase test db
 | task | 覆盖 |
 | --- | --- |
 | `deno task verify:login` | 并发首登收敛、重登复用、映射丢失自愈、平台会话与续期、一次性令牌单次消费 |
+| `deno task verify:pay-order` | Story 3.2：支付接口契约与凭证边界（无凭证 401、发布密钥 fail-closed、camelCase 400、真会话 200 落单与归属、金额重算、幂等重放同单、业务拒绝可区分） |
 | `deno task verify:rebuild` | Story 5.4：干净重建后匿名读目录/门店、登录、下单、订单列表与详情、他人不可见 |
 | `deno task verify:two-identities` | Story 5.5：真机登录出来的两个真实身份互相看不到对方的订单（需先在真机登录并传入两个用户 id） |
 | `deno task verify:idempotency` | 同一幂等标识的并发重复提交只落一张订单 |

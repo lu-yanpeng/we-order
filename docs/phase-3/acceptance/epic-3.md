@@ -65,3 +65,124 @@ service_role -> POST /rest/v1/rpc/create_order          400 {"code":"P0001","mes
 3. **verify 脚本「9 处」的事实校正**：实测 10 处调用（`verify-idempotency` 与 `verify-pickup-codes` 各有 1 处手写 HTTP 并发请求），留给 Story 3.3 按实际清单改造。
 4. **`service_role` 对内核保留 EXECUTE**：来自 Supabase 默认权限，按 epic「对内核不授权、不作断言」未额外收紧；若后续要更严可在新迁移 `revoke execute … from service_role`（不影响包装函数路径）。
 5. **未跑 `rebuild.sh` 全量重建**（裁定的 ④）：`db reset` 已满足「重建后的空库」；全量重建会在 Story 3.3 / Epic 4 收口时按需执行。
+
+## Story 3.2 支付接口 `pay-order`（边缘函数）
+
+- 日期：2026-09-28
+- 环境：本地 Supabase 栈（CLI 2.117.0 / Postgres 17）；`supabase db reset` 重建（21 条迁移 + 种子，空订单库）；`supabase test db`；`deno task test`；`deno task verify:pay-order`（真 HTTP）
+- 范围：后端新增边缘函数 `pay-order`（客户端创建订单唯一入口）+ 配置 + 离线测试 + 现场脚本 + 文档；**无迁移、客户端零改动**；既有 verify 脚本调用面改造按 epic 分工留给 Story 3.3
+
+### 交付物
+
+| 类别 | 内容 |
+| --- | --- |
+| 新增（函数） | `supabase/functions/pay-order/`：`index.ts`（入口接线：服务端密钥客户端 + 失败日志）、`handler.ts`（HTTP：形状校验 / 身份 / 模拟支付 / 错误归一）、`caller.ts`（已验签 JWT 的 `sub` 读取）、`order.ts`（调 `create_order_for_user` 并归一数据库类别）、`README.md`（契约 / 状态码表 / 凭证边界 / 日志 / 本地验证） |
+| 修改（配置） | `supabase/config.toml`：新增 `[functions.pay-order] verify_jwt = true` |
+| 新增（测试） | `supabase/functions/tests/pay-order/pay-order.test.ts`：14 项 Deno.test（离线，假建单器 + 假 fetch；含 2 项契约解析测试） |
+| 新增（脚本） | `supabase/scripts/verify-pay-order.ts` + `deno.json` 的 `verify:pay-order`：真 HTTP 现场验证 30 项断言 |
+| 修改（文档） | `supabase/README.md`（函数与 verify 清单）、`supabase/functions/tests/README.md`（测试清单） |
+| 未改动 | 数据库（无迁移、类型再生成零差异）；客户端全部（Story 3.4~3.6）；既有 8 个 verify 脚本（Story 3.3） |
+
+### 关键实现点
+
+1. **身份只读声明（`caller.ts`）**：平台先验签（`verify_jwt = true`），函数内只解码 payload 读 `sub`——不重复验签、不请求 auth 服务；要求 `role = authenticated` 且 `sub` 是合法 UUID，任一不成立 → 401 `not_authenticated` 且不触碰数据库（fail-closed）。实测发布密钥也是平台认可的有效 JWT，但没有 `sub`、角色是 `anon`，同样被拒。
+2. **请求形状 = FastAPI 式解构 + 校验**（2026-09-28 与 Ly 收敛）：顶层解构 `items / dining_mode / notes / idempotency_key`，条目解构 `product_id / quantity / selections`；其余字段一律忽略且**不转发**（金额 / 用户标识 / camelCase / 展示字段都不参与任何判定）；必填缺失或类型不对 → `invalid_request`，数量非正整数 → `invalid_quantity`；不做类型强转（`"2"` 不收）。camelCase 的「不接受」= 读不到必填值 → 400；混发时以 snake_case 为准。
+3. **模拟支付的单一接缝**：`handler.ts` 的 `simulatePayment()` 恒成功，是将来真实微信支付（预下单 / 客户端二次授权 / 服务端回调）的唯一替换点；不建支付记录实体与状态机。
+4. **凭证边界（`order.ts`）**：用服务端密钥客户端调 `create_order_for_user`（`apikey` 与 `Authorization` 均 `service_role`）；客户端 JWT 绝不转发；请求体没有用户标识参数（归属由 `p_user_id = sub` 表达）；不跨目录 import（部署只打包函数自身目录）。
+5. **错误归一**：`P0001 + message ∈ order_error_code` → 业务类别（日志阶段 `order`）；网络 / 未知 SQLSTATE / 返回形状异常 → 抛错后归 `unknown` + 阶段 `internal`（500）。成功响应也带 `x-request-id`；非 2xx 记一条结构化日志 `{event, requestId, code, status, stage}`，不含堆栈 / 密钥 / 数据库细节。
+6. **状态码映射**（业务拒绝 4xx、内部故障 5xx）：`invalid_request` / `invalid_quantity` 400；`invalid_selection` / `product_unavailable` 409；`not_authenticated` 401；`store_unavailable` 503；`order_not_found` 404 与 `invalid_status` / `invalid_transition` 409（本函数不产生，为枚举完备保留）；`unknown` 500。类别集合与映射均为 `Record<OrderErrorCode, …>`：枚举新增取值时编译报错。
+
+### 验收点与证据
+
+| Story 3.2 验收点 | 证据 |
+| --- | --- |
+| 平台先校验会话；无有效会话 401 且不产生任何订单 | 现场：① 完全无凭证 → 平台 401 `UNAUTHORIZED_NO_AUTH_HEADER`（**无 `x-request-id`，函数未执行**）；② 只有发布密钥 / 把发布密钥当 Bearer → 函数 401 `not_authenticated`（带 `x-request-id`）。三例订单总数不变（脚本断言 + 核对订单表最终 0 行） |
+| 用户 id 取自已验签 JWT 的 `sub`；不引入可伪造的用户标识参数 | 单测：anon / 无 sub / 非 UUID / service_role / 畸形 JWT 共 10 例 → 401 且不调建单器；请求体多余 `user_id` 被忽略不转发；现场合法请求落库 `user_id = 会话身份` |
+| 用服务端密钥调 `create_order_for_user`；客户端 JWT 绝不转发 | 单测：假 fetch 记录出站请求——`POST /rest/v1/rpc/create_order_for_user`，`apikey` 与 `Authorization` 均为服务端密钥，出站请求体 / URL 不含客户端 JWT |
+| 请求不含展示字段与金额字段、不接受 camelCase、`selections` 形状 | 单测：camelCase-only → 400；金额 / 展示字段被忽略且不转发；现场：陷阱字段 `unit_price: 0.01 / total_amount: 0.01 / product_name` 被忽略，订单金额 = 服务端重算（35） |
+| 成功 200、体 = `order_result_json` 原样（不加信封、不改字段名） | 单测：成功体与 `order_result_json` 深比较一致、字段无增删；现场 curl：200 响应体即订单形状（见下方 transcript） |
+| 失败非 2xx + `{code, message}`，业务拒绝 4xx / 内部故障 5xx，带 `x-request-id` | 单测：10 个类别逐项映射 + 未知 SQLSTATE / 网络失败 → 500 `unknown` + `internal` 日志；现场：camelCase 400、售罄 409、数量 400、规格失效 409、未鉴权 401 均带 `x-request-id` |
+| 客户端以 HTTP 状态判别成功 / 失败 | 成功恒 200、失败恒非 2xx（单测 + 现场一致） |
+| `pay-order` 是客户端创建订单唯一入口；不建支付记录 / 无真实支付渠道代码 | 建单只经 `create_order_for_user`（直呼两函数 → `42501`，Story 3.1）；函数内无支付表 / 状态机访问，`simulatePayment()` 单点；README 标注 |
+| 幂等键原样转发；重试不产生第二张订单 | 单测：`p_idempotency_key` 原样出现在出站请求；现场：同一键重放返回同一 `id`，库里该用户仍只有 1 张 |
+| 无迁移、类型契约向后兼容、客户端不受影响 | `supabase gen types typescript --local` 再生成逐字节零差异；`supabase test db` 632 项 PASS；客户端未改动（`mp/` 零 diff） |
+
+### 验证命令与输出（可复现）
+
+```bash
+cd supabase
+supabase db reset && supabase test db     # 21 条迁移 + 种子；Files=19, Tests=632, Result: PASS
+deno task test                            # 34 passed | 0 failed（pay-order 14 + wechat-login 20）
+deno task verify:pay-order                # PASS：30 项断言全部通过
+supabase gen types typescript --local | diff - types/database.types.ts   # 零差异
+```
+
+冷启动复核：`supabase stop` → `supabase start`（让 `config.toml` 的 `[functions.pay-order] verify_jwt = true` 在冷启动下生效）后复跑 `deno task verify:pay-order` 仍 **30 项通过**；核对订单表 0 行残留。
+
+HTTP 现场（`supabase status -o env` 取密钥；函数由 `supabase start` 统一服务）：
+
+```text
+# 无任何凭证 → 平台层 401，函数不执行（无 x-request-id）
+POST /functions/v1/pay-order  →  401 {"code":"UNAUTHORIZED_NO_AUTH_HEADER","message":"Missing authorization header","msg":"..."}
+
+# 只有发布密钥（apikey）→ 平台放行，函数 fail-closed（带 x-request-id: 0223b634-…）
+POST /functions/v1/pay-order  →  401 {"code":"not_authenticated","message":"Session is missing or invalid"}
+```
+
+真会话 + 合法请求（手工 curl，等价 Postman；含金额陷阱字段）：
+
+```text
+HTTP/1.1 200 OK
+x-request-id: 91a1721d-2996-4d7e-ab54-9ffb11727ec4
+
+{"id":"e02881f5-…","notes":"无备注要求","status":"cooking","created_at":"2026-09-28 17:16:40",
+ "dining_mode":"takeout","pickup_code":"A-0002","order_number":"202609281716409298",
+ "total_amount":34,"packaging_fee":2}   # 卡布奇诺 32 + 外带包装 2；提交的 unit_price/total_amount 0.01 被忽略
+```
+
+失败日志（`docker logs supabase_edge_runtime_we-order`，与响应头 `x-request-id` 可对账）：
+
+```json
+{"event":"pay_order_failed","requestId":"…","code":"invalid_request","status":400,"stage":"request"}
+{"event":"pay_order_failed","requestId":"…","code":"product_unavailable","status":409,"stage":"order"}
+{"event":"pay_order_failed","requestId":"…","code":"invalid_quantity","status":400,"stage":"request"}
+{"event":"pay_order_failed","requestId":"…","code":"invalid_selection","status":409,"stage":"order"}
+{"event":"pay_order_failed","requestId":"…","code":"not_authenticated","status":401,"stage":"auth"}
+```
+
+### 手工验证清单（Postman / curl，演示与回归用）
+
+前置：本地栈在跑、`db reset` 过；想拿真会话可以先用 `verify:pay-order` 的同款方式（service role 建用户 + 密码登录）或真机登录；所有请求都带 `apikey: <发布密钥>`。
+
+| # | 请求 | 期望 |
+| --- | --- | --- |
+| 1 | 不带 Authorization（带 apikey 与不带各一次） | 401；带 apikey 时是函数返回的 `not_authenticated`（有 `x-request-id`），不带 apikey 时是平台 401（无 `x-request-id`）；两种情况订单表都不新增 |
+| 2 | 带真会话，body 用 `diningMode` 代替 `dining_mode` | 400 `invalid_request`（camelCase 不生效） |
+| 3 | 带真会话，合法 body + 额外 `total_amount` / `unit_price` | 200；返回 `total_amount` 为服务端重算值，与提交的陷阱值无关 |
+| 4 | 同 #3 的 `idempotency_key` 再发一次（可改数量 / 金额） | 200；`id` 与首次相同；库里该用户仍只有一张订单 |
+| 5 | 商品 id 换成一个不存在的 UUID（或种子里的售罄商品 `…233`） | 409 `product_unavailable` |
+| 6 | `quantity: 0` 或 `"2"` 字符串 | 400 `invalid_quantity` |
+| 7 | 带规格组商品（如美式咖啡 `…201`）只传部分规格组 | 409 `invalid_selection`（对应客户端「规格选项已变更，请重新选择」） |
+
+### 有意偏差与遗留
+
+1. **「无有效会话被平台拒绝」的机制校正**：实测只有**完全无凭证**时平台才在函数前 401（无 `x-request-id`）；**带发布密钥（apikey）而不带会话**时平台以该 JWT 放行到函数，由函数 fail-closed 401。两者都「401 且不产生订单」，AC 成立；实现按「函数也必须自己把关」处理。
+2. **「不接受 camelCase」的收敛**（2026-09-28 Ly 裁定）：采用 FastAPI 式忽略语义——camelCase 不生效（必填读不到 → 400），混发时以 snake_case 为准；金额 / 用户标识不参与判定也不转发。若将来要「出现未知键即拒绝」，属加法型行为变更，需在契约里单列。
+3. **`40_menu_view.test.sql` 与库内订单的相互影响**：该测试 `delete from public.products`，库里有订单明细（`order_items` 外键）时会整文件失败（`Bad plan`）。本次验收先 `supabase db reset` 再跑（与 Story 3.1 同流程，632 项全绿）；非本 Story 引入，但「任何时刻直接跑基线」会受手工下单影响，留作 Phase 4 前的可选改进。
+4. **verify 脚本调用面改造仍留给 Story 3.3**：8 个脚本共 10 处 `create_order` 调用；本 Story 新增的 `verify:pay-order` 已覆盖「登录 → 支付建单 → 查询」中的支付段，可作为 3.3 改造参照。
+5. **未跑 `rebuild.sh` 全量重建**（同 Story 3.1 裁定）：`db reset` 已满足现场验证；全量重建在 Story 3.3 / Epic 4 收口时按需执行。
+6. **未接真实支付渠道**：`simulatePayment()` 替换点在 handler 内；下单成功但客户端断网（结果不明）的端到端文案与幂等键保留属 Story 3.6；订阅 / publication 属 Epic 5。
+
+### 补记（2026-09-28）：请求契约显式化（zod）
+
+- 触发：Ly 评审指出请求形状藏在 `validateDraft` 的分支里，没有一个显式的请求体类型——「不读源码不知道要传什么」，与 FastAPI 的 `class Item(BaseModel)` 相比缺了契约的一等公民（wechat-login 同形，但只有一个字段，另行单独改造提交，不与本 Story 混提）。
+- 裁定（Ly）：pay-order 采用 zod（`npm:zod@4`），schema 即类型即校验；新增运行时依赖记入遗留。
+- 落地：
+  - 新增 `functions/pay-order/contract.ts`：zod schema + `z.infer` 导出的 `PayOrderRequest` / `PayOrderItem` + `parsePayOrderRequest()`；
+    未知字段默认剥离（忽略语义不变）；类别映射按「首个失败字段是 quantity → `invalid_quantity`，其余 → `invalid_request`」，不用文案判定；
+    `DINING_MODES` 带编译期完备性检查（数据库枚举新增取值时编译报错）。
+  - `handler.ts` 删除 `validateDraft`，请求形状只从 `contract.ts` 来；`deps.createOrder` 入参类型变为 `PayOrderRequest`。
+  - `order.ts` 在唯一映射处做可选字段规范化（`notes ?? ""`、`selections ?? {}`）；原 `OrderDraft` 类型删除（wire 类型即契约）。
+  - `functions/pay-order/README.md` 与 `functions/tests/README.md` 指向 `contract.ts`。
+- 证据：`deno task test` **34 项通过**（pay-order 14 项；新增 2 项契约解析测试：未知字段剥离 / 可选字段省略 / selections 值域 / 数量类别映射）；`deno task verify:pay-order` **30 项断言通过**（真 HTTP，热加载后复核）；`deno.lock` 记录 zod 4.6.5。
+- 行为差异（唯一一处）：`selections` 的**值类型**在边界即被校验——非字符串 / 字符串数组（如 `{ group: 1 }`）现在得到 `invalid_request`，此前会转发给内核并以 `invalid_selection` 拒绝。类别/状态码/响应形状/凭证边界其余各项与重构前逐项一致。
