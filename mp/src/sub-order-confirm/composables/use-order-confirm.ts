@@ -6,7 +6,8 @@
  * 2. 经 API 层加载门店信息（AD-1）
  * 3. 管理就餐方式与备注偏好状态（FR-7 / FR-8）
  * 4. 派生包装费、商品合计、总件数、应付金额与 ETA 文案
- * 5. 模拟支付状态机：验证中 → 成功（FR-10）；支付成功时构建订单记录经 API 层写入本地存储
+ * 5. 结算意图（幂等键）会合：提交前 ensure（先落盘）、成功后清除（Story 3.4；AD-10）
+ * 6. 模拟支付状态机：验证中 → 成功（FR-10）；支付成功时构建订单记录经 API 层写入本地存储
  *
  * Phase 3 Epic 1：订单记录形状已对齐服务端 `OrderDetail`。本地造单只是过渡——
  * Epic 3 起改经 `pay-order` 服务端建单（id / 订单号 / 取杯号 / 金额都由服务端产出），
@@ -19,7 +20,7 @@
 import { computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useCartStore } from '@/stores/cart'
-import { createOrder } from '@/api/orders'
+import { clearCheckoutIntent, createOrder, ensureCheckoutIntent } from '@/api/orders'
 import { fetchStore } from '@/api/catalog'
 import { calcPackagingFee } from '@/utils/price'
 import type { DiningMode, OrderDetail, StoreInfo } from '@/types/api-contracts'
@@ -107,14 +108,18 @@ export function useOrderConfirm() {
 
   /**
    * 开始模拟支付（FR-10）
+   * 提交前先会合结算意图（同步落盘幂等键，Story 3.4——先落盘、再发请求）；
    * 支付中重复点击静默阻断；1.5s 后生成订单记录写入本地存储并进入「成功」，
+   * 同时清除结算意图（下一次结算是新的意图）；
    * 成功展示后的清空购物车与跳转由页面编排（AD-3）。
    */
   function startPay() {
     if (paying.value) return
+    ensureCheckoutIntent(items.value, diningMode.value)
     paymentPhase.value = 'verifying'
     setTimeout(() => {
       createOrder(buildOrder())
+      clearCheckoutIntent()
       paymentPhase.value = 'success'
     }, 1500)
   }

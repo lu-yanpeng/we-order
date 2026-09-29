@@ -256,3 +256,88 @@ anon -> POST /rest/v1/rpc/create_order_for_user 401 {"code":"42501","message":"p
 5. **`verify-state-machine.ts` 的两条既有类型错误已顺带修复**（评审裁定：不遗留）：`update` 的补丁类型改用生成类型 `Database["public"]["Tables"]["stores"]["Update"]`，闭包里改用捕获的 `storeId` 常量（不依赖外层 narrowing 穿透函数体）；`deno check scripts/*.ts` 现全部 0 错误。纯类型层改动，无运行时行为变化。
 6. **`verify-state-machine.ts` 的时序余量适配 pay-order 一跳**：三处「到点 + 60/80ms 就发并发批」的余量放宽到 +300ms（覆盖边缘函数一跳与客户端/数据库毫秒级时钟差），并发兜底轮改为等两张单都到点再发批。放宽前重跑曾出现两次间歇失败（第 1 轮 `ready_at` 一致性、第 4 轮一张单未到点）；适配后**连跑两次 26 项全绿**。属验证脚本对新链路的适配，不涉及产品行为。
 7. **客户端零改动**：客户端下单接入（`api/orders.ts` → pay-order + 幂等键）属 Story 3.4 / 3.5，本 Story 只收口验证脚本与证据链。
+
+## Story 3.4 幂等键生命周期（结算意图）
+
+- 日期：2026-09-29
+- 环境：mp 侧 `pnpm test`（vitest 3.2.7）、`pnpm type-check`（vue-tsc 3.3.6）、`pnpm lint`；**后端零改动**（服务端唯一域与 `pay-order` 转发沿用 Story 3.1 / 3.2 / 3.3 证据）
+- 范围：客户端结算意图模块（纯函数 + `api/orders.ts` 存储出口 + 确认订单页提交接线）；生成时机按 2026-09-29 设计修订改为「点击支付、请求发出前 ensure」，PRD / spine / epics 已同步回写
+- 裁定记录（Ly）：① 不引 crypto 依赖——键不是凭证（服务端唯一域带 `user_id`），只需同一用户内不撞车；小程序无 Web Crypto，crypto-js 4.x 在无原生 crypto 时不可用、3.x 为弱随机；② 幂等键生成时机改为「提交时 ensure」——浏览 / 反复修改购物车不产生写入，「变化即作废重建」由提交时指纹比较自然满足（改回原样且指纹一致仍复用原键）；③ 唯一转换器 `toCreateOrderItems()` 提前到本 Story 落地（指纹必须基于实际发送的 wire 形状）；④ 失败保留 / 清除只做纯函数 + 单测，catch 分支消费随 Story 3.5 / 3.6；⑤ 验收记录随实现交付
+
+### 交付物
+
+| 类别 | 内容 |
+| --- | --- |
+| 新增（客户端） | `src/utils/checkout-intent.ts`：纯函数——`generateIdempotencyKey()`（`co_` + 时间戳 + 两段随机）、`serializeCheckoutIntent()`（规范化指纹）、`parseCheckoutIntent()`（存储值校验，坏数据 → null）、`resolveCheckoutIntent()`（复用 / 重建）、`shouldClearCheckoutIntent()`（清除 / 保留）；不碰存储、不碰 uni API |
+| 新增（测试） | `src/utils/checkout-intent.test.ts`（13 项） |
+| 修改（客户端） | `src/api/cart.ts`：新增唯一转换器 `toCreateOrderItems()`（`CartItem[] → CreateOrderItem[]`；只保留 wire 三字段，结算与「再来一单」共用） |
+| 新增（测试） | `src/api/cart.test.ts`（3 项） |
+| 修改（客户端） | `src/api/orders.ts`：`weorder_checkout_intent` 唯一出口——`ensureCheckoutIntent(items, diningMode)`（同步先落盘、返回本次请求要带的键）、`clearCheckoutIntent()`；读 / 写 / 删均吞存储异常 |
+| 新增（测试） | `src/api/orders.test.ts`（6 项） |
+| 修改（客户端） | `src/sub-order-confirm/composables/use-order-confirm.ts`：`startPay` 提交前 ensure（先落盘、再进入支付流程）、成功建单后 clear；进入页面 / 切换就餐方式不触碰意图 |
+| 修改（文档） | PRD FR-P3-9 + 修订记录；spine AD-10 时机表 + 修订记录；epics FR-P3-9 / AR-P3-15 / Story 3.4 验收口径（2026-09-29 设计修订） |
+| 未改动 | 后端全部（迁移 / 函数 / 脚本）；订单读取的 Mock 实现（Epic 4 移除）；`pay-order` 请求体构造与失败分支消费（Story 3.5 / 3.6） |
+
+### 关键实现点
+
+1. **存储形状与指纹**：`{ key, fingerprint }`；指纹 = `{ v: 1, dining_mode, items }` 的规范化序列化，`items` 只含 `product_id` / `quantity` / `selections`，行 / 规格组 key / 多选数组排序后序列化——顺序无关、展示字段与金额、备注不参与。
+2. **生命周期**：提交前 `ensureCheckoutIntent`（同步先落盘、再发请求）；指纹一致 → 复用；无 / 不一致 / 坏数据 → 生成新键并覆盖；成功 → 清除。正确性的三个不变量：发送前已持久化、每次提交做指纹比较、成功或明确失败才清除。
+3. **清除 / 保留决策**（`shouldClearCheckoutIntent`）：order 域全部类别（含 `not_authenticated`；`42501` 已归一为 `order.unknown`）或 `client.session_expired` → 清除；`timeout` / `network_unreachable` / `request_cancelled` → 保留；登录域 / 未知客户端类别兜底保留。
+4. **键生成不引依赖**：`co_` + 时间戳(base36) + 两段 `Math.random`（约 80 bit 熵）。极端碰撞的后果只是「本次结算被当成上一次」（同用户域内），无安全影响；若将来需要平台级随机，用 `wx.getRandomValues`（异步、基础库 2.15.0+）即可，仍无需依赖。
+5. **指纹与实际请求同源**：`ensureCheckoutIntent` 基于 `toCreateOrderItems()` 的输出算指纹——指纹的字段集合与 Story 3.5 将要发送的请求体天然一致，不会漂移。
+6. **坏数据不卡死**：`parseCheckoutIntent` 校验失败 / JSON 损坏 / 存储异常一律按「无意图」重建；`setStorageSync` / `removeStorageSync` 异常不阻断支付。
+
+### 验收点与证据
+
+| Story 3.4 验收点 | 证据 |
+| --- | --- |
+| 提交时无持久化意图 / 指纹不一致 → 生成并持久化；一致 → 复用 | `orders.test.ts` 6 项：首次提交生成并落盘、同购物车再次提交复用同键、购物车变化重建、就餐方式变化重建、坏数据重建并覆盖、成功清除后再提交生成新键；存储不可用时不抛错且仍返回可发送的键 |
+| 进入确认订单页只浏览不写入；购物车 / 就餐方式变化由提交时指纹比较自然重建 | 代码证据：`use-order-confirm.ts` 只在 `startPay` 内调用 ensure / clear（页面挂载、`selectDiningMode` 均不触碰）；`grep -rn "weorder_checkout_intent" src/`：读写只在 `api/orders.ts`（另有 `api/storage.ts` 的启动清理清单）；页面 / Composable 无直呼存储 |
+| 指纹规范化：排序无关、关键字段敏感 | `checkout-intent.test.ts`：行顺序 / 规格组顺序 / 多选顺序不影响指纹；数量 / 商品 / 规格 / 就餐方式变化指纹不同；空购物车指纹稳定 |
+| 清除 / 保留按类别（含 42501 与 not_authenticated） | `shouldClearCheckoutIntent` 单测：`ORDER_ERROR_CODES` 枚举穷尽 → true（含 `not_authenticated`、`42501` 归一后的 `unknown`）；`session_expired` → true；`timeout` / `network_unreachable` / `request_cancelled` → false；登录域 / 未知客户端类别 → false（兜底保留） |
+| 键必填、与用户绑定（服务端唯一域 `(user_id, idempotency_key)`） | 服务端证据沿用 Story 3.2 / 3.3：`pay-order` 原样转发 `idempotency_key`；`verify:idempotency` 16 项（同键并发 / 重放只落一张、跨用户隔离）；客户端侧「每次请求必带键」的唯一入口是提交时 ensure 的返回值 |
+| 唯一转换器只允许在 `api/cart.ts` | `cart.test.ts` 3 项：只保留 wire 字段、空数组、`selections` 不共享引用；`grep -rn "toCreateOrderItems" src/`：实现唯一 |
+| 生成 / 校验 / 序列化纯函数在 `utils/` 并进单元测试清单 | `utils/checkout-intent.test.ts` 13 项 + `api/cart.test.ts` 3 项 + `api/orders.test.ts` 6 项 = 新增 22 项；既有 62 项不回归 |
+| 文档同步修订 | PRD FR-P3-9 + 修订记录、spine AD-10 + 修订记录、epics FR-P3-9 / AR-P3-15 / Story 3.4 验收口径（均为 2026-09-29 设计修订） |
+
+### 验证命令与输出（可复现）
+
+```bash
+cd mp
+pnpm test             # 8 文件 / 84 项全过（新增 3 文件 22 项；既有 5 文件 62 项不回归）
+pnpm type-check       # 0 错误
+pnpm lint             # 0 错误（eslint --fix --cache 后零改动）
+pnpm build:mp-weixin  # Build complete.（产物含 utils/checkout-intent.js；weorder_checkout_intent 只出现在 api/orders.js 与 api/storage.js）
+```
+
+```text
+✓ src/utils/checkout-intent.test.ts (13 tests)
+✓ src/api/cart.test.ts (3 tests)
+✓ src/api/orders.test.ts (6 tests)
+✓ src/core/transport/normalize.test.ts (18 tests)
+✓ src/core/session/session.test.ts (16 tests)
+✓ src/core/transport/transport.test.ts (14 tests)
+✓ src/utils/error-copy.test.ts (8 tests)
+✓ src/api/storage.test.ts (6 tests)
+
+Test Files  8 passed (8)
+     Tests  84 passed (84)
+```
+
+### 手动验证清单（演示者执行）
+
+前置：开发者工具打开本项目（本地栈 / Mock 支付流程即可，无需后端）；Storage 面板可编辑。3.4 阶段支付为 mock（恒成功），超时 / 杀进程 / 失败保留属 Story 3.5 / 3.6（矩阵 #4）。
+
+| # | 操作 | 预期 | 结果 |
+| --- | --- | --- | --- |
+| 1 | 加购商品 → 进入确认订单页（**不点支付**）→ 查看 Storage | 不存在 `weorder_checkout_intent`（浏览不写入） | 待执行 |
+| 2 | 点「立即支付」→ 支付弹层出现时查看 Storage | 出现 `{ key, fingerprint }`，`key` 形如 `co_...` | 待执行 |
+| 3 | 等待支付成功展示（1.5s）→ 再查看 Storage | `weorder_checkout_intent` 已被清除 | 待执行 |
+
+### 有意偏差与遗留
+
+1. **生成时机的设计修订已回写**（非偏差）：原 AC「进入确认订单页生成」改为「提交时 ensure」，理由与不变量见上方裁定记录；文档三处 + 修订记录已同步。
+2. **失败分支消费在 Story 3.5 / 3.6**：决策函数（保留 / 清除）本 Story 已交付并单测；`pay-order` 接通后由 3.5 / 3.6 在 catch 分支调用，超时重试与杀进程复验（矩阵 #4）届时取证。
+3. **手动 Storage 面板三项待演示者执行**：见上表；执行后补结果列。
+4. **`createOrder`（本地 Mock 建单）仍被调用**：真实 `pay-order` 调用与请求体构造属 Story 3.5；本 Story 已按最终语义在「成功建单后清除意图」处接线。
+5. **随机源取舍记录**：键生成用时间戳 + 两段 `Math.random`；不引 crypto 依赖的理由见裁定记录 ①。若未来演示需要展示「平台级随机」，改为 `wx.getRandomValues` 不改变本模块接口（`ensureCheckoutIntent` 目前同步；改异步属加法型演进，需在彼时评估）。
