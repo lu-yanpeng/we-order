@@ -334,6 +334,8 @@ Test Files  8 passed (8)
 | 2 | 点「立即支付」→ 支付弹层出现时查看 Storage | 出现 `{ key, fingerprint }`，`key` 形如 `co_...` | 待执行 |
 | 3 | 等待支付成功展示（1.5s）→ 再查看 Storage | `weorder_checkout_intent` 已被清除 | 待执行 |
 
+> 2026-09-29 补记：支付改为真实建单后（Story 3.5），本表第 2 / 3 行已由 Story 3.5 手动清单 #3 复验通过（成功展示时长改为 800ms，行为不变）；第 1 行（浏览不写入）行为未变，由 Story 3.5 的代码证据覆盖（`ensureCheckoutIntent` 唯一调用点在 `startPay`）。
+
 ### 有意偏差与遗留
 
 1. **生成时机的设计修订已回写**（非偏差）：原 AC「进入确认订单页生成」改为「提交时 ensure」，理由与不变量见上方裁定记录；文档三处 + 修订记录已同步。
@@ -341,3 +343,98 @@ Test Files  8 passed (8)
 3. **手动 Storage 面板三项待演示者执行**：见上表；执行后补结果列。
 4. **`createOrder`（本地 Mock 建单）仍被调用**：真实 `pay-order` 调用与请求体构造属 Story 3.5；本 Story 已按最终语义在「成功建单后清除意图」处接线。
 5. **随机源取舍记录**：键生成用时间戳 + 两段 `Math.random`；不引 crypto 依赖的理由见裁定记录 ①。若未来演示需要展示「平台级随机」，改为 `wx.getRandomValues` 不改变本模块接口（`ensureCheckoutIntent` 目前同步；改异步属加法型演进，需在彼时评估）。
+
+## Story 3.5 客户端下单对接（支付 → 创建订单）
+
+- 日期：2026-09-29
+- 环境：mp 侧 `pnpm test`（vitest 3.2.7）、`pnpm type-check`（vue-tsc 3.3.6）、`pnpm lint`、`pnpm build:mp-weixin`；**后端零改动**（`pay-order` / 权限模型 / 幂等唯一域沿用 Story 3.1~3.3 证据，本 Story 只做客户端接线）
+- 范围：客户端下单接入（`api/orders.ts` 的 `payOrder()` + 确认订单页真实建单 + 门店卡失败态 + 门店首读遮罩）+ 文档回写（失败重试、下拉刷新与确认页文案删减范围修订）；**未含**：支付失败分类恢复与超时内联提示（Story 3.6）、订单列表/详情真实读取（Epic 4）
+- 裁定记录（Ly）：① `payOrder` 采用纯通道方法——api 只负责带类型地 POST，幂等键 ensure/clear 与失败处理由 Composable 编排（与 3.4 接线位置一致）；② 删除本地 Mock 建单 `createOrder`，接受 Epic 4 前「刚下的单不在 Mock 列表可见」的中间态；③ 失败边界：3.5 只做安全兜底（退出 loading + 按类别 toast + 保留幂等键与购物车），分类清除/保留与超时内联提示随 3.6；④ 门店读取失败：卡片内「文案 + 重试」，不弹全屏遮罩、不禁用支付；门店配置错误由服务端 `store_unavailable` 整单拒绝（验证行随 3.6）；⑤ 不使用 alova `shareRequest` 做跨实例请求合并——正确性已由页面实例状态保证，省一次廉价 GET 的收益不抵 AD-5 实例级规则的修订成本；⑥ 下拉刷新范围修订：列表 / 详情用下拉（并入 Story 4.1/4.2/4.3），确认订单纯内联重试，文档本 Story 一并回写；⑦ 成功展示 800ms（原 1.5s 是「模拟支付无网络等待」的展示时长）；模拟支付的固定延迟删除，`verifying` 时长 = 真实请求时长；⑧ 结算页文案删减（2026-09-29）：删除门店卡「预计取餐时间」固定文案与支付弹层两句说明小字；保留「模拟支付中 / 模拟支付成功」标题与图标反馈，成功弹层不再展示金额（订单金额展示落点为 Epic 4 列表 / 详情）。
+
+### 交付物
+
+| 类别 | 内容 |
+| --- | --- |
+| 修改（客户端） | `src/api/orders.ts`：新增 `payOrder()`——唯一指向 `POST /functions/v1/pay-order` 的通道方法（meta `session-required`；请求体类型 `CreateOrderRequest`）；删除本地 Mock 建单 `createOrder()`；头注释更新 |
+| 修改（客户端） | `src/sub-order-confirm/composables/use-order-confirm.ts`：`startPay` 改真实调用（空车 toast → `ensureCheckoutIntent` 同步落盘 → verifying → `payOrder` → 成功清键 + success；失败回 idle + `errorCopy` toast + **保留**幂等键与购物车）；删除 `buildOrder` / `formatDateTime`；门店首读 250ms 延迟遮罩与卡片失败态（文案 + 重试、不遮罩、不禁支付）；成功时重置备注/就餐方式；页面卸载清理遮罩计时器；删除 ETA 文案与成功金额展示（2026-09-29 文案删减） |
+| 修改（客户端） | `src/sub-order-confirm/order-confirm/index.vue`：门店卡失败态 UI（`t-button` 小号重试、loading/禁用）；门店首读 `t-overlay` + 居中 `t-loading`（CSS 变量白字，与支付弹层互斥）；成功弹层保留「模拟支付中 / 模拟支付成功」标题与图标反馈（删除说明小字与金额展示）；成功展示 800ms 后清车 + 重置 + 回首页订单 tab |
+| 新增（测试） | `src/api/orders.test.ts`：`payOrder` 2 项——经对接层 POST 的形状与 `session-required` 声明；请求体键集合恰为四字段且不含金额 / 用户标识 |
+| 修改（文档） | `prd.md`（FR-P3-7 失败态增量、FR-P3-10/11 刷新增量、修订记录 ×2）、`ARCHITECTURE-SPINE.md`（AD-8 下拉刷新、最小 UI 规范形态表 2 行、修订记录 ×2）、`epics.md`（Story 3.5 门店卡失败态与文案删减、4.1/4.2/4.3 下拉刷新、AR-P3-20）：2026-09-29 范围修订（失败重试与下拉刷新；确认页文案删减） |
+| 未改动 | 后端全部（迁移 / 函数 / 脚本 / 类型）；`api/cart.ts` 唯一转换器（3.4 已交付）；订单列表 / 详情 Mock 读取与 `mock/orders.ts`（Epic 4 切换） |
+
+### 关键实现点
+
+1. **提交链**：`startPay` → 空车守卫（toast）→ `ensureCheckoutIntent`（同步先落盘，3.4）→ `paymentPhase = 'verifying'` → `payOrder({ items, dining_mode, notes, idempotency_key })`（会话会合与 401 续期重放一次由 `core/transport` 完成）→ 成功 `clearCheckoutIntent()` + `success`；失败退出 loading + `errorCopy` 翻译后 toast，幂等键与购物车原样保留。
+2. **请求形状**：`items` 经唯一转换器 `toCreateOrderItems()` 产出；`dining_mode` / `notes`（trim）/ `idempotency_key` 原样转发；客户端不提供金额与用户标识，类型 `CreateOrderRequest` 只允许四个字段。
+3. **金额口径**（2026-09-29 文案删减后）：结算页应付金额仍是本地计价（展示口径）；成功弹层不再展示金额——订单金额展示落点为 Epic 4 的列表 / 详情；下单响应仍为服务端订单原文（形状由单测断言）。
+4. **单一建单入口**：`createOrder` 删除后客户端不存在第二条建单路径（grep 0 残留；直呼数据库函数被 `42501` 拒绝的权限证据沿用 3.1~3.3）。
+5. **门店加载**：首读经约 250ms 延迟显示全屏遮罩（`t-overlay` + `t-loading` 白字），完成/失败即撤；失败文案经 `errorCopy` 翻译进卡片，重试只走按钮 loading（不遮罩、不禁支付）；`storeLoading` 守卫 + 按钮禁用保证同实例单飞；跨实例并发读为页面实例状态、无全局写入，旧响应不可见。
+6. **遮罩互斥**：`storeOverlayVisible && !paying`；成功展示 800ms 后 `clearCart` + `resetOrderDraft` + `HOME_TAB_SWITCH_EVENT('orders')` + `navigateBack`。
+
+### 验收点与证据
+
+| Story 3.5 验收点 | 证据 |
+| --- | --- |
+| 点「支付」经 `api/orders.ts` 调 `pay-order`（对接层携带会话与幂等键）；保留 Phase 1 loading 与成功反馈 | 单测：URL `/functions/v1/pay-order` + meta `session-required` + 返回值即服务端订单形状；`use-order-confirm` 在飞期间 `verifying`（Phase 1 弹层）、成功后 `success`；固定 1.5s 假延迟已删除 |
+| 成功 → 清空购物车、重置备注与就餐方式、跳转订单列表 | 代码：`watch(paymentPhase)` 成功后 800ms 执行 `clearCart()` + `resetOrderDraft()` + 事件 + `navigateBack`；成功反馈保留标题 + 图标（2026-09-29 文案删减后不再展示金额） |
+| 结算页文案删减（2026-09-29 范围修订） | `grep`：`真实扣款` / `未真实扣除` / `预计 10-15` / `预计 15-20` 在 `src/` 与构建产物 0 残留；`etaText` / `paidOrder` 已移除 |
+| 请求体只含 `items` / `dining_mode` / `notes` / `idempotency_key`；不含金额字段 | 单测 2 项：键集合排序断言 + 不含 `total_amount` / `unit_price` / `user_id`；类型 `CreateOrderRequest`（共享契约） |
+| `CartItem[] → CreateOrderItem[]` 只在 `api/cart.ts` 实现、结算与再来一单共用 | `grep -rn "toCreateOrderItems" src/`：实现唯一在 `api/cart.ts:37`；结算调用点 `use-order-confirm.ts`；指纹计算复用同一转换器 |
+| 购物车存储读写经 `api/cart.ts`；页面 / Composable 不直呼存储 | `grep`：页面 / Composable 对 `uni.getStorageSync` / `setStorageSync` / `removeStorageSync` **0 命中**（仅 `core/`、`api/`） |
+| 空购物车结算 toast 阻断、保留可重试 | 代码：`startPay` 首行守卫；手动清单 #9 取证 |
+| 门店首读遮罩（`t-overlay` + 居中 `t-loading`、白字）、完成即撤、不与支付 loading 叠加 | 代码 + 构建：`t-overlay` / `t-loading`（easycom）；遮罩标志 250ms 延迟、finally 撤销；模板互斥条件；手动清单 #1 / #10 取证 |
+| 门店读取失败：卡片内文案 + 重试；不阻断支付、重试不弹遮罩（2026-09-29 范围修订） | 代码：`storeError` + `retryStore`（`loadStore(false)`）；手动清单 #7 取证 |
+| 门店配置错误整单拒绝的验证行随 3.6；客户端不以门店读取结果拦截支付 | 服务端：`create_order` 要求恰好 1 家门店否则 `store_unavailable`（Story 3.1/3.2 证据）；本 Story 支付按钮无门店前置条件 |
+| Mock 建单删除、单一数据源 | `grep -rn "createOrder" src/`：0 残留；构建产物 `weorder_checkout_intent` 仅出现在 `api/orders.js` 与 `api/storage.js` |
+
+### 验证命令与输出（可复现）
+
+```bash
+cd mp
+pnpm test             # 8 文件 / 86 项全过（新增 api/orders.test.ts 2 项；既有 84 项不回归）
+pnpm type-check       # 0 错误
+pnpm lint             # 0 错误（eslint --fix --cache 后零改动）
+pnpm build:mp-weixin  # Build complete.
+```
+
+```text
+✓ src/api/orders.test.ts (8 tests)
+Test Files  8 passed (8)
+     Tests  86 passed (86)
+```
+
+```text
+# 构建产物核对
+dist/build/mp-weixin/api/orders.js          含 functions/v1/pay-order
+dist/build/mp-weixin/core/transport/normalize.js  含 pay-order 路由表
+weorder_checkout_intent                    仅 api/storage.js 与 api/orders.js
+确认页删减文案与 etaText                     src 与构建产物 0 残留
+```
+
+### 手动验证清单（演示者执行；需本地栈 + 开发者工具）
+
+| # | 操作 | 预期 | 结果 |
+| --- | --- | --- | --- |
+| 1 | 网络限速（慢 3G）进入确认订单页 | 约 250ms 后出现全屏遮罩（白色加载文案），门店读取完成即撤；快网刷新不闪 | 通过 |
+| 2 | 点击「立即支付」 | 请求在飞期间显示「模拟支付中」弹层；成功后显示「模拟支付成功」+ 图标；800ms 后购物车清空、回到首页订单 tab | 通过 |
+| 3 | 点支付后 / 成功后查看 Storage 面板 | 点支付后出现 `weorder_checkout_intent`（`co_...`）；成功后已清除；`weorder_cart` 为空（复验 Story 3.4 清单 #2 / #3） | 通过 |
+| 4 | `psql` 查询本人订单 | 订单已创建：金额为服务端重算值、取杯号已分配、状态「制作中」；该用户本次结算仅 1 张订单 | 通过 |
+| 5 | 开发者工具 Network 面板查看 `pay-order` payload | 只有四个字段（或直接引用单测证据） | 通过 |
+| 6 | 停掉本地栈 → 点支付（失败冒烟） | 操作级 toast（网络类文案）、弹层撤、购物车保留；恢复栈后重试成功且不产生第二张订单（同幂等键） | 通过 |
+| 7 | 停栈状态下进入确认订单页 → 点门店卡「重试」 | 卡片文案 + 重试按钮（重试中 loading）；支付仍可点；恢复后重试成功显示门店 | 通过 |
+| 8 | 重试进行中快速返回并重新进入 | 无异常、无错数据（允许两次门店请求各自应用，页面不串数据） | 通过 |
+| 9 | 开发者工具「添加编译模式」直达确认页（空购物车）→ 点支付 | toast「请先选择商品」，不发请求 | 通过 |
+| 10 | 慢网进页后 250ms 窗口内点支付 | 只出现支付弹层，门店遮罩不叠加 | 通过 |
+
+> 执行：2026-09-29，Ly（本地栈 + 开发者工具），10 项全部通过。执行时点在「确认页文案删减」修订之前——#2 当时弹层含说明小字与服务端金额；该修订为纯视觉删除、成功反馈主体不变，Story 4.8 预演时顺带复看。
+
+### 有意偏差与遗留
+
+1. **订单列表过渡态**（裁定 ②）：本 Story 后订单列表仍是 Mock 读取，刚下的真实订单要等 Story 4.1 切换后可见；`createOrder` 已删除，`fetchOrders` / `fetchOrderById` 与 `mock/orders.ts` 保留至 Epic 4 收口（FR-P3-3 订单侧）。
+2. **失败分类消费随 3.6**（裁定 ③）：本 Story 失败一律保留幂等键（安全侧）；按类别清除/保留、支付超时内联提示、按钮 loading/禁用与逐类验证属 Story 3.6。
+3. **门店配置错误验证行随 3.6**（裁定 ④）：建议用「插入第二家门店 → 支付被 503 `store_unavailable` 拒绝」取证（避免删门店触发 `orders.store_id` 外键）。
+4. **下拉刷新实现随 4.1 / 4.2 / 4.3**：文档回写已在本 Story 完成，实现不在本 Story 范围。
+5. **不再评估 `shareRequest`**（裁定 ⑤）：跨实例重复门店请求维持「页面实例状态、旧响应不可见」的现状，不引入共享 / 取消机制。
+6. **成功展示时长 800ms**（裁定 ⑦）：属 Phase 1 行为的实现细节调整（固定模拟延迟删除）；若演示节奏需要可再调，不涉及契约。
+7. **手动清单已全部通过（2026-09-29）**：见上表；执行时点在「确认页文案删减」修订之前（详见清单下方注记）。本 Story 无后端改动，未跑 `supabase` 侧命令。
+8. **确认页文案删减（裁定 ⑧）**：属对 Phase 1 界面基线的显式修订，已回写 PRD / spine / epics（2026-09-29）；删除 ETA 与支付弹层说明小字后，成功弹层不再展示金额，金额展示落点更新为 Epic 4 的列表 / 详情。

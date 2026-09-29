@@ -1,14 +1,25 @@
 /**
- * 结算意图生命周期单元测试（P3 Story 3.4；AD-10 / AR-P3-15）
+ * 订单 API 层单元测试（P3 Story 3.4 / 3.5；AD-10 / AD-11 / AR-P3-15）
  *
- * 用 stub 的 `uni` 存储验证 `api/orders.ts` 的两个出口：
- * 复用（指纹一致）、按购物车 / 就餐方式重建、坏数据兜底、清除后重建。
+ * 1. 结算意图生命周期：用 stub 的 `uni` 存储验证 `api/orders.ts` 的意图出口——
+ *    复用（指纹一致）、按购物车 / 就餐方式重建、坏数据兜底、清除后重建；
+ * 2. `payOrder`：用 mock 的对接层断言请求形状（只发四个 wire 字段、声明 `session-required`），
+ *    不发起真实网络请求。
+ *
  * 生成 / 序列化 / 校验 / 决策的纯函数测试见 `utils/checkout-intent.test.ts`。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { CreateOrderRequest, OrderResult } from '@/types/api-contracts'
 import type { CartItem } from '@/types/cart'
 import type { CheckoutIntent } from '@/utils/checkout-intent'
-import { clearCheckoutIntent, ensureCheckoutIntent } from './orders'
+import { clearCheckoutIntent, ensureCheckoutIntent, payOrder } from './orders'
+
+/** 支付接口调用经 mock 的对接层断言；`vi.hoisted` 保证 mock 工厂先于模块导入生效 */
+const { postMock } = vi.hoisted(() => ({ postMock: vi.fn() }))
+
+vi.mock('@/core/transport', () => ({
+  transport: { Post: postMock },
+}))
 
 const INTENT_KEY = 'weorder_checkout_intent'
 
@@ -105,5 +116,56 @@ describe('ensureCheckoutIntent / clearCheckoutIntent', () => {
     expect(() => ensureCheckoutIntent(cart, 'dinein')).not.toThrow()
     expect(ensureCheckoutIntent(cart, 'dinein')).toMatch(/^co_/)
     expect(() => clearCheckoutIntent()).not.toThrow()
+  })
+})
+
+describe('payOrder（Story 3.5；AD-11）', () => {
+  /** wire 请求体：只含服务端认识的四个字段（唯一转换器产出 items） */
+  const request: CreateOrderRequest = {
+    items: [
+      { product_id: 'p-1', quantity: 2, selections: { size: 'grande' } },
+      { product_id: 'p-2', quantity: 1, selections: {} },
+    ],
+    dining_mode: 'takeout',
+    notes: '少冰',
+    idempotency_key: 'co_test-key',
+  }
+
+  /** 服务端返回：订单对外形状（金额 / 取杯号由服务端产出） */
+  const orderResult: OrderResult = {
+    id: '00000000-0000-0000-0000-000000000001',
+    order_number: '202609291200000001',
+    status: 'cooking',
+    dining_mode: 'takeout',
+    packaging_fee: 2,
+    total_amount: 34,
+    notes: '少冰',
+    pickup_code: 'A-0001',
+    created_at: '2026-09-29 12:00:00',
+  }
+
+  beforeEach(() => {
+    postMock.mockReset()
+    postMock.mockResolvedValue(orderResult)
+  })
+
+  it('经对接层 POST pay-order：声明 session-required，返回服务端订单形状', async () => {
+    await expect(payOrder(request)).resolves.toEqual(orderResult)
+
+    expect(postMock).toHaveBeenCalledTimes(1)
+    const [url, body, config] = postMock.mock.calls[0] as [string, CreateOrderRequest, unknown]
+    expect(url).toBe('/functions/v1/pay-order')
+    expect(config).toEqual({ meta: { auth: 'session-required' } })
+    expect(body).toEqual(request)
+  })
+
+  it('请求体只含 items / dining_mode / notes / idempotency_key：不含金额字段与用户标识', () => {
+    void payOrder(request)
+
+    const [, body] = postMock.mock.calls[0] as [string, Record<string, unknown>]
+    expect(Object.keys(body).sort()).toEqual(['dining_mode', 'idempotency_key', 'items', 'notes'])
+    expect(body).not.toHaveProperty('total_amount')
+    expect(body).not.toHaveProperty('unit_price')
+    expect(body).not.toHaveProperty('user_id')
   })
 })

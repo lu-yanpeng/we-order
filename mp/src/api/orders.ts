@@ -2,15 +2,25 @@
  * 订单 API 层
  *
  * 统一数据入口，负责：
- * 1. 订单列表 / 详情的本地存储读写（Mock 过渡；Epic 4 切换真实读取时只改本文件内部）；
- * 2. 结算意图（幂等键）生命周期（Story 3.4；AD-10）——`weorder_checkout_intent` 唯一出口。
+ * 1. 下单：经支付接口 `pay-order` 一次完成「模拟支付 → 创建订单」（Story 3.5；AD-11）——
+ *    客户端创建订单的唯一入口，金额 / 订单号 / 取杯号 / 归属全部由服务端产出；
+ * 2. 订单列表 / 详情的本地存储读写（Mock 过渡；Epic 4 切换真实读取时只改本文件内部）；
+ * 3. 结算意图（幂等键）生命周期（Story 3.4；AD-10）——`weorder_checkout_intent` 唯一出口。
  *
  * Phase 3 Epic 1：订单数据源仍是 Mock，但对外形状已对齐服务端契约
  * （`get_my_orders` 的 `OrdersPage` / `get_my_order_detail` 的 `OrderDetail`）。
  * 首次读取时将 mock/orders.ts 的预置订单写入存储作为演示数据，
  * 之后读写一律以存储为准。不做人为延迟，避免首屏空态闪烁。
  */
-import type { DiningMode, OrderDetail, OrderListItem, OrdersPage } from '@/types/api-contracts'
+import { transport } from '@/core/transport'
+import type {
+  CreateOrderRequest,
+  DiningMode,
+  OrderDetail,
+  OrderListItem,
+  OrderResult,
+  OrdersPage,
+} from '@/types/api-contracts'
 import type { CartItem } from '@/types/cart'
 import type { CheckoutIntent } from '@/utils/checkout-intent'
 import { toCreateOrderItems } from '@/api/cart'
@@ -63,9 +73,19 @@ export async function fetchOrderById(id: string): Promise<OrderDetail | undefine
   return loadOrders().find((order) => order.id === id)
 }
 
-/** 创建订单：插入列表顶部并写入存储（Epic 3 起改为经 pay-order 服务端建单） */
-export async function createOrder(order: OrderDetail): Promise<void> {
-  saveOrders([order, ...loadOrders()])
+/**
+ * 提交支付并创建订单（Story 3.5；AD-10 / AD-11）
+ *
+ * `pay-order` 是客户端创建订单的唯一入口，身份与金额由服务端产出：
+ * - 经对接层声明 `session-required`：先会合登录 / 续期，401 时自动续期并重放一次；
+ * - 幂等键由调用方经 `ensureCheckoutIntent()` 在提交前同步落盘后传入，本方法原样转发；
+ * - 请求体只含 `items` / `dining_mode` / `notes` / `idempotency_key`（`CreateOrderRequest`），
+ *   不含展示字段与任何金额字段；响应即订单对外形状（`OrderResult`）。
+ */
+export function payOrder(request: CreateOrderRequest) {
+  return transport.Post<OrderResult>('/functions/v1/pay-order', request, {
+    meta: { auth: 'session-required' },
+  })
 }
 
 // ── 结算意图（幂等键）（Story 3.4；AD-10） ─────────────────────────────────

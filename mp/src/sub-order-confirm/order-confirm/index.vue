@@ -4,7 +4,8 @@
  *
  * 数据来自购物车 cart store（跨页面共享状态，FR-9/AD-6），
  * 业务逻辑与状态封装在 useOrderConfirm composable（AD-3）。
- * 「立即支付」为纯前端模拟支付（FR-10）：成功后生成订单记录、清空购物车并返回首页订单 tab。
+ * 「立即支付」经 `pay-order` 真实建单（模拟支付，Story 3.5）：成功后清空购物车、
+ * 重置备注与就餐方式，并返回首页订单 tab；门店首读期间显示全屏遮罩（延迟防闪烁）。
  */
 import { onMounted, onUnmounted, watch } from 'vue'
 import BottomBar from '@/components/bottom-bar/index.vue'
@@ -23,32 +24,40 @@ const {
   diningMode,
   notes,
   store,
+  storeError,
+  storeLoading,
+  storeOverlayVisible,
   totalCount: totalQty,
   packagingFee,
   payAmount,
-  etaText,
   selectDiningMode,
   initStore,
+  retryStore,
   paymentPhase,
   paying,
+  resetOrderDraft,
   startPay,
 } = useOrderConfirm()
 
 const { clearCart } = useCart()
 
-/** 门店信息经 API 层加载（AD-1），页面挂载时读取一次 */
+/** 门店信息经 API 层加载（AD-1），页面挂载时读取一次（带全屏遮罩） */
 onMounted(initStore)
 
-/** 支付成功展示 1.5s 后的收尾定时器（清空购物车 + 返回首页订单 tab），页面卸载时清理 */
+/** 支付成功展示后的收尾定时器（清空购物车 + 回首页订单 tab），页面卸载时清理 */
 let payDoneTimer: ReturnType<typeof setTimeout> | null = null
+
+/** 成功反馈展示时长：真实网络已承担等待，这里只留可见的成功反馈 */
+const PAY_SUCCESS_DISPLAY_MS = 800
 
 watch(paymentPhase, (phase) => {
   if (phase !== 'success') return
   payDoneTimer = setTimeout(() => {
     clearCart()
+    resetOrderDraft()
     uni.$emit(HOME_TAB_SWITCH_EVENT, 'orders')
     uni.navigateBack()
-  }, 1500)
+  }, PAY_SUCCESS_DISPLAY_MS)
 })
 
 onUnmounted(() => {
@@ -87,9 +96,25 @@ onUnmounted(() => {
           </view>
 
           <view class="flex flex-col gap-[6rpx]">
-            <text class="font-bold text-[26rpx] text-ink">{{ store?.name }}</text>
-            <text class="text-[20rpx] text-ink-soft">{{ store?.address }}</text>
-            <text class="mt-[4rpx] font-semibold text-[22rpx] text-gold">{{ etaText }}</text>
+            <!-- 门店卡失败态：文案 + 内联重试；不阻断支付、重试不弹全屏遮罩（Story 3.5） -->
+            <template v-if="storeError">
+              <text class="text-[20rpx] text-ink-soft">{{ storeError }}</text>
+              <view class="mt-[4rpx] self-start">
+                <t-button
+                  theme="primary"
+                  size="small"
+                  :loading="storeLoading"
+                  :disabled="storeLoading"
+                  @click="retryStore"
+                >
+                  重试
+                </t-button>
+              </view>
+            </template>
+            <template v-else>
+              <text class="font-bold text-[26rpx] text-ink">{{ store?.name }}</text>
+              <text class="text-[20rpx] text-ink-soft">{{ store?.address }}</text>
+            </template>
           </view>
         </view>
 
@@ -188,7 +213,7 @@ onUnmounted(() => {
       </template>
     </bottom-bar>
 
-    <!-- 模拟支付弹层（FR-10，纯前端演示，不会真实扣款） -->
+    <!-- 模拟支付弹层（FR-10；渠道为模拟，建单经 pay-order 真实完成） -->
     <view
       v-if="paying"
       class="fixed top-0 right-0 bottom-0 left-0 z-[2000] flex items-center justify-center bg-black-40 px-[48rpx]"
@@ -197,21 +222,21 @@ onUnmounted(() => {
         class="flex w-full max-w-[640rpx] flex-col items-center rounded-[32rpx] bg-surface-card px-[48rpx] py-[48rpx] text-center shadow-[0_20rpx_50rpx_rgba(0,0,0,0.25)]"
       >
         <view v-if="paymentPhase === 'verifying'" class="payment-spinner" />
-        <view v-else class="payment-success-icon">
-          <t-icon name="check" size="48rpx" color="#00754a" />
+        <view v-else class="mb-[30rpx]">
+          <t-icon name="check-circle" color="#00754a" size="100rpx" />
         </view>
-        <text class="mb-[16rpx] font-semibold text-[32rpx] text-ink">
+        <text class="font-semibold text-[32rpx] text-ink">
           {{ paymentPhase === 'verifying' ? '模拟支付中' : '模拟支付成功' }}
-        </text>
-        <text class="leading-[1.4] text-[24rpx] text-ink-soft">
-          {{
-            paymentPhase === 'verifying'
-              ? '演示环境，不会产生任何真实扣款'
-              : `¥${payAmount} 未真实扣除，饮品已下发吧台制作`
-          }}
         </text>
       </view>
     </view>
+
+    <!-- 门店首读遮罩（Story 3.5；延迟约 250ms 防闪烁，不与支付弹层同时出现） -->
+    <t-overlay :visible="storeOverlayVisible && !paying">
+      <view class="store-loading flex h-full items-center justify-center">
+        <t-loading theme="spinner" text="加载中..." />
+      </view>
+    </t-overlay>
   </view>
 </template>
 
@@ -222,6 +247,12 @@ onUnmounted(() => {
 .notes-container :deep(.notes-input) {
   font-size: 24rpx;
   line-height: 34rpx;
+}
+
+/* 门店首读遮罩：文案与指示器白色（深色遮罩上可读；变量继承进 t-loading） */
+.store-loading {
+  --td-loading-color: #ffffff;
+  --td-loading-text-color: #ffffff;
 }
 
 /* 模拟支付弹层：spinner 旋转圈（设计稿 .payment-spinner） */
@@ -242,18 +273,6 @@ onUnmounted(() => {
   100% {
     transform: rotate(360deg);
   }
-}
-
-/* 模拟支付弹层：成功勾图标圆底（设计稿 .payment-success-icon） */
-.payment-success-icon {
-  width: 96rpx;
-  height: 96rpx;
-  margin-bottom: 32rpx;
-  background-color: rgba(0, 117, 74, 0.1);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 /* 立即支付按钮按压反馈（设计稿 .btn-pay-now:active） */
