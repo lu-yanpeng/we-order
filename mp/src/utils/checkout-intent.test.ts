@@ -1,8 +1,8 @@
 /**
- * 结算意图生命周期纯函数单元测试（P3 Story 3.4；AD-10 / AR-P3-15）
+ * 结算意图生命周期纯函数单元测试（P3 Story 3.4 / 3.6；AD-10 / AR-P3-15）
  *
  * 覆盖：键格式与唯一性、指纹规范化（排序无关 / 字段敏感）、存储值校验、
- * 复用与重建决策、清除与保留决策。
+ * 复用与重建决策、清除与保留决策、超时安全重试提示。
  */
 import { describe, expect, it } from 'vitest'
 import type { CreateOrderItem } from '@/types/api-contracts'
@@ -14,6 +14,7 @@ import {
   resolveCheckoutIntent,
   serializeCheckoutIntent,
   shouldClearCheckoutIntent,
+  shouldShowRetryHint,
 } from './checkout-intent'
 
 /** 固定购物车 fixture：两行、含多选规格（行顺序与提交顺序故意不同） */
@@ -144,5 +145,25 @@ describe('shouldClearCheckoutIntent（清除 / 保留）', () => {
     const unknownClient: AppError = { source: 'client', code: 'weird' }
     expect(shouldClearCheckoutIntent(loginError)).toBe(false)
     expect(shouldClearCheckoutIntent(unknownClient)).toBe(false)
+  })
+})
+
+describe('shouldShowRetryHint（超时安全重试提示）', () => {
+  it('client.timeout → true（结果不明且幂等键保留）', () => {
+    expect(shouldShowRetryHint({ source: 'client', code: 'timeout' })).toBe(true)
+  })
+
+  it('其余客户端类别 → false（网络 / 取消保留键但不出现该提示；会话失效已清键）', () => {
+    const codes = ['network_unreachable', 'request_cancelled', 'session_expired'] as const
+    for (const code of codes) {
+      expect(shouldShowRetryHint({ source: 'client', code })).toBe(false)
+    }
+  })
+
+  it('服务端类别（枚举穷尽）与登录域 → false', () => {
+    for (const code of ORDER_ERROR_CODES) {
+      expect(shouldShowRetryHint({ source: 'order', code })).toBe(false)
+    }
+    expect(shouldShowRetryHint({ source: 'login', code: 'rate_limited' })).toBe(false)
   })
 })

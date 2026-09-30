@@ -125,3 +125,13 @@ export function shouldClearCheckoutIntent(error: AppError): boolean {
   if (error.source === 'order') return true
   return error.source === 'client' && error.code === 'session_expired'
 }
+
+/**
+ * 超时安全重试提示（Story 3.6；FR-P3-9；spine「最小 UI 规范」支付超时行）：
+ * 仅 `client.timeout`——结果不明中唯一需要向用户解释「为什么可以放心再点一次」的场景，
+ * 结算页据此内联「可安全重试，不会重复下单」（幂等键已保留）。
+ * 网络不可达 / 取消同样保留键，但只给基础文案，不出现该提示。
+ */
+export function shouldShowRetryHint(error: AppError): boolean {
+  return error.source === 'client' && error.code === 'timeout'
+}

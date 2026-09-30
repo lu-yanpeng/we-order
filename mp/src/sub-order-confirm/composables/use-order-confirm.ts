@@ -9,7 +9,8 @@
  * 4. 派生包装费、商品合计、总件数与应付金额
  * 5. 结算意图（幂等键）会合：提交前 ensure（先落盘）、成功后清除（Story 3.4；AD-10）
  * 6. 模拟支付状态机：提交经 `api/orders.ts` 的 `payOrder()` 调 `pay-order` 真实建单（Story 3.5）；
- *    成功进入反馈态；失败按类别 toast、保留幂等键与购物车
+ *    成功进入反馈态；失败按类别 toast（唯一翻译）并按 AD-10 决定幂等键清除 / 保留，
+ *    超时额外给出结算页内联的安全重试提示（Story 3.6）
  *
  * 遵循 AD-1：运行时响应式状态（Pinia store）由 Composable 直接读写；
  *              门店信息与下单经由 api/。
@@ -22,6 +23,7 @@ import { clearCheckoutIntent, ensureCheckoutIntent, payOrder } from '@/api/order
 import { toCreateOrderItems } from '@/api/cart'
 import { fetchStore } from '@/api/catalog'
 import { errorCopy, isAppError } from '@/utils/error-copy'
+import { shouldClearCheckoutIntent, shouldShowRetryHint } from '@/utils/checkout-intent'
 import { calcPackagingFee } from '@/utils/price'
 import type { DiningMode, StoreInfo } from '@/types/api-contracts'
 
@@ -114,6 +116,8 @@ export function useOrderConfirm() {
   const paymentPhase = ref<PaymentPhase>('idle')
   /** 支付进行中（请求在飞或成功展示中），用于弹层显隐与防重复点击 */
   const paying = computed(() => paymentPhase.value !== 'idle')
+  /** 支付超时内联提示：仅 `client.timeout` 失败后为 true；新一次提交时归零（Story 3.6；最小 UI 规范） */
+  const payRetryHint = ref(false)
 
   /** 成功收尾：重置备注与就餐方式（FR-P3-8；页面即将离开，这里显式归零） */
   function resetOrderDraft() {
@@ -126,8 +130,9 @@ export function useOrderConfirm() {
    * - 空购物车：toast 阻断、不发请求（P1 AD-7 承接）；
    * - 提交前会合结算意图：同步先落盘、再进入支付流程（Story 3.4——杀进程后的重试才能复用同一键）；
    * - 请求在飞期间为 `verifying`；成功后清除幂等键并进入 `success`（清车与跳转由页面编排）；
-   * - 失败退出 loading、按类别 toast（唯一翻译），保留幂等键与购物车；
-   *   清除 / 保留的细分类别决策随 Story 3.6。
+   * - 失败退出 loading、按类别 toast（唯一翻译）；按 AD-10 决定幂等键清除 / 保留：
+   *   明确失败（服务端类别 / 会话失效）→ 清除；结果不明（超时 / 网络 / 取消）→ 保留；
+   *   超时额外置结算页内联安全重试提示（Story 3.6）。
    */
   async function startPay() {
     if (paying.value) return
@@ -135,6 +140,9 @@ export function useOrderConfirm() {
       uni.showToast({ title: '请先选择商品', icon: 'none' })
       return
     }
+
+    // 新的一次提交：上一次失败的内联提示不再适用于本次
+    payRetryHint.value = false
 
     const idempotencyKey = ensureCheckoutIntent(items.value, diningMode.value)
     paymentPhase.value = 'verifying'
@@ -149,6 +157,12 @@ export function useOrderConfirm() {
       paymentPhase.value = 'success'
     } catch (err) {
       paymentPhase.value = 'idle'
+      // 明确失败（服务端类别 / 会话失效）→ 作废幂等键；结果不明 → 保留（Story 3.6；AD-10）
+      if (isAppError(err) && shouldClearCheckoutIntent(err)) {
+        clearCheckoutIntent()
+      }
+      // 超时 = 结果不明且键保留 → 结算页内联「可安全重试，不会重复下单」
+      payRetryHint.value = isAppError(err) && shouldShowRetryHint(err)
       const message = isAppError(err) ? errorCopy(err) : ''
       // 空文案（request_cancelled）不提示；同一失败只提示一次（单次 catch 只 toast 一次）
       if (message !== '') {
@@ -174,6 +188,7 @@ export function useOrderConfirm() {
     retryStore,
     paymentPhase,
     paying,
+    payRetryHint,
     resetOrderDraft,
     startPay,
   }

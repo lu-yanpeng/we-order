@@ -5,7 +5,8 @@
  * 数据来自购物车 cart store（跨页面共享状态，FR-9/AD-6），
  * 业务逻辑与状态封装在 useOrderConfirm composable（AD-3）。
  * 「立即支付」经 `pay-order` 真实建单（模拟支付，Story 3.5）：成功后清空购物车、
- * 重置备注与就餐方式，并返回首页订单 tab；门店首读期间显示全屏遮罩（延迟防闪烁）。
+ * 重置备注与就餐方式，并返回首页订单 tab；门店首读期间显示全屏遮罩（延迟防闪烁）；
+ * 支付超时在支付栏上方给出内联安全重试提示（Story 3.6）。
  */
 import { onMounted, onUnmounted, watch } from 'vue'
 import BottomBar from '@/components/bottom-bar/index.vue'
@@ -35,6 +36,7 @@ const {
   retryStore,
   paymentPhase,
   paying,
+  payRetryHint,
   resetOrderDraft,
   startPay,
 } = useOrderConfirm()
@@ -192,6 +194,15 @@ onUnmounted(() => {
         </view>
       </view>
     </scroll-view>
+
+    <!-- 支付超时内联提示（Story 3.6；仅超时失败后出现、下次提交时消失） -->
+    <view
+      v-if="payRetryHint"
+      class="flex items-center justify-center gap-[8rpx] px-[28rpx] py-[12rpx]"
+    >
+      <t-icon name="info-circle" size="24rpx" color="rgba(0, 0, 0, 0.58)" />
+      <text class="text-[20rpx] text-ink-soft">可安全重试，不会重复下单</text>
+    </view>
 
     <!-- 底部支付栏 -->
     <bottom-bar>
