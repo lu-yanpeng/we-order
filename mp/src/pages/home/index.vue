@@ -4,9 +4,11 @@
  *
  * 遵循 AD-3：页面仅负责组件编排和布局，
  * 业务逻辑由 useProducts / useSpecSheet / useOrders / useCart / useReorder / useCheckoutBar / useHomeTabs 七个 Composable 承载。
+ * 遵循 AD-8：订单可见域 = 订单 tab 激活 且页面可见；进入可见域立即读取一次
+ * （轮询 / 订阅的启停随 Story 4.3 接入，读取入口即那时共享状态应用路径的接入点）。
  */
-import { onMounted } from 'vue'
-import { onShow } from '@dcloudio/uni-app'
+import { computed, onMounted, ref, watch } from 'vue'
+import { onHide, onShow } from '@dcloudio/uni-app'
 import type { MenuProduct } from '@/types/api-contracts'
 import type { CartItem } from '@/types/cart'
 import { useProducts } from './composables/use-products'
@@ -20,6 +22,9 @@ import ProductCard from './components/product-card/index.vue'
 import SpecSheet from './components/spec-sheet/index.vue'
 import OrderCard from './components/order-card/index.vue'
 import LoadFailure from './components/load-failure/index.vue'
+import CatalogSkeleton from './components/catalog-skeleton/index.vue'
+import OrderCardSkeleton from './components/order-card-skeleton/index.vue'
+import OrdersEmpty from './components/orders-empty/index.vue'
 import CheckoutBar from '@/sub-components/checkout-bar/index.vue'
 
 const {
@@ -34,6 +39,7 @@ const {
   productImageUrl,
   loading: productsLoading,
   error: productsError,
+  skeletonVisible: productsSkeletonVisible,
 } = useProducts()
 
 const {
@@ -73,12 +79,22 @@ const {
   onBarHeightChange,
 } = useCheckoutBar(cartItems)
 
-const { activeTab, swiperIndex, onTabChange, onSwiperChange } = useHomeTabs()
+const { activeTab, swiperIndex, onTabChange, onSwiperChange, switchTab } = useHomeTabs()
 
 const {
   orders,
   error: ordersError,
-  initOrders,
+  loading: ordersLoading,
+  loadingMore: ordersLoadingMore,
+  loadMoreError: ordersLoadMoreError,
+  hasMore: ordersHasMore,
+  hasOrders: ordersHasOrders,
+  isEmpty: ordersIsEmpty,
+  skeletonVisible: ordersSkeletonVisible,
+  refreshing: ordersRefreshing,
+  loadOrders,
+  refreshOrders,
+  loadMoreOrders,
   goToOrderDetail,
   urgeOrder,
   confirmPickup,
@@ -131,9 +147,23 @@ onMounted(() => {
   initCheckoutBar()
 })
 
-// 订单列表在页面每次显示时重新加载：支付写入新订单后返回首页不会重新挂载页面，需要主动刷新
+// 订单可见域（AD-8）：订单 tab 激活 且页面可见；进入（含切回 tab、从详情返回、回到前台）读一次。
+// 页面隐藏 / 离开订单 tab 不发请求；支付成功后的「切到订单 tab」也经此入口读取。
+const pageVisible = ref(false)
+const ordersInDomain = computed(() => activeTab.value === 'orders' && pageVisible.value)
+
+watch(ordersInDomain, (inDomain) => {
+  if (inDomain) {
+    void loadOrders()
+  }
+})
+
 onShow(() => {
-  initOrders()
+  pageVisible.value = true
+})
+
+onHide(() => {
+  pageVisible.value = false
 })
 </script>
 
@@ -154,8 +184,12 @@ onShow(() => {
 
     <swiper class="swiper flex-1" :current="swiperIndex" :duration="250" @change="onSwiperChange">
       <swiper-item>
+        <!-- 首屏加载：延迟 250ms 显示目录双栏骨架（快网不闪烁；刷新 / 重试不回骨架） -->
+        <catalog-skeleton v-if="productsSkeletonVisible" />
+
+        <!-- 首屏失败：失败态 + 重试，不渲染半截目录（Story 2.2） -->
         <load-failure
-          v-if="productsError && categories.length === 0"
+          v-else-if="productsError && categories.length === 0"
           :message="productsError"
           :loading="productsLoading"
           @retry="initProducts"
@@ -230,26 +264,64 @@ onShow(() => {
         />
       </swiper-item>
       <swiper-item>
+        <!-- 首屏加载：延迟 250ms 显示订单卡片骨架（快网不闪烁；刷新不回骨架） -->
+        <view v-if="ordersSkeletonVisible" class="h-full bg-surface-page px-[32rpx] pt-[32rpx]">
+          <order-card-skeleton />
+        </view>
+
+        <!-- 首屏失败：失败态 + 重试；不展示任何订单数据（含本地缓存）、不以空列表伪装 -->
+        <load-failure
+          v-else-if="ordersError"
+          :message="ordersError"
+          :loading="ordersLoading"
+          @retry="refreshOrders"
+        />
+
         <scroll-view
+          v-else
           class="h-full bg-surface-page"
           scroll-y
           :enhanced="true"
           :show-scrollbar="false"
+          :refresher-enabled="true"
+          :refresher-triggered="ordersRefreshing"
+          refresher-background="#f2f0eb"
+          :lower-threshold="120"
+          @refresherrefresh="refreshOrders"
+          @scrolltolower="loadMoreOrders"
         >
           <view class="px-[32rpx] pt-[32rpx] pb-[92rpx]">
-            <order-card
-              v-for="order in orders"
-              :key="order.id"
-              :order="order"
-              @click="goToOrderDetail(order)"
-              @urge="urgeOrder"
-              @confirm-pickup="confirmPickup"
-              @reorder="reorder(order)"
-            />
+            <!-- 空态：读取成功且 0 条；「去点餐」引导（不发起无意义读取） -->
+            <orders-empty v-if="ordersIsEmpty" @go-menu="switchTab('menu')" />
 
-            <view v-if="orders.length === 0" class="py-[80rpx] text-center">
-              <text class="text-[26rpx] text-ink-soft">{{ ordersError ?? '暂无订单记录' }}</text>
-            </view>
+            <template v-else>
+              <order-card
+                v-for="order in orders"
+                :key="order.id"
+                :order="order"
+                @click="goToOrderDetail(order)"
+                @urge="urgeOrder"
+                @confirm-pickup="confirmPickup"
+                @reorder="reorder(order)"
+              />
+
+              <!-- 分页页脚（2026-09-30 范围修订）：加载中 / 加载失败可点击重试 / 没有更多 -->
+              <view
+                v-if="
+                  ordersHasOrders && (ordersLoadingMore || ordersLoadMoreError || !ordersHasMore)
+                "
+                class="flex items-center justify-center gap-[16rpx] py-[24rpx]"
+                @click="loadMoreOrders"
+              >
+                <template v-if="ordersLoadMoreError">
+                  <text class="text-[22rpx] text-ink-soft">{{ ordersLoadMoreError }}</text>
+                  <text class="font-semibold text-[22rpx] text-green">重试</text>
+                </template>
+                <text v-else class="text-[22rpx] text-ink-soft">
+                  {{ ordersLoadingMore ? '加载中…' : '--- 没有更多了 ---' }}
+                </text>
+              </view>
+            </template>
           </view>
         </scroll-view>
       </swiper-item>

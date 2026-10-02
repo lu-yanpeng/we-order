@@ -5,6 +5,7 @@
  * 1. 通过 API 层加载商品分类数据
  * 2. 管理侧边栏分类与右侧商品列表的双向滚动联动
  * 3. 加载失败时产出失败文案（唯一翻译 `utils/error-copy.ts`）供页面失败态渲染（Story 2.2）
+ * 4. 首屏无数据时延迟显示目录骨架（Story 4.1；2026-09-27 加载态范围修订）
  *
  * 遵循 AD-3：页面仅负责组件编排，业务逻辑封装在此。
  */
@@ -19,6 +20,9 @@ import { errorCopy, isAppError } from '@/utils/error-copy'
  */
 const anchorId = (categoryId: string) => `cat-${categoryId}`
 
+/** 首屏骨架的防抖延迟（毫秒）：快网不显示；spine 最小 UI 规范取约 250ms */
+const SKELETON_DELAY_MS = 250
+
 export function useProducts() {
   /** 商品分类列表（含各分类下的商品） */
   const categories = ref<MenuCategory[]>([])
@@ -26,6 +30,12 @@ export function useProducts() {
   const loading = ref(false)
   /** 数据加载错误信息 */
   const error = ref<string | null>(null)
+  /** 首屏骨架显示中（延迟出现；首屏无数据时才可能出现，刷新 / 重试不回骨架） */
+  const skeletonVisible = ref(false)
+  /** 首屏是否已出过结果（成功或失败）：骨架判定依据 */
+  const loaded = ref(false)
+
+  let skeletonTimer: ReturnType<typeof setTimeout> | null = null
 
   /** 当前高亮的分类 ID */
   const activeCategory = ref('')
@@ -41,6 +51,14 @@ export function useProducts() {
     // 防重复：重试按钮已禁用，这里再兜一层（不产生并发请求）
     if (loading.value) return
     loading.value = true
+
+    // 首屏无数据才可能显示骨架：延迟 250ms，快网不闪烁；失败 / 重试不回骨架
+    if (!loaded.value && categories.value.length === 0 && error.value === null) {
+      skeletonTimer = setTimeout(() => {
+        skeletonVisible.value = true
+      }, SKELETON_DELAY_MS)
+    }
+
     try {
       categories.value = await fetchCategories()
       if (categories.value.length > 0) {
@@ -54,7 +72,13 @@ export function useProducts() {
       // 空文案（request_cancelled 不展示）与未知异常兜底，保证失败态始终可渲染
       error.value = message !== '' ? message : '加载失败，请重试'
     } finally {
+      if (skeletonTimer) {
+        clearTimeout(skeletonTimer)
+        skeletonTimer = null
+      }
+      skeletonVisible.value = false
       loading.value = false
+      loaded.value = true
     }
   }
 
@@ -164,6 +188,7 @@ export function useProducts() {
     categories,
     loading,
     error,
+    skeletonVisible,
     activeCategory,
     scrollIntoViewId,
     isProgrammaticScroll,

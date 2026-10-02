@@ -25,6 +25,9 @@ const { max = 100 } = defineProps<{
 }>()
 ```
 
+> ⚠️ 小程序构建链目前使用 Vue 3.4 的 `@vue/compiler-sfc`，**不会**把解构后的 props 变成响应式——解构得到的是挂载时快照。
+> 仅当解构出的 prop 只用于**模板绑定**时安全（模板会编译成实时 `props.x`）；一旦在 `computed` / 普通函数 / `watch` 里读取，就必须改用 `const props = defineProps()` + `props.x`，否则永远读到旧值（2026-10-02 订单卡片状态标签不更新即此因）。
+
 **事件标注类型**，优先使用具名元组语法
 
 ```ts

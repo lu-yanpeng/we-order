@@ -42,6 +42,11 @@ export function useHomeTabs() {
     else if (tab === 'menu') syncTab(0)
   }
 
+  /** 页面内显式切换 tab（如订单空态「去点餐」） */
+  const switchTab = (tab: 'menu' | 'orders') => {
+    syncTab(tab === 'orders' ? 1 : 0)
+  }
+
   onMounted(() => {
     uni.$on(HOME_TAB_SWITCH_EVENT, handleTabSwitch)
 
@@ -59,5 +64,5 @@ export function useHomeTabs() {
     uni.$off(HOME_TAB_SWITCH_EVENT, handleTabSwitch)
   })
 
-  return { activeTab, swiperIndex, onTabChange, onSwiperChange }
+  return { activeTab, swiperIndex, onTabChange, onSwiperChange, switchTab }
 }

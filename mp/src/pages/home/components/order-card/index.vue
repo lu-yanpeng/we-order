@@ -8,7 +8,7 @@
 import { computed } from 'vue'
 import type { OrderListItem, OrderStatus } from '@/types/api-contracts'
 
-const { order } = defineProps<{
+const props = defineProps<{
   order: OrderListItem
 }>()
 
@@ -18,6 +18,12 @@ const emit = defineEmits<{
   'confirm-pickup': []
   reorder: []
 }>()
+
+/**
+ * 注意：小程序编译链不会把解构后的 props 变成响应式（`const { order } = defineProps()`
+ * 得到的是挂载时快照）——列表合并会就地替换同一 id 的订单对象，脚本侧的 computed /
+ * 函数必须经 `props.order` 读取，否则状态标签等会停留在旧值（2026-10-02 评审修复）。
+ */
 
 /** 状态文案与状态色（FR-11：制作中-蓝 / 待取餐-金 / 已完成-绿） */
 const STATUS_META: Record<OrderStatus, { label: string; textClass: string }> = {
@@ -33,24 +39,24 @@ const ACTION_META: Record<OrderStatus, { label: string; class: string }> = {
   completed: { label: '再来一单', class: 'border-green-accent text-green-accent' },
 }
 
-const statusMeta = computed(() => STATUS_META[order.status])
-const actionMeta = computed(() => ACTION_META[order.status])
+const statusMeta = computed(() => STATUS_META[props.order.status])
+const actionMeta = computed(() => ACTION_META[props.order.status])
 
 /** 就餐方式文案 */
-const modeLabel = computed(() => (order.dining_mode === 'takeout' ? '打包外带' : '店内堂食'))
+const modeLabel = computed(() => (props.order.dining_mode === 'takeout' ? '打包外带' : '店内堂食'))
 
 /** 商品标题：[就餐方式] 商品摘要（服务端 item_summary：商品名 ×数量、顿号连接） */
-const goodsTitle = computed(() => `[${modeLabel.value}] ${order.item_summary}`)
+const goodsTitle = computed(() => `[${modeLabel.value}] ${props.order.item_summary}`)
 
 /** 备注，「无备注要求」视为未填写 */
 const goodsNotes = computed(() =>
-  order.notes && order.notes !== '无备注要求' ? `备注: ${order.notes}` : '',
+  props.order.notes && props.order.notes !== '无备注要求' ? `备注: ${props.order.notes}` : '',
 )
 
 /** 底部按钮按状态派发对应操作 */
 const handleAction = () => {
-  if (order.status === 'cooking') emit('urge')
-  else if (order.status === 'pickup') emit('confirm-pickup')
+  if (props.order.status === 'cooking') emit('urge')
+  else if (props.order.status === 'pickup') emit('confirm-pickup')
   else emit('reorder')
 }
 </script>
@@ -60,9 +66,12 @@ const handleAction = () => {
     class="mb-[24rpx] flex flex-col gap-[24rpx] rounded-[24rpx] bg-surface-card p-[32rpx] shadow-card"
     @click="emit('click')"
   >
-    <!-- 卡头：订单编号 + 状态标签 -->
-    <view class="flex items-center justify-between border-b border-border-hairline pb-[16rpx]">
-      <text class="text-[24rpx] text-ink-soft">订单编号: {{ order.order_number }}</text>
+    <!-- 卡头：订单编号 + 下单时间 + 状态标签 -->
+    <view class="flex items-start justify-between border-b border-border-hairline pb-[16rpx]">
+      <view class="flex flex-col gap-[4rpx]">
+        <text class="text-[24rpx] text-ink-soft">订单编号: {{ order.order_number }}</text>
+        <text class="text-[20rpx] text-ink-soft">下单时间 {{ order.created_at }}</text>
+      </view>
       <text class="font-bold text-[24rpx]" :class="statusMeta.textClass">
         {{ statusMeta.label }}
       </text>

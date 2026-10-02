@@ -2,75 +2,69 @@
  * 订单 API 层
  *
  * 统一数据入口，负责：
- * 1. 下单：经支付接口 `pay-order` 一次完成「模拟支付 → 创建订单」（Story 3.5；AD-11）——
+ * 1. 订单列表：经服务端读取路径 `get_my_orders`（Story 4.1；读时推进、游标分页、
+ *    只含本人订单）——本地 `weorder_orders` 不再是任何读取的数据源，也不再 seed Mock 订单；
+ * 2. 下单：经支付接口 `pay-order` 一次完成「模拟支付 → 创建订单」（Story 3.5；AD-11）——
  *    客户端创建订单的唯一入口，金额 / 订单号 / 取杯号 / 归属全部由服务端产出；
- * 2. 订单列表 / 详情的本地存储读写（Mock 过渡；Epic 4 切换真实读取时只改本文件内部）；
  * 3. 结算意图（幂等键）生命周期（Story 3.4；AD-10）——`weorder_checkout_intent` 唯一出口。
  *
- * Phase 3 Epic 1：订单数据源仍是 Mock，但对外形状已对齐服务端契约
- * （`get_my_orders` 的 `OrdersPage` / `get_my_order_detail` 的 `OrderDetail`）。
- * 首次读取时将 mock/orders.ts 的预置订单写入存储作为演示数据，
- * 之后读写一律以存储为准。不做人为延迟，避免首屏空态闪烁。
+ * 订单详情读取（`get_my_order_detail`）随 Story 4.2 接入；在那之前的过渡期，
+ * `fetchOrderById` 不下发任何读取——本地 Mock 订单读写路径已移除，界面不可能读到
+ * Mock 内容，详情页 / 再来一单按「订单不存在」的失败态呈现（Story 4.2 换真实读取）。
  */
 import { transport } from '@/core/transport'
 import type {
   CreateOrderRequest,
   DiningMode,
   OrderDetail,
-  OrderListItem,
   OrderResult,
   OrdersPage,
 } from '@/types/api-contracts'
 import type { CartItem } from '@/types/cart'
 import type { CheckoutIntent } from '@/utils/checkout-intent'
 import { toCreateOrderItems } from '@/api/cart'
-import { mockOrders } from '@/mock/orders'
 import {
   parseCheckoutIntent,
   resolveCheckoutIntent,
   serializeCheckoutIntent,
 } from '@/utils/checkout-intent'
 
-const STORAGE_KEY = 'weorder_orders'
+/** 订单列表每页条数（服务端默认 20、上限 50；分页信封形状见 `OrdersPage`，P2 AD-23） */
+const ORDERS_PAGE_SIZE = 20
 
-function loadOrders(): OrderDetail[] {
-  const raw = uni.getStorageSync(STORAGE_KEY) as string
-  if (raw) return JSON.parse(raw) as OrderDetail[]
+// ── 订单读取（Story 4.1；AD-7 / AD-8） ─────────────────────────────────────
 
-  // 首次读取：预置订单 seed 到存储（FR-11）
-  saveOrders(mockOrders)
-  return mockOrders
-}
-
-function saveOrders(orders: OrderDetail[]): void {
-  uni.setStorageSync(STORAGE_KEY, JSON.stringify(orders))
+/**
+ * 读取一页本人订单（创建时间倒序；服务端先推进到点 / 超时订单再返回，FR-P3-10）。
+ *
+ * - 游标分页：首次读取不传游标；下一页把上一页返回的 `next_cursor` 原样回传
+ *   （键集游标，客户端不解析、不拼接，P2 AD-22）；
+ * - `session-required`：经对接层先会合登录 / 续期，401 时自动续期并重放一次（AD-3 / AD-4）；
+ * - 归属不可伪造：请求参数里没有用户标识，身份取自服务端会话（FR-P3-10）。
+ *
+ * 返回 alova Method：可 `await`，也可用 `useRequest` 包裹（AD-5）。
+ */
+export function fetchOrders(cursor: OrdersPage['next_cursor'] = null) {
+  return transport.Post<OrdersPage>(
+    '/rest/v1/rpc/get_my_orders',
+    {
+      p_limit: ORDERS_PAGE_SIZE,
+      p_before_created_at: cursor?.created_at ?? null,
+      p_before_id: cursor?.id ?? null,
+    },
+    { meta: { auth: 'session-required' } },
+  )
 }
 
 /**
- * 详情快照 → 列表项：与服务端 `get_my_orders` 的条目形状一致
- * （订单对外形状 + item_summary「商品名 ×数量」、顿号连接）。
+ * 按订单 id（服务端 UUID）读取详情（`get_my_order_detail`，Story 4.2 接入）。
+ *
+ * 过渡期实现：不下发任何读取（本地 Mock 读写路径已随 Story 4.1 移除），
+ * 调用方按「订单不存在」处理；详情页真实读取与「再来一单」快照还原属 Story 4.2。
  */
-function toListItem(order: OrderDetail): OrderListItem {
-  // 解构只为剔除详情字段（门店快照与明细），其余字段经 rest 透传
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { store_name, store_address, store_phone, items, ...result } = order
-  return {
-    ...result,
-    item_summary: items.map((item) => `${item.product_name} ×${item.quantity}`).join('、'),
-  }
-}
-
-/** 获取本人订单列表（按时间倒序；Mock 阶段一次返回全部，next_cursor 恒为 null） */
-export async function fetchOrders(): Promise<OrdersPage> {
-  return {
-    items: loadOrders().map(toListItem),
-    next_cursor: null,
-  }
-}
-
-/** 按订单 id（服务端 UUID）获取单个订单，不存在时返回 undefined */
 export async function fetchOrderById(id: string): Promise<OrderDetail | undefined> {
-  return loadOrders().find((order) => order.id === id)
+  void id
+  return undefined
 }
 
 /**
