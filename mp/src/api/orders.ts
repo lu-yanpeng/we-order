@@ -6,11 +6,12 @@
  *    只含本人订单）——本地 `weorder_orders` 不再是任何读取的数据源，也不再 seed Mock 订单；
  * 2. 下单：经支付接口 `pay-order` 一次完成「模拟支付 → 创建订单」（Story 3.5；AD-11）——
  *    客户端创建订单的唯一入口，金额 / 订单号 / 取杯号 / 归属全部由服务端产出；
- * 3. 结算意图（幂等键）生命周期（Story 3.4；AD-10）——`weorder_checkout_intent` 唯一出口。
+ * 3. 订单详情：经服务端读取路径 `get_my_order_detail`（Story 4.2；读时推进、只含本人订单，
+ *    非本人 / 不存在同一类别 `order_not_found`，不泄露订单存在性）；
+ * 4. 结算意图（幂等键）生命周期（Story 3.4；AD-10）——`weorder_checkout_intent` 唯一出口。
  *
- * 订单详情读取（`get_my_order_detail`）随 Story 4.2 接入；在那之前的过渡期，
- * `fetchOrderById` 不下发任何读取——本地 Mock 订单读写路径已移除，界面不可能读到
- * Mock 内容，详情页 / 再来一单按「订单不存在」的失败态呈现（Story 4.2 换真实读取）。
+ * 订单侧 Mock 数据源（`mock/orders.ts`）已随 Story 4.2 删除；本文件不存在任何
+ * Mock 读写路径或回退开关，读取只有服务端一条通路（FR-P3-3 整体收口）。
  */
 import { transport } from '@/core/transport'
 import type {
@@ -57,14 +58,22 @@ export function fetchOrders(cursor: OrdersPage['next_cursor'] = null) {
 }
 
 /**
- * 按订单 id（服务端 UUID）读取详情（`get_my_order_detail`，Story 4.2 接入）。
+ * 按订单 id（服务端 UUID）读取详情（`get_my_order_detail`，Story 4.2）。
  *
- * 过渡期实现：不下发任何读取（本地 Mock 读写路径已随 Story 4.1 移除），
- * 调用方按「订单不存在」处理；详情页真实读取与「再来一单」快照还原属 Story 4.2。
+ * - `session-required`：先会合登录 / 续期，401 时自动续期并重放一次（AD-3 / AD-4）；
+ * - 归属不可伪造：请求参数只有订单 id，身份与服务端归属谓词同源（FR-P3-11）；
+ * - 非本人订单与不存在的订单返回同一类别 `order_not_found`（AD-13，不泄露存在性）；
+ * - 服务端读取前先推进本人到点 / 超时订单，返回详情不会「已到点却仍制作中」；
+ * - 返回服务端快照（商品、规格摘要、金额、门店信息、取杯号），不随目录改名 / 改价变化。
+ *
+ * 返回 alova Method：可 `await`，也可用 `useRequest` 包裹（AD-5）。
  */
-export async function fetchOrderById(id: string): Promise<OrderDetail | undefined> {
-  void id
-  return undefined
+export function fetchOrderById(id: string) {
+  return transport.Post<OrderDetail>(
+    '/rest/v1/rpc/get_my_order_detail',
+    { p_order_id: id },
+    { meta: { auth: 'session-required' } },
+  )
 }
 
 /**

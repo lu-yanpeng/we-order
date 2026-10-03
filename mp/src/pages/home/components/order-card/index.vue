@@ -91,14 +91,14 @@ const handleAction = () => {
       </view>
     </view>
 
-    <!-- 待取餐：取杯号提示 -->
+    <!-- 制作中 / 待取餐：取杯号（付款后即出号，制作中即展示） -->
     <view
-      v-if="order.status === 'pickup'"
+      v-if="order.status !== 'completed'"
       class="rounded-[8rpx] border border-dashed border-gold bg-[rgba(203,162,88,0.05)] px-[24rpx] py-[20rpx]"
     >
       <view class="flex justify-between font-semibold text-[22rpx] text-gold">
         <text>凭取杯号 {{ order.pickup_code }} 到柜台取杯</text>
-        <text>待取餐</text>
+        <text>{{ statusMeta.label }}</text>
       </view>
     </view>
 

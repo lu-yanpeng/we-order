@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 页面级加载失败态（P1 AD-5：先放使用它的页面目录；Story 2.2 目录段）
+ * 页面级加载失败态（P1 AD-5；主包首页与订单详情分包共用 → 根 components/，AD-9）
  *
  * 纯展示：文案由场景 Composable 经 `utils/error-copy.ts` 翻译后传入；
  * 重试形态 = 按钮 loading + 禁用（防重复提交），事件由页面转给加载方法。

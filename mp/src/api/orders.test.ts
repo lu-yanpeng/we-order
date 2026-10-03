@@ -6,15 +6,28 @@
  * 2. `payOrder`：用 mock 的对接层断言请求形状（只发四个 wire 字段、声明 `session-required`），
  *    不发起真实网络请求；
  * 3. `fetchOrders`：断言读取走服务端 RPC（默认 20 条、游标原样回传、`session-required`），
+ *    不发起真实网络请求；
+ * 4. `fetchOrderById`：断言详情读取走服务端 RPC（订单 id 是唯一参数、`session-required`），
  *    不发起真实网络请求。
  *
  * 生成 / 序列化 / 校验 / 决策的纯函数测试见 `utils/checkout-intent.test.ts`。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { CreateOrderRequest, OrderResult, OrdersPage } from '@/types/api-contracts'
+import type {
+  CreateOrderRequest,
+  OrderDetail,
+  OrderResult,
+  OrdersPage,
+} from '@/types/api-contracts'
 import type { CartItem } from '@/types/cart'
 import type { CheckoutIntent } from '@/utils/checkout-intent'
-import { clearCheckoutIntent, ensureCheckoutIntent, fetchOrders, payOrder } from './orders'
+import {
+  clearCheckoutIntent,
+  ensureCheckoutIntent,
+  fetchOrderById,
+  fetchOrders,
+  payOrder,
+} from './orders'
 
 /** 支付接口调用经 mock 的对接层断言；`vi.hoisted` 保证 mock 工厂先于模块导入生效 */
 const { postMock } = vi.hoisted(() => ({ postMock: vi.fn() }))
@@ -222,5 +235,55 @@ describe('fetchOrders（Story 4.1；AD-7 / AR-P3-18）', () => {
     })
     // 请求体恰为三个分页参数：没有用户标识等可伪造字段（归属由服务端会话决定）
     expect(Object.keys(body).sort()).toEqual(['p_before_created_at', 'p_before_id', 'p_limit'])
+  })
+})
+
+describe('fetchOrderById（Story 4.2；FR-P3-11 / AR-P3-18）', () => {
+  /** 服务端详情快照：订单对外形状 + 门店快照三列 + 明细快照数组 */
+  const detail: OrderDetail = {
+    id: '22222222-2222-4222-8222-222222222222',
+    order_number: '202609301200000001',
+    status: 'cooking',
+    dining_mode: 'takeout',
+    packaging_fee: 2,
+    total_amount: 34,
+    notes: '少冰',
+    pickup_code: 'A-0001',
+    created_at: '2026-09-30 12:00:00',
+    store_name: '星巴克 啡快自提店',
+    store_address: '北京市朝阳区创意产业园 A 座 1 层',
+    store_phone: '010-88888888',
+    items: [
+      {
+        product_id: 'p-1',
+        product_name: '拿铁',
+        spec_summary: '大杯 Grande',
+        selections: { size: 'grande' },
+        unit_price: 32,
+        quantity: 1,
+      },
+    ],
+  }
+
+  beforeEach(() => {
+    postMock.mockReset()
+    postMock.mockResolvedValue(detail)
+  })
+
+  it('经对接层 POST get_my_order_detail：订单 id 是唯一参数、session-required', async () => {
+    await expect(fetchOrderById(detail.id)).resolves.toEqual(detail)
+
+    expect(postMock).toHaveBeenCalledTimes(1)
+    const [url, body, config] = postMock.mock.calls[0] as [string, Record<string, unknown>, unknown]
+    expect(url).toBe('/rest/v1/rpc/get_my_order_detail')
+    expect(body).toEqual({ p_order_id: detail.id })
+    expect(config).toEqual({ meta: { auth: 'session-required' } })
+  })
+
+  it('请求体只有订单 id：不传用户标识（归属由服务端会话决定，FR-P3-11）', () => {
+    void fetchOrderById(detail.id)
+
+    const [, body] = postMock.mock.calls[0] as [string, Record<string, unknown>]
+    expect(Object.keys(body)).toEqual(['p_order_id'])
   })
 })

@@ -5,7 +5,7 @@
  * 1. 管理结算栏可见性状态（once-true-never-false，AD-4-e）
  * 2. 页面初始化时根据购物车数据决定是否触发渲染（initCheckoutBar）
  * 3. 首次加购、再来一单时触发渲染并显示 loading（showCheckoutBar）
- * 4. 管理购物车面板显隐，供再来一单命令展开（openCartDetail / onBarReady）
+ * 4. 管理购物车面板显隐，供再来一单命令展开（openCartDetail 返回「面板就绪」Promise / onBarReady）
  * 5. 结算跳转与防重复点击（goToCheckout）
  * 6. 接收结算栏自报高度、维护侧边栏底部留白
  *
@@ -29,6 +29,8 @@ const cartDetailVisible = ref(false)
 let _checkoutBarMounted = false
 /** 组件挂载前收到的展开请求，挂载后补执行 */
 let _pendingCartDetailOpen = false
+/** 展开请求的等待者：面板就绪后 resolve（调用方借此在结算栏 loading 结束后再提示） */
+let _resolvePendingOpen: (() => void) | null = null
 
 export function useCheckoutBar(items: Ref<CartItem[]>) {
   /** 结算跳转进行中标记，防止重复点击（navigateTo 成功后重置） */
@@ -51,17 +53,21 @@ export function useCheckoutBar(items: Ref<CartItem[]>) {
   }
 
   /**
-   * 再来一单：展开购物车面板。
+   * 再来一单：展开购物车面板，返回「面板就绪」的 Promise。
    * 面板 DOM 在结算栏组件内部，分包未挂载时先触发加载并挂起请求，
-   * 等组件 ready 后补执行展开。
+   * 等组件 ready 后补执行展开并 resolve；调用方（再来一单）借此在结算栏
+   * 懒加载的 loading 关闭之后再给出「部分商品已失效」提示，避免被 hideLoading 吞掉。
    */
-  function openCartDetail() {
+  function openCartDetail(): Promise<void> {
     if (_checkoutBarMounted) {
       cartDetailVisible.value = true
-      return
+      return Promise.resolve()
     }
     _pendingCartDetailOpen = true
     showCheckoutBar()
+    return new Promise<void>((resolve) => {
+      _resolvePendingOpen = resolve
+    })
   }
 
   /** 结算栏就绪（已挂载并完成滑入动画，组件 ready 事件）：补执行挂载前的展开请求 */
@@ -70,6 +76,11 @@ export function useCheckoutBar(items: Ref<CartItem[]>) {
     if (_pendingCartDetailOpen) {
       _pendingCartDetailOpen = false
       cartDetailVisible.value = true
+    }
+    if (_resolvePendingOpen !== null) {
+      const resolve = _resolvePendingOpen
+      _resolvePendingOpen = null
+      resolve()
     }
   }
 
