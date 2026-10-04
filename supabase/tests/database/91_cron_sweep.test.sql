@@ -40,8 +40,8 @@ select is(
 );
 select is(
   (select schedule from cron.job where jobname = 'order-sweep'),
-  '15 seconds',
-  '扫描周期是 15 秒（演示参数，pg_cron 的秒级间隔写法）'
+  '3 seconds',
+  '扫描周期是 3 秒（演示参数；Story 4.4 由 15 秒同名替换调小，pg_cron 的秒级间隔写法）'
 );
 select is(
   (select active from cron.job where jobname = 'order-sweep'),

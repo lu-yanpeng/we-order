@@ -428,3 +428,124 @@ pnpm lint             # 0 错误
 pnpm build:mp-weixin  # Build complete.（产物 use-orders.js 含全完成停轮询谓词）
 ```
 
+## Story 4.4 催单
+
+- 日期：2026-10-04
+- 环境：mp 侧 `pnpm test`（vitest 3.2.7）、`pnpm type-check`（vue-tsc 3.3.6）、`pnpm lint`、`pnpm build:mp-weixin`；supabase 侧 `supabase db reset`（重放全部迁移 + 种子）、`supabase test db`（19 文件 / 632 项）、`deno task verify:urge`（12 项断言）、`deno task verify:sweep`（8 项断言）
+- 范围：客户端催单真实调用（`urge_order` RPC）+「已催单」两态交互 + 演示参数 cron 3 秒迁移 + 测试 / 文档回写；**未含**：确认取杯与自动完成（4.5）、操作后补读（留给 4.5）、订阅（Epic 5）
+- 裁定记录（Ly，2026-10-04）：① 催单交互重设计——**不用提交 loading**，成功以「已催单」标记（按钮弱化）代替；客户端同一订单在 App 运行期内至多发起一次催单，已催过再点只重复提示「已催单，请耐心等待」（无提示会让用户以为系统坏了）；失败不标记、可重试；②「已催单」不落本地存储——催单不是核心功能（现实世界后厨收到催单也不保证先做），且 Phase 4 会重做催单（15 分钟未出餐才可催），现在不扩存储出口；③ 4.3 遗留的「催单后补读」裁定为**不做**——催单不改状态，可见性由 5 秒轮询保证，操作后刷新入口留给 4.5（确认取杯的「立即更新」是硬需求）
+- 服务端背景：`urge_order` 与 `92_urge.test.sql` 在 Phase 2 已交付（提前 `ready_at`、不改状态 / 取杯号、重复幂等、归属取自会话、拒绝不可区分）；本 Story 零函数改动，只接客户端 + 收口演示参数
+
+### 交付物
+
+| 类别 | 内容 |
+| --- | --- |
+| 修改（客户端） | `src/api/orders.ts`：新增 `urgeOrder(orderId)` → `POST /rest/v1/rpc/urge_order`（体只有 `p_order_id`、`session-required`）；头注释补催单职责 |
+| 新增（客户端） | `src/composables/use-urge.ts`：模块级「已催单 / 在飞」记录（按订单 id、运行期、跨页面共享）+ 单次调用 + 三种 toast（成功 / 失败类别 / 已催过重复提示） |
+| 修改（客户端） | `src/pages/home/components/order-card/index.vue`：新增 `urged` prop；制作中已催过显示「已催单」（弱化样式） |
+| 修改（客户端） | `src/sub-order-detail/order-detail/index.vue`：催单改经 `useUrge`（两态按钮、无 loading）；`src/pages/home/index.vue`：`@urge="urgeOrder(order.id)"` + `:urged="isUrged(order.id)"` |
+| 修改（客户端） | `src/pages/home/composables/use-orders.ts` / `src/sub-order-detail/composables/use-order-detail.ts`：删除占位 `urgeOrder` 与返回项（职责移交根 composable） |
+| 新增（后端） | `supabase/migrations/20261004091039_order_sweep_3s.sql`：`order-sweep` 同名替换为 3 秒（一行 `cron.schedule`） |
+| 修改（后端测试） | `supabase/tests/database/91_cron_sweep.test.sql`：扫描周期断言 15 → 3 秒 |
+| 修改（后端脚本） | `supabase/scripts/verify-urge.ts` / `verify-sweep.ts`：「一个扫描周期」注释与上界 15 → 3 秒 |
+| 新增（测试） | `src/composables/use-urge.test.ts`（5 项）；`src/api/orders.test.ts` +2（催单请求形状） |
+| 修改（文档） | `prd.md`（FR-P3-13 交互增量 + 修订记录）、`ARCHITECTURE-SPINE.md`（AD-17 + 形态表 + 修订记录）、`epics.md`（Story 4.4 AC 范围修订） |
+| 未改动 | 服务端 `urge_order` 函数与 `92_urge.test.sql`；门店行参数默认值（15/3/30）；`types/database.types.ts`（无 DDL 变化）；`use-order-status` 刷新编排（操作后补读留给 Story 4.5） |
+
+### 关键实现点
+
+1. **服务端催单零改动**：`urge_order` 只把 `ready_at` 提前到 `min(原定时刻, 催单时刻 + 门店 `urge_lead_seconds`)`，状态翻转仍由推进机制负责；重复 / 并发催单幂等；归属取自会话、不传用户标识。本 Story 只做客户端接入 + 演示参数收口，不新增第二套逻辑。
+2. **「已催单」是客户端运行期标记**（根 composable 的模块级状态，先例 `use-checkout-bar`）：成功才标记、失败不标记可重试；已催过再点不发请求、只 toast「已催单，请耐心等待」；在飞期间连点静默忽略（防重复靠标记与守卫，不靠 loading）。列表与详情共享同一份记录；App 重启即忘；不落本地存储（不新增 AD-3 存储出口）。
+3. **可见性上界**：催单只把到点时刻拨到 +3 秒，页面可见时由 5 秒轮询的读时推进感知（≤ 一个轮询周期 + 3 秒）；无人读取时由 3 秒兜底扫描推进。本 Story 不做催单后补读（裁定 ③），刷新编排不动。
+4. **cron 3 秒同名替换**：`cron.schedule('order-sweep', '3 seconds', ...)` 对已存在任务名是「更新」；`db reset` 重放全部迁移后 `cron.job` 仍只有一条 `order-sweep`；任务命令与两个机制（推进 + 超时完成）不动。
+5. **门店行参数**：15/3/30 是列默认值（seed 不覆盖），「新单 / 新催单取新值、已出单时刻不变」沿用 Phase 2 pgTAP 证据（`80_create_order` / `92_urge` / `93_complete`）；Story 4.3 手动清单按 3 秒扫描执行的前提由本 Story 以迁移固化。
+6. **失败不脏状态**：催单失败只 toast 类别文案（`utils/error-copy.ts` 唯一翻译，`invalid_status` / `order_not_found` / 网络类均可区分），不标记、不改订单展示状态。
+
+### 验收点与证据
+
+| Story 4.4 验收点 | 证据 |
+| --- | --- |
+| 调用服务端催单（`urge_order` RPC），界面即时反馈 toast「已通知门店加快制作」；≤ 一个轮询周期 + 3 秒内可见「待取餐」 | `orders.test.ts` 催单 2 项（URL / 体 / `session-required` / 无用户标识）；`use-urge.test.ts` 成功用例（toast 文案）；服务端时间行为：`verify:urge` 12 项断言（催单提前 4.1 秒被推进，≤ 12 秒上界）+ 手动 #1 |
+| 客户端「只调用一次」：成功标记「已催单」、无 loading；已催过再点不发请求只提示；失败可重试；标记运行期、跨页面共享（2026-10-04 范围修订） | `use-urge.test.ts` 5 项：成功标记与 toast、失败不标记可重试、在飞连点只发一次、已催过只提示、跨实例共享；构建产物 `composables/use-urge.js` 含两条文案；手动 #2 / #3 |
+| 服务端重复催单幂等：不会更早、不会延后、不报错（纵深防御） | `92_urge.test.sql`（Phase 2 基线）+ `verify:urge`「并发重复催单后推进时刻完全不变」 |
+| 非「制作中」不出现催单入口；被拒时提示明确（类别文案） | 卡片 `ACTION_META` 与详情模板按状态分支（构建产物含「已催单」与状态条件）；`use-urge.test.ts` 失败用例断言 `invalid_status` 文案；手动 #4 |
+| 催单失败不改变本地展示的状态 | `use-urge.test.ts` 失败用例（不标记、订单状态由读取路径持有）；手动 #5 |
+| cron 扫描周期以迁移同名替换为 3s（`order-sweep` 唯一）；门店参数对新单 / 新催单立即生效、已出单时刻不变；客户端不参与时间判定 | `db reset` 后查询 `cron.job`：1 条 `order-sweep` / `3 seconds` / active；`91_cron_sweep` 断言更新；`test db` 632 项全绿；`verify:sweep` 8 项（20.2 秒 ≤ 24 秒）；门店参数证据沿用 Phase 2 pgTAP（见关键实现点 5）；手动 #6 |
+| 类型契约与编译期保护不回归；既有行为不回归 | 无 DDL → `types/database.types.ts` 未动、`pnpm type-check` 0 错误；`pnpm test` 166 项全过（原 159 + 新增 7） |
+
+### 验证命令与输出（可复现）
+
+```bash
+cd mp
+pnpm test             # 15 文件 / 166 项全过（新增 7：api 2 + use-urge 5）
+pnpm type-check       # 0 错误
+pnpm lint             # 0 错误
+pnpm build:mp-weixin  # Build complete.
+
+cd ../supabase
+supabase db reset     # 重放全部迁移（含 20261004091039_order_sweep_3s.sql）+ 种子
+supabase test db      # 19 文件 / 632 项全过（Result: PASS）
+deno task verify:urge   # PASS：12 项断言全部通过
+deno task verify:sweep  # PASS：8 项断言全部通过
+
+# cron 同名替换证据（重建后仅一条任务）
+docker exec supabase_db_we-order psql -U postgres -d postgres \
+  -c "select count(*) as sweep_jobs from cron.job where command ilike '%advance_due_orders%'"
+docker exec supabase_db_we-order psql -U postgres -d postgres \
+  -c "select jobname, schedule, active from cron.job order by jobid"
+```
+
+> 首次在**未重建的存量库**上跑 `test db` 时 `40_menu_view` 因存量订单引用商品触发外键错误（测试数据以干净库为前提）——按项目惯例先 `db reset` 后全绿；非本 Story 引入（见 Story 4.1 遗留的批量建单演示数据）。
+
+```text
+✓ src/composables/use-urge.test.ts (5 tests)        # 成功 / 失败可重试 / 连点一次 / 已催过只提示 / 跨实例共享
+✓ src/api/orders.test.ts (14 tests)                 # 结算意图 6 + payOrder 2 + fetchOrders 2 + fetchOrderById 2 + urgeOrder 2
+✓ 其余 13 文件 147 项不回归
+
+Test Files  15 passed (15)
+     Tests  166 passed (166)
+```
+
+```text
+PASS：12 项断言全部通过（订单 202610041722423093 催单后 4.1 秒被兜底扫描推进为「待取餐」，取杯号 A-0001）
+  ✓ 提前到「催单时刻 + 门店配置的 3 秒」（催单请求往返占用 11 毫秒）
+  ✓ 并发重复催单后推进时刻完全不变（min 语义：既不更早也不更晚）
+  ✓ 推进发生在「到点 + 一个扫描周期」内（4.1 秒 ≤ 12 秒）
+  ✓ 推进后再次催单返回明确的 invalid_status（不是笼统的失败）
+
+PASS：8 项断言全部通过（订单 202610041723029932 在 20.2 秒后被兜底扫描推进，取杯号 A-0002）
+  ✓ 到点时刻 = 下单时刻 + 门店配置的 15 秒（推进时长没有被绕过）
+  ✓ 推进发生在「到点 + 一个扫描周期」内（20.2 秒 ≤ 24 秒）
+
+sweep_jobs = 1
+jobname     | schedule  | active
+order-sweep | 3 seconds | t
+```
+
+构建产物抽查（`dist/build/mp-weixin`）：`composables/use-urge.js` 含「已通知门店加快制作」「已催单，请耐心等待」；`api/orders.js` 含 `rest/v1/rpc/urge_order`；`pages/home/components/order-card/index.js` 与 `sub-order-detail/order-detail/index.js` 含「已催单」；`pages/home/index.js` 含 `urged` 属性绑定与 `isUrged`。
+
+### 手动验证清单（演示者执行）
+
+前置：本地栈在跑、已 `supabase db reset`（或 `migration up` 后确认 cron 为 3 秒）、`mp/.env.local` 指向本地栈、开发者工具已勾选「不校验合法域名」；建议先「清缓存并重启」；准备一张「制作中」订单（推进窗口 15 秒，下单后尽快操作；如需从容演示可按 addendum §F 临时调长门店推进时长）。
+
+| # | 操作 | 预期 | 结果 |
+| --- | --- | --- | --- |
+| 1 | 下单支付成功落到订单 tab → 立即点「催单」并保持可见等待 | toast「已通知门店加快制作」；按钮变「已催单」（弱化）、全程无 loading；≤ 8 秒内状态变「待取餐」（网络面板：每 5s 一条 `get_my_orders`） | 通过 |
+| 2 | 连点「催单」多次；变「已催单」后再点 | 连点只发出 1 条 `urge_order`（网络面板确认）；点「已催单」不再发请求、toast「已催单，请耐心等待」 | 通过 |
+| 3 | 在列表催过 → 打开该单详情；关闭并重启小程序后再打开（仍制作中，可先临时调长推进时长） | 详情按钮同样显示「已催单」（列表与详情共享）；重启后恢复为「催单」（运行期记忆、不落存储） | 通过 |
+| 4 | 待取餐 / 已完成订单（列表卡片与详情） | 不出现催单入口（按钮为确认取杯 / 再来一单） | 通过 |
+| 5 | 停后端（`supabase stop`）→ 点催单 → 起后端后点重试 | 失败：类别文案 toast（如「网络不可用，请检查网络后重试」）、按钮仍「催单」、订单状态不变；恢复后重试 → 成功标记 | 通过 |
+| 6 | 演示参数核对（SQL） | `select jobname, schedule from cron.job` → 仅一条 `order-sweep` / `3 seconds`；`select ready_delay_seconds, urge_lead_seconds, auto_complete_seconds from stores` → 15 / 3 / 30 | 通过 |
+
+> 2026-10-04 由演示者在微信开发者工具按上表执行（含 #3 的重启复验），6 项全部通过；Story 4.4 验收关闭。
+
+> 4.8 预演时，本表 #1 / #2 / #4 并入验证矩阵 #1（演示主路径：催单时效边界）与 #9（界面无回归：催单两态 / 连点单次调用）；#5 并入 #11（业务拒绝可区分）；#3 / #6 属专项抽查（运行期标记 / 演示参数核对）。
+
+### 有意偏差与遗留
+
+1. **「已催单」只记运行期内存**（裁定 ②）：不落存储、不落库；重启或换设备后同一制作中订单可再次催单（服务端幂等、无副作用）。Phase 4 重做催单（15 分钟未出餐才可催、后台提示）时由服务端状态承接，届时客户端标记可退休。
+2. **无 loading**（裁定 ①）：在飞期间连点无视觉反馈，极端慢网下按钮短暂「无反应」，失败有类别 toast；换取的是成功后的持久「已催单」状态表达，并与「重复点击只提示」的交互自洽。
+3. **操作后补读未做**（裁定 ③）：催单不改状态，可见性由轮询保证；`use-order-status` 的操作后刷新入口留给 Story 4.5（确认取杯的「立即更新」）。
+4. **门店行参数无代码改动**：默认值即 15/3/30；本 Story 只固化 cron 3 秒。演示前如需调整推进时长，按 addendum §F 的 `UPDATE` 方式，并记录还原方式。
+5. **手动清单 6 项已执行并全部通过（2026-10-04）**：真实链路（催单两态 / 连点单次调用 / 跨页面共享 / 待取餐无入口 / 失败可重试 / cron 参数核对）由演示者在开发者工具按上表执行，结果列已补——本项关闭。
+

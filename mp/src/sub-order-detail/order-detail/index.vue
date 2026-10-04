@@ -9,12 +9,14 @@
  * 刷新编排（AD-8）：onLoad 只登记 id，onShow 进入可见域（立即读一次并启动 5s 轮询，
  * onHide / onUnload 停表）；订单已完成（终态）后不再轮询。
  * 三种状态共用同一套卡片，仅顶部状态卡不同：
- * 制作中显示取杯号与催单，待取餐显示取杯号与确认取餐，已完成显示再来一单。
+ * 制作中显示取杯号与催单（已催过显示「已催单」，Story 4.4），待取餐显示取杯号与确认取餐，
+ * 已完成显示再来一单。
  */
 import { computed } from 'vue'
 import { onHide, onLoad, onPullDownRefresh, onShow, onUnload } from '@dcloudio/uni-app'
 import { useOrderDetail } from '@/sub-order-detail/composables/use-order-detail'
 import { useReorder } from '@/composables/use-reorder'
+import { useUrge } from '@/composables/use-urge'
 import LoadFailure from '@/components/load-failure/index.vue'
 import type { OrderStatus } from '@/types/api-contracts'
 
@@ -35,11 +37,13 @@ const {
   dispose,
   retryOrderDetail,
   refreshOrderDetail,
-  urgeOrder,
   confirmPickup,
 } = useOrderDetail()
 
 const { reorder } = useReorder()
+
+/** 催单（Story 4.4）：模块级共享标记——与列表一致，已催过显示「已催单」、再点只提示 */
+const { isUrged, urge: urgeOrder } = useUrge()
 
 /** 状态卡文案与状态色（FR-13：制作中-蓝 / 待取餐-金 / 已完成-绿） */
 const STATUS_VIEW: Record<OrderStatus, { title: string; titleClass: string; desc: string }> = {
@@ -123,13 +127,16 @@ onPullDownRefresh(async () => {
           </text>
         </view>
 
-        <!-- 状态操作（Phase 1 仅轻提示，功能待实现） -->
+        <!-- 状态操作（制作中：催单——已催过显示「已催单」并弱化，再点只提示不发请求） -->
         <view
           v-if="order.status === 'cooking'"
-          class="flex h-[76rpx] w-full items-center justify-center rounded-button border border-ink-soft"
-          @click="urgeOrder"
+          class="flex h-[76rpx] w-full items-center justify-center rounded-button border"
+          :class="isUrged(order.id) ? 'border-border-hairline opacity-60' : 'border-ink-soft'"
+          @click="urgeOrder(order.id)"
         >
-          <text class="leading-[1] font-bold text-[26rpx] text-ink-soft">催单</text>
+          <text class="leading-[1] font-bold text-[26rpx] text-ink-soft">
+            {{ isUrged(order.id) ? '已催单' : '催单' }}
+          </text>
         </view>
         <view
           v-else-if="order.status === 'pickup'"

@@ -12,7 +12,8 @@
  *    FR-P3-12）——空态与「全部已完成」停止轮询（FR-P3-10 + 2026-10-04 补记）、
  *    连续失败 3 次降级为手动刷新入口；
  * 3. 状态机与交互：加载 → 失败 → 空 → 内容；骨架 / 下拉刷新 / 触底分页；
- *    卡片操作：进入订单详情、催单、确认取杯（催单 / 取杯的真实调用见 Story 4.4 / 4.5）。
+ *    卡片操作：进入订单详情、确认取杯（催单由根 `use-urge` 承接，Story 4.4；
+ *    取杯的真实调用见 Story 4.5）。
  *
  * 状态判定顺序固定为「加载 → 失败 → 空 → 内容」（spine 最小 UI 规范）：
  * - 加载：首屏无数据时延迟 250ms 显示骨架（快网不闪烁；刷新 / 重试不回骨架）；
@@ -216,11 +217,6 @@ export function useOrders() {
     })
   }
 
-  /** 催单（FR-12：真实调用见 Story 4.4） */
-  const urgeOrder = () => {
-    uni.showToast({ title: '已通知门店加快制作', icon: 'none' })
-  }
-
   /** 确认取杯（真实调用见 Story 4.5） */
   const confirmPickup = () => {
     uni.showToast({ title: '确认取杯功能开发中', icon: 'none' })
@@ -241,7 +237,6 @@ export function useOrders() {
     refreshOrders,
     loadMoreOrders,
     goToOrderDetail,
-    urgeOrder,
     confirmPickup,
   }
 }

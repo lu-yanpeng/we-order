@@ -3,7 +3,7 @@
  * 首页 — 点餐与订单双 Tab 页面
  *
  * 遵循 AD-3：页面仅负责组件编排和布局，
- * 业务逻辑由 useProducts / useSpecSheet / useOrders / useCart / useReorder / useCheckoutBar / useHomeTabs 七个 Composable 承载。
+ * 业务逻辑由 useProducts / useSpecSheet / useOrders / useUrge / useCart / useReorder / useCheckoutBar / useHomeTabs 八个 Composable 承载。
  * 遵循 AD-8：订单可见域 = 订单 tab 激活 且页面可见；经 useOrders 的 setActive 接入
  * 刷新编排（进入立即读一次 + 5s 轮询，离开停表；Story 4.3）。
  */
@@ -16,6 +16,7 @@ import { useSpecSheet } from './composables/use-spec-sheet'
 import { useOrders } from './composables/use-orders'
 import { useCart } from '@/composables/use-cart'
 import { useReorder } from '@/composables/use-reorder'
+import { useUrge } from '@/composables/use-urge'
 import { useCheckoutBar } from '@/composables/use-checkout-bar'
 import { useHomeTabs } from '@/composables/use-home-tabs'
 import ProductCard from './components/product-card/index.vue'
@@ -96,11 +97,13 @@ const {
   refreshOrders,
   loadMoreOrders,
   goToOrderDetail,
-  urgeOrder,
   confirmPickup,
 } = useOrders()
 
 const { reorder } = useReorder()
+
+/** 催单（Story 4.4）：模块级共享标记——列表与详情一致，已催过显示「已催单」、再点只提示 */
+const { isUrged, urge: urgeOrder } = useUrge()
 
 /** 点击商品加号 → 打开规格弹窗 */
 const handleAddToCart = (product: MenuProduct) => {
@@ -298,8 +301,9 @@ onHide(() => {
                 v-for="order in orders"
                 :key="order.id"
                 :order="order"
+                :urged="isUrged(order.id)"
                 @click="goToOrderDetail(order)"
-                @urge="urgeOrder"
+                @urge="urgeOrder(order.id)"
                 @confirm-pickup="confirmPickup"
                 @reorder="reorder(order)"
               />

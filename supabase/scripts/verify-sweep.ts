@@ -9,7 +9,7 @@
 //   2. 轮询用的是「裸表读」（PostgREST 直接 SELECT public.orders），不是订单读取函数——
 //      Phase 2 的读时推进只存在于服务端读取函数里（Story 5.1），裸表读不会触发推进；
 //   3. 订单在「到点 + 一个扫描周期」内自己变成「待取餐」，只可能来自 cron 兜底扫描
-//      （本地栈的 pg_cron 任务，见迁移 20260922130629_advance_due_orders_cron.sql）；
+//      （本地栈的 pg_cron 任务；扫描周期 3 秒，Story 4.4 同名替换）；
 //      取杯号在下单时已拿到，推进只改状态、不改写它（Story 4.4）。
 //
 // 建单统一经 pay-order（客户端创建订单的唯一入口，Story 3.3）——脚本与小程序走同一条路径。
@@ -194,7 +194,7 @@ try {
     .single();
   if (storeError !== null) throw storeError;
   console.log(
-    `门店时区 ${store.timezone}，推进时长 ${store.ready_delay_seconds} 秒；扫描周期 15 秒（见迁移声明）`,
+    `门店时区 ${store.timezone}，推进时长 ${store.ready_delay_seconds} 秒；扫描周期 3 秒（见迁移声明）`,
   );
 
   // 1) 真实 HTTP + 真实会话经 pay-order 下一单（客户端创建订单的唯一入口）
@@ -286,8 +286,8 @@ try {
     `订单被周期扫描推进为「待取餐」（观察用时 ${(elapsedMs / 1000).toFixed(1)} 秒）`,
   );
 
-  // 上界：到点(15s) + 一个扫描周期(15s) + 轮询间隔(1s) + 调度抖动余量
-  const latestFlipMs = (store.ready_delay_seconds + 15) * 1000 + 6_000;
+  // 上界：到点 + 一个扫描周期(3s) + 轮询间隔(1s) + 调度抖动余量
+  const latestFlipMs = (store.ready_delay_seconds + 3) * 1000 + 6_000;
   check(
     elapsedMs <= latestFlipMs,
     `推进发生在「到点 + 一个扫描周期」内（${(elapsedMs / 1000).toFixed(1)} 秒 ≤ ${(latestFlipMs / 1000).toFixed(0)} 秒）`,

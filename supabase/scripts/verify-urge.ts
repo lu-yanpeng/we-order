@@ -7,7 +7,7 @@
 //   2. 催单 → 裸表读确认 ready_at 被提前到「催单时刻 + urge_lead_seconds」、状态仍制作中；
 //   3. 并发再催两次 → 请求都成功、ready_at 完全不变（min 语义：不更早也不更晚）；
 //   4. 之后只做裸表读轮询（不触发读时推进）：订单在「新的到点时刻 + 一个扫描周期」内被兜底扫描
-//      推进——改状态的只可能是周期任务（见迁移 20260922130629_advance_due_orders_cron.sql）；
+//      推进——改状态的只可能是周期任务（扫描周期 3 秒，Story 4.4 同名替换）；
 //   5. 推进后再次催单 → 明确的 invalid_status。
 //
 // 建单统一经 pay-order（客户端创建订单的唯一入口，Story 3.3）——脚本与小程序走同一条路径。
@@ -26,7 +26,7 @@ type Client = SupabaseClient<Database>;
 
 /** 轮询间隔：秒级即可分辨「到点后第几个扫描周期被推进」。 */
 const POLL_INTERVAL_MS = 1_000;
-/** 轮询上限：扫描周期 15 秒 + 轮询间隔 + 容错。 */
+/** 轮询上限：催单提前量 + 扫描周期 + 轮询间隔 + 容错（宽松上限，避免本地调度抖动）。 */
 const TIMEOUT_MS = 45_000;
 
 async function loadLocalConfig(): Promise<
@@ -296,8 +296,8 @@ try {
     `推进发生在新的到点时刻之后（催单后 ${(flipElapsedMs / 1_000).toFixed(1)} 秒 ≥ ${store.urge_lead_seconds} 秒）`,
   );
   check(
-    flipElapsedMs <= (store.urge_lead_seconds + 15) * 1_000 + 6_000,
-    `推进发生在「到点 + 一个扫描周期」内（${(flipElapsedMs / 1_000).toFixed(1)} 秒 ≤ ${store.urge_lead_seconds + 15 + 6} 秒）`,
+    flipElapsedMs <= (store.urge_lead_seconds + 3) * 1_000 + 6_000,
+    `推进发生在「到点 + 一个扫描周期」内（${(flipElapsedMs / 1_000).toFixed(1)} 秒 ≤ ${store.urge_lead_seconds + 3 + 6} 秒）`,
   );
   check(
     finalRow.pickup_code === order.pickup_code,

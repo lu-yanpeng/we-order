@@ -4,12 +4,15 @@
  *
  * 纯展示组件：按订单状态渲染状态标签、取杯提示块与底部操作按钮，
  * 操作只向外 emit，不涉及数据读写（AD-2：组件不依赖 composable / store）。
+ * 制作中且已催过单时按钮显示「已催单」（弱化样式；再点只提示不发请求，由调用方承接——Story 4.4）。
  */
 import { computed } from 'vue'
 import type { OrderListItem, OrderStatus } from '@/types/api-contracts'
 
 const props = defineProps<{
   order: OrderListItem
+  /** 已成功催过单（运行期标记，列表与详情共享；Story 4.4） */
+  urged?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -40,7 +43,13 @@ const ACTION_META: Record<OrderStatus, { label: string; class: string }> = {
 }
 
 const statusMeta = computed(() => STATUS_META[props.order.status])
-const actionMeta = computed(() => ACTION_META[props.order.status])
+/** 按钮元数据：制作中且已催过 → 「已催单」（弱化样式；点击由页面转给 use-urge 的重复提示） */
+const actionMeta = computed(() => {
+  if (props.order.status === 'cooking' && props.urged) {
+    return { label: '已催单', class: 'border-border-hairline text-ink-soft opacity-60' }
+  }
+  return ACTION_META[props.order.status]
+})
 
 /** 就餐方式文案 */
 const modeLabel = computed(() => (props.order.dining_mode === 'takeout' ? '打包外带' : '店内堂食'))

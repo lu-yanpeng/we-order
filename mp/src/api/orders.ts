@@ -8,7 +8,8 @@
  *    客户端创建订单的唯一入口，金额 / 订单号 / 取杯号 / 归属全部由服务端产出；
  * 3. 订单详情：经服务端读取路径 `get_my_order_detail`（Story 4.2；读时推进、只含本人订单，
  *    非本人 / 不存在同一类别 `order_not_found`，不泄露订单存在性）；
- * 4. 结算意图（幂等键）生命周期（Story 3.4；AD-10）——`weorder_checkout_intent` 唯一出口。
+ * 4. 催单：经服务端 `urge_order`（Story 4.4）——只提前推进时刻、不直接改状态；
+ * 5. 结算意图（幂等键）生命周期（Story 3.4；AD-10）——`weorder_checkout_intent` 唯一出口。
  *
  * 订单侧 Mock 数据源（`mock/orders.ts`）已随 Story 4.2 删除；本文件不存在任何
  * Mock 读写路径或回退开关，读取只有服务端一条通路（FR-P3-3 整体收口）。
@@ -89,6 +90,29 @@ export function payOrder(request: CreateOrderRequest) {
   return transport.Post<OrderResult>('/functions/v1/pay-order', request, {
     meta: { auth: 'session-required' },
   })
+}
+
+// ── 订单操作：催单（Story 4.4；FR-P3-13） ───────────────────────────────────
+
+/**
+ * 催单（`urge_order` RPC）：把本人「制作中」订单的推进时刻提前到
+ * `min(原定时刻, 服务端时钟 + 门店配置的催单提前量)`。
+ *
+ * - `session-required`：先会合登录 / 续期，401 时自动续期并重放一次（AD-3 / AD-4）；
+ * - 请求体只有订单 id，身份与服务端归属谓词同源（归属不可伪造）；
+ * - 非本人 / 不存在返回同一类别 `order_not_found`，本人非「制作中」返回 `invalid_status`
+ *   （AD-13，不泄露存在性）；失败经对接层归一为 `AppError`，文案走 `utils/error-copy.ts`；
+ * - 服务端本身幂等（重复调用不报错、不会更早也不会更晚）；客户端「已催单」标记只约束
+ *   本端不重复发送（运行期记忆，不落本地存储；Story 4.4 交互设计）。
+ *
+ * 返回 alova Method：可 `await`，也可用 `useRequest` 包裹（AD-5）。
+ */
+export function urgeOrder(orderId: string) {
+  return transport.Post<OrderResult>(
+    '/rest/v1/rpc/urge_order',
+    { p_order_id: orderId },
+    { meta: { auth: 'session-required' } },
+  )
 }
 
 // ── 结算意图（幂等键）（Story 3.4；AD-10） ─────────────────────────────────

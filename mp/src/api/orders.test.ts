@@ -8,6 +8,8 @@
  * 3. `fetchOrders`：断言读取走服务端 RPC（默认 20 条、游标原样回传、`session-required`），
  *    不发起真实网络请求；
  * 4. `fetchOrderById`：断言详情读取走服务端 RPC（订单 id 是唯一参数、`session-required`），
+ *    不发起真实网络请求；
+ * 5. `urgeOrder`：断言催单走服务端 RPC（订单 id 是唯一参数、`session-required`、无用户标识），
  *    不发起真实网络请求。
  *
  * 生成 / 序列化 / 校验 / 决策的纯函数测试见 `utils/checkout-intent.test.ts`。
@@ -27,6 +29,7 @@ import {
   fetchOrderById,
   fetchOrders,
   payOrder,
+  urgeOrder,
 } from './orders'
 
 /** 支付接口调用经 mock 的对接层断言；`vi.hoisted` 保证 mock 工厂先于模块导入生效 */
@@ -282,6 +285,43 @@ describe('fetchOrderById（Story 4.2；FR-P3-11 / AR-P3-18）', () => {
 
   it('请求体只有订单 id：不传用户标识（归属由服务端会话决定，FR-P3-11）', () => {
     void fetchOrderById(detail.id)
+
+    const [, body] = postMock.mock.calls[0] as [string, Record<string, unknown>]
+    expect(Object.keys(body)).toEqual(['p_order_id'])
+  })
+})
+
+describe('urgeOrder（Story 4.4；FR-P3-13）', () => {
+  /** 服务端催单返回 = 订单对外形状（本端不消费返回值，仅确认调用成功） */
+  const order: OrderResult = {
+    id: '33333333-3333-4333-8333-333333333333',
+    order_number: '202610041200000001',
+    status: 'cooking',
+    dining_mode: 'dinein',
+    packaging_fee: 0,
+    total_amount: 32,
+    notes: '无备注要求',
+    pickup_code: 'B-0001',
+    created_at: '2026-10-04 12:00:00',
+  }
+
+  beforeEach(() => {
+    postMock.mockReset()
+    postMock.mockResolvedValue(order)
+  })
+
+  it('经对接层 POST urge_order：订单 id 是唯一参数、session-required', async () => {
+    await expect(urgeOrder(order.id)).resolves.toEqual(order)
+
+    expect(postMock).toHaveBeenCalledTimes(1)
+    const [url, body, config] = postMock.mock.calls[0] as [string, Record<string, unknown>, unknown]
+    expect(url).toBe('/rest/v1/rpc/urge_order')
+    expect(body).toEqual({ p_order_id: order.id })
+    expect(config).toEqual({ meta: { auth: 'session-required' } })
+  })
+
+  it('请求体只有订单 id：不传用户标识、时间与金额（归属与提前量由服务端决定）', () => {
+    void urgeOrder(order.id)
 
     const [, body] = postMock.mock.calls[0] as [string, Record<string, unknown>]
     expect(Object.keys(body)).toEqual(['p_order_id'])
