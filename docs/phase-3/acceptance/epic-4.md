@@ -264,3 +264,167 @@ Test Files  12 passed (12)
 6. **手动 #8 的过渡失败态关闭**：Story 4.1 手动 #8 记录的「详情页显示订单不存在」过渡态随本 Story 切换真实读取关闭；`fetchOrderById` 不再有返回 `undefined` 的分支。
 7. **再来一单的编排无 loading 反馈**（沿袭 Phase 1）：读取详情 / 目录期间只有 `reordering` 守卫防重复，不弹 loading；慢网下的可感知等待由 4.8 预演观察，若需要再加（属交互增量，需回写文档）。
 
+## Story 4.3 刷新编排与状态应用单调（轮询）
+
+- 日期：2026-10-04
+- 环境：mp 侧 `pnpm test`（vitest 3.2.7）、`pnpm type-check`（vue-tsc 3.3.6）、`pnpm lint`、`pnpm build:mp-weixin`；**后端零改动**（轮询只消费既有读取路径 `get_my_orders` / `get_my_order_detail`；推进时长 / 扫描周期等演示参数的调整属 Story 4.4 的验收项）
+- 范围：新增刷新编排（根 `composables/use-order-status.ts`：5s 轮询 / 可见域 / 串行化 / 失败降级 / 订阅接入点）+ 状态应用单调纯函数（`utils/order-status.ts`：排序 / 合并 / 序号判定）+ 列表与详情接入（seq 铸造、自动合并与显式刷新、分页取号、空态 / 终态停轮询）+ 页面接线（首页 `setActive`；详情 `onShow` / `onHide` / `onUnload`）；**未含**：订阅建立与回退实装（Epic 5）、催单 / 确认取杯真实调用（4.4 / 4.5）、错误提示收口（4.6）、订单图片（4.7）
+- 裁定记录（Ly，2026-10-04）：① 降级恢复——任一读取成功（下拉 / 重试 / 重新进入可见域）即清零并恢复轮询；② 失败计数——进入 / 轮询 / 手动统一计数，连续 3 次即停轮询（首读失败占额度）；③ 无意义轮询停止范围——空列表停 + 详情「已完成」停；列表「全部已完成」保留轮询（按字面，不加特判）；④ 在飞读取时的手动刷新——等待在飞读取完成后补跑一次（不丢弃、不并发）；⑤ 详情首读单一触发路径——`onLoad` 只登记 id，首读由 `onShow → setActive(true)` 发起（遮罩判据改为「本页首个读取」）
+
+### 交付物
+
+
+| 类别 | 内容 |
+| --- | --- |
+| 新增（客户端） | `src/utils/order-status.ts`：纯函数——`statusRank` / `advanceStatus`（cooking < pickup < completed、completed 终态、同值幂等）/ `applyOrderRead`（单条序号门 + 状态单调）/ `mergeOrderList`（只增不删合并）/ `replaceOrderList`（整表替换、同 id 仍单调、applied 重置）/ `appendOrderPage`（分页追加去重）；`AppliedSeqMap` 按订单 id 记录已应用序号 |
+| 新增（客户端） | `src/composables/use-order-status.ts`：刷新编排（根，主包 / 分包共用）——`setActive`（进入立即读 + 启动 5s 链式轮询、离开停表）/ `setSubscriptionHealthy`（Epic 5 接入点）/ `runManualRead`（显式刷新 + 重置计时）/ `nextSeq`（统一铸造序号，供分页）/ `dispose`（卸载停表）/ `isPolling`（开发期观察）；连续失败 3 次降级、串行化（自动合并 / 手动补跑） |
+| 修改（客户端） | `src/pages/home/composables/use-orders.ts`：读取入口改为 `readOrders(seq, kind)`——`auto` 走 `mergeOrderList`（序号门 + 只增不删）、`manual` 走 `replaceOrderList`（整表替换 + 游标重置）；轮询编排接线（`shouldPoll = !isEmpty`）；分页经 `nextSeq()` + `appendOrderPage`；`loadOrders` 退役、对外暴露 `setActive` |
+| 修改（客户端） | `src/pages/home/index.vue`：`watch(ordersInDomain)` 由直接 `loadOrders` 改为 `setOrdersActive`（编排入口，语义与 4.1 相同：进入 / 切回 tab / 回前台立即读） |
+| 修改（客户端） | `src/sub-order-detail/composables/use-order-detail.ts`：读取入口改为 `readOrder(seq, kind)`——`applyOrderRead` 单条序号门 + 单调；编排接线（`shouldPoll` = 有 id 且未完成）；`prepareOrderDetail` 只登记 id；`setActive` / `dispose` / `retryOrderDetail` / `refreshOrderDetail` 走编排 |
+| 修改（客户端） | `src/sub-order-detail/order-detail/index.vue`：`onLoad` 只登记 id；`onShow` / `onHide` / `onUnload` 驱动 `setActive` / `dispose` |
+| 新增（测试） | `src/utils/order-status.test.ts`（11 项）；`src/composables/use-order-status.test.ts`（10 项，fake timers 驱动轮询 / 降级 / 订阅回退 / 串行化） |
+| 修改（测试） | `src/pages/home/composables/use-orders.test.ts`（9 → 15 项：全部经 `setActive` 入口；新增轮询 5s 刷新、状态单调、轮询合并、轮询失败静默、空态停轮询、离开 / 回台） |
+| 修改（测试） | `src/sub-order-detail/composables/use-order-detail.test.ts`（8 → 13 项：单一触发路径；新增轮询 5s 刷新、completed 停轮询、状态单调、自动失败静默、回台立即读） |
+| 修改（文档） | 本验收记录 |
+| 未改动 | 后端全部（迁移 / 函数 / 类型 / 脚本）；`types/api-contracts.ts`；`api/orders.ts`（读取接口形状不变） |
+
+### 关键实现点
+
+1. **职责分层**：纯逻辑（排序 / 合并 / 序号判定）唯一在 `utils/order-status.ts`（可单测）；调度与生命周期在根 `composables/use-order-status.ts`；`use-orders` / `use-order-detail` 只实现「读取 + 应用 + 呈现」，读取入口带 `seq` 与 `kind`；`api/` 与 `core/` 不持有序号（AD-7）。
+2. **单计时器 + 链式 5s**：`scheduleNextPoll` 只在读取链的 `finally` 调用——读取完成后才排下一次；任何新读取先取消旧计时器（重置计时）。同一视图至多一个计时器、至多一个在飞读取（NFR-P3-1「不产生请求堆积」）。
+3. **串行化**：在飞时自动读取（进入 / 轮询）合并跳过（在飞读取已覆盖本次意图）；手动读取登记补跑，在飞完成后同一读取链内执行——兑现「下拉必然读取一次」且不并发、不排队堆积。
+4. **失败降级**：`execute` 统一计数（成功清零 / 失败 +1，含 `read` 抛异常兜底）；连续 3 次 `canPoll` 为 false → 停止轮询、保留数据、手动入口仍在；任一成功（含重新进入可见域）清零并恢复（裁定 ①②）。
+5. **无意义轮询停止**：`shouldPoll` 谓词——列表 `!isEmpty`（空态停；失败态继续静默重试以自愈，首屏无数据失败 → 页面失败态）；详情 `orderId !== '' && status !== 'completed'`（completed 终态停；空 id 本地守卫不轮询）（裁定 ③）。
+6. **详情单一触发路径**：`onLoad` 只登记 id；首个读取由 `onShow → setActive(true)` 发起；`loadedOnce` 判据保证只有首个读取弹 250ms 全屏遮罩（重试 / 下拉 / 轮询不弹）；`onUnload → dispose()` 防残留计时器（裁定 ⑤）。
+7. **订阅接入点**：`setSubscriptionHealthy(true)` 停表 / `false` 回退排定；默认未启用 → 轮询为唯一刷新路径；「SUBSCRIBED 前先补读一次」由 Epic 5 在置位前完成（本 Story 只留状态机接入点）。
+8. **列表游标口径不回归**：`auto` 合并沿用「本地已有可续翻尾部则保留原游标」（4.1 评审修复）；轮询读取同样只增不删，不冲掉已翻页、不重新解锁「已到底」。
+
+### 验收点与证据
+
+| Story 4.3 验收点 | 证据 |
+| --- | --- |
+| 推进时刻到点后 ≤ 一个轮询周期 + 1 秒自动更新（间隔 5s） | `use-order-status.test.ts`：进入立即读 + `advanceTimersByTimeAsync(5000)` 触发第二次读取；`use-orders.test.ts`「轮询刷新」、`use-order-detail.test.ts`「轮询刷新」；真实链路（15s 推进到点 ≤6s 可见）属手动 #1 / #2；构建产物 `use-order-status.js` 含 `setTimeout(..., 5e3)` |
+| 进入 / 切 tab / onShow 立即读 + 重置计时；隐藏 / 离开停表；单计时器、无堆积 | 编排测试「重新进入重置计时」「离开停表」「串行化」；页面接线：首页 `watch(ordersInDomain) → setActive`、详情 `onShow` / `onHide` / `onUnload`（构建产物断言）；手动 #2 / #3 |
+| 下拉刷新按显式刷新处理：立即读一次并重置轮询计时，与轮询 / 订阅共享同一状态应用路径（单调），不产生堆积 | `runManualRead`（manual kind；完成后重排计时；在飞时补跑）；列表 manual → `replaceOrderList` + 游标重置（既有用例不回归）；详情 manual → 同一 `applyOrderRead` 路径；手动 #4 |
+| 「订阅健康 → 不轮询」的接入点（订阅未启用时轮询为唯一刷新路径） | 编排测试「订阅健康 → 不轮询 / 恢复回退」；产物含 `setSubscriptionHealthy`；Epic 5 消费；默认状态 `subscriptionHealthy = false` |
+| seq 单调：只接受更大 seq 的结果、旧响应不覆盖；completed 终态；重复应用幂等 | `order-status.test.ts` 11 项（序号门 / 单调 / 终态 / 幂等）；`use-orders.test.ts`「状态单调」（pickup 不被 cooking 覆盖）；`use-order-detail.test.ts`「completed 停轮询」「状态单调」 |
+| 列表只增不删（已知 id 更新、未知 id 插入、陈旧读取只合并不删除）；整表替换只由首屏 / 显式刷新 / 分页重置；状态按页实例持有 | `mergeOrderList` / `replaceOrderList` / `appendOrderPage` 用例；`use-orders.test.ts`「轮询读取同样只增不删」；`appliedSeqs` 为 composable 实例内 `Map`（页间不共享） |
+| 纯函数进单元测试清单 | `src/utils/order-status.test.ts`（11 项） |
+| 轮询失败静默重试 3 次；仍失败停止轮询、降级为手动刷新入口（保留已有数据）；首屏无数据失败 → 页面失败态；失败不叠加 | 编排「连续失败达到上限即降级」（3 次后不再自动读、手动仍可、成功恢复）；`use-orders.test.ts`「轮询失败：静默保留数据」；`use-order-detail.test.ts`「自动读取失败静默」；无数据失败态既有用例保留（自动失败不 toast）；手动 #7 |
+| 类型契约与编译期保护不回归；既有行为不回归 | `pnpm test` 158 项全过（原 126 + 新增 32：utils 11 + 编排 10 + 列表 6 + 详情 5）；`pnpm type-check` 0 错误；`grep -rn "loadOrders\|initOrderDetail\|setInterval" src/` 0 命中（旧入口退役、无 setInterval） |
+
+### 验证命令与输出（可复现）
+
+```bash
+cd mp
+pnpm test             # 14 文件 / 158 项全过（新增 32 项）
+pnpm type-check       # 0 错误
+pnpm lint             # 0 错误
+pnpm build:mp-weixin  # Build complete.
+
+# 旧读取入口 / 轮询实现证据
+grep -rn "loadOrders\|initOrderDetail\|setInterval" src/   # 0 命中（轮询为链式 setTimeout）
+grep -rln "useOrderStatus" src/ | grep -v test             # 编排唯一实现 + 两个消费点（use-orders / use-order-detail）
+
+# 构建产物
+ls dist/build/mp-weixin/composables/use-order-status.js dist/build/mp-weixin/utils/order-status.js
+# pages/home/index.js 含 setActive；sub-order-detail/order-detail/index.js 含 onShow / onHide / onUnload / prepareOrderDetail / dispose
+```
+
+```text
+✓ src/utils/order-status.test.ts (11 tests)                       # 纯函数：排序 / 单调 / 序号门 / 合并 / 替换 / 追加
+✓ src/composables/use-order-status.test.ts (10 tests)             # 编排：轮询 / 重置 / 降级 / 订阅回退 / 串行化 / dispose
+✓ src/pages/home/composables/use-orders.test.ts (15 tests)        # 9 项改造为 setActive 入口 + 6 项轮询 / 单调 / 空态
+✓ src/sub-order-detail/composables/use-order-detail.test.ts (13)  # 8 项改造为单一触发路径 + 5 项轮询 / 终态 / 单调
+✓ 其余 10 文件 109 项不回归
+
+Test Files  14 passed (14)
+     Tests  158 passed (158)
+```
+
+构建产物抽查：`composables/use-order-status.js` 含 `setTimeout(()=>{o=null,m.value=!1,d()&&h("auto")},5e3)`（5s 链式轮询）与 `u<3`（连续失败 3 次降级）；`utils/order-status.js` 为纯函数模块；`pages/home/index.js` / `sub-order-detail/order-detail/index.js` 已产出接线代码。
+
+### 手动验证清单（演示者执行）
+
+前置：本地栈在跑（`supabase start`）、`mp/.env.local` 指向本地栈、开发者工具已勾选「不校验合法域名」；准备至少一张可推进的订单（下单后门店 15s 推进、扫描周期 3s）。
+
+| # | 操作 | 预期 | 结果 |
+| --- | --- | --- | --- |
+| 1 | 下单支付成功落到订单 tab（制作中），保持可见等待到点 | 不手动刷新，状态在 ≤ 一个轮询周期 + 1s（≤6s）内变「待取餐」；网络面板可见每 5s 一条 `get_my_orders` | 通过 |
+| 2 | 打开一张「制作中」订单详情并保持可见 | 到点后 ≤6s 自动更新；网络面板每 5s 一条 `get_my_order_detail`；打开 / 进入已完成单后读取停止（终态停轮询） | 通过 |
+| 3 | 切到点餐 tab / 退到后台，再切回 / 回前台 | 离开后网络面板不再有订单读取（停轮询）；切回 / 回前台立即出现 1 条读取（重置计时） | 通过 |
+| 4 | 订单 tab 下拉刷新 | 立即 1 条 `get_my_orders`（整表替换、游标重置）；指示器收起后下一次轮询在约 5s 后 | 通过 |
+| 5 | 造 >20 单并触底加载第二页后，停在列表等待轮询 | 轮询只读第一页合并：已翻出的第二页不消失、底部「--- 没有更多了 ---」不重新解锁 | 通过 |
+| 6 | 服务端造一张单的异常旧状态（SQL 见下）后等待轮询 | 页面保持原状态不倒退（「待取餐」/「已完成」标签不回「制作中」）；随后按还原 SQL 恢复；属异常构造，单调守护已由单测确定性覆盖 | 通过 |
+| 7 | 停后端（`supabase stop`）留在列表（已有数据），观察约 20s 后起后端 | 失败期间保留数据、无 toast 刷屏；连续 3 次失败后停止轮询（网络面板不再有请求）；起后端后下拉刷新成功并恢复轮询 | 通过 |
+| 8 | 全新身份进订单 tab（空态） | 显示「还没有订单」+「去点餐」；网络面板无轮询请求（空态不轮询） | 通过 |
+
+> **#6 的异常构造 / 还原 SQL**（Supabase Studio → SQL Editor 执行，只动本地演示数据；已在本地栈用「事务 + 回滚」验证可执行、不报约束错误）：
+>
+> ```sql
+> -- 0) 先查最近几单，挑一张「待取餐」或「已完成」的，复制它的 id（同理记下原状态）
+> select id, order_number, status, pickup_code, ready_at, auto_complete_at
+> from public.orders order by created_at desc limit 5;
+>
+> -- 1) 构造「服务端返回旧状态」：把这单假装改回「制作中」
+> --    completed_at / auto_complete_at 必须跟着清空（表约束要求：
+> --    「已完成 ⇔ 有完成时刻」「非制作中 ⇔ 有自动完成时刻」），
+> --    ready_at 推后 1 小时防止服务端读时推进立刻纠正回「待取餐」
+> update public.orders
+> set status = 'cooking',
+>     auto_complete_at = null,
+>     completed_at = null,
+>     ready_at = now() + interval '1 hour'
+> where id = '<订单 id>';
+>
+> -- 2) 还原（二选一，按第 0 步看到的原状态执行）
+> -- 2a) 原为「待取餐」：还原成待取餐，30 秒后由服务端自动完成
+> update public.orders
+> set status = 'pickup',
+>     completed_at = null,
+>     auto_complete_at = now() + interval '30 seconds'
+> where id = '<订单 id>';
+> -- 2b) 原为「已完成」：还原成已完成
+> update public.orders
+> set status = 'completed',
+>     completed_at = now(),
+>     auto_complete_at = now()
+> where id = '<订单 id>';
+> ```
+>
+> 说明：构造后在订单列表 / 详情保持可见，等至少 10 秒（2 个轮询周期）观察——预期状态标签保持不倒退（「待取餐」/「已完成」不回到「制作中」），然后按 2a / 2b 还原。取杯号恒有值、不受本操作影响。
+
+> 2026-10-04 由演示者在微信开发者工具按上表执行（含 #6 异常旧状态构造与还原复验），8 项全部通过；Story 4.3 验收关闭。
+
+> 4.8 预演时，本表 #1 / #2 / #5 / #7 并入验证矩阵 #1（演示主路径：轮询可见性）、#13（自动完成感知）、#9（界面无回归：停轮询 / 下拉重置 / 分页不被轮询冲掉）；#3 / #4 属刷新策略专项。
+
+### 有意偏差与遗留
+
+1. **列表轮询只读第一页**（沿用 4.1 的第一页合并口径）：已翻出的旧页订单状态变化不在轮询范围内——演示主路径的活跃单恒在第一页；扩为「按已加载范围读取」不在本阶段（如需，Epic 5 或后续收敛）。
+2. **列表「全部已完成」停轮询（2026-10-04 补记修订裁定 ③）**：停止轮询 = 没有可能推进的内容——空列表 + 列表全部已完成 + 详情 completed；假设「新订单只能经离开订单 tab 下单再回来产生」（回来必经 `setActive` 立即读取），不考虑同账号多设备——已确认。
+3. **订阅实装不在本 Story**：建立 / 凭证同步 / 断线回退 / 「SUBSCRIBED 前先补读」由 Epic 5 消费 `setSubscriptionHealthy` 完成；本 Story 的编排状态机即 AD-8 的接入形状。
+4. **催单 / 确认取杯后的立即刷新**：4.4 / 4.5 可直接复用 `runManualRead`（立即读 + 重置计时）作为操作后刷新入口，接入时确认口径。
+5. **`dispose` 兜底**：详情页 `onHide` 已停表，`onUnload → dispose()` 兜底防残留计时器（返回时 onHide 是否触发以微信运行时为准）。
+6. **失败计数含首次进入读取**（裁定 ②）：首读失败占 3 次额度中的 1 次；失败态期间轮询继续静默重试（≤2 次），成功即自愈显示——与「首屏无数据的失败 → 页面失败态」兼容。
+7. **手动清单 8 项已执行并全部通过（2026-10-04）**：运行 / 编译 / 单测 / 构建证据已在本 Story 内取证；真实链路（轮询可见性 / 隐藏停表 / 回台立即读 / 下拉重置 / 分页不被轮询冲掉 / 异常旧状态不倒退 / 失败降级与恢复 / 空态不轮询）由演示者在开发者工具按上表执行（含 #6 修正后 SQL 的构造与还原），结果列已补——本项关闭。
+
+### 补记（2026-10-04）：全完成列表停轮询（裁定 ③ 修订）
+
+触发：演示者复验后提出——列表全部已完成时轮询纯空转，为什么不停？原裁定 ③ 为「按字面：空列表 + 详情 completed 停，列表全部已完成保留轮询」；本次修订为三处都停。
+
+- 裁定（Ly，2026-10-04）：**不采用「连续 3 次全完成才停」的计数器方案**，用无状态谓词代替——`completed` 是终态，「全完成」不是需要采样确认的现象；新订单只能从点餐 tab 下单产生、回来必经可见域重进（`setActive(false→true)` → 立即读取），轮询对一个全完成集合没有可发现的变化；计数器只增加状态与任意阈值、不增加覆盖。
+- 变更（客户端）：`src/pages/home/composables/use-orders.ts` 的 `shouldPoll` 改为三分支——空态 false（FR-P3-10）/ 失败态（0 条）true（继续静默重试以自愈）/ 内容有任一非完成 true、全部完成 false。
+- 新增（测试）：`use-orders.test.ts` 1 项——「全部已完成停止轮询；刷新带回非完成单后自动恢复」（含混合状态列表继续轮询的断言；158 → 159）。
+- 行为影响：全完成列表不再发轮询请求；下拉刷新 / 重进可见域带回非完成单 → 谓词重评 → 轮询自动恢复（无需额外状态）；失败态静默重试不受影响；手动 #5 的「停在列表等待轮询」场景此后仅在有非完成单时发生（「轮询不冲掉已翻页」的覆盖见 `use-orders.test.ts`「轮询读取同样只增不删」）。
+- 假设（已确认）：新订单只能由本客户端产生且必经「离开订单 tab 下单再回来」；不考虑同账号多设备 / 他人代为下单。若未来 Phase 4 出现多端场景，需重新评估（或由订阅承担发现职责）。
+
+验证命令与输出：
+
+```bash
+cd mp
+pnpm test             # 14 文件 / 159 项全过（新增 1 项）
+pnpm type-check       # 0 错误
+pnpm lint             # 0 错误
+pnpm build:mp-weixin  # Build complete.（产物 use-orders.js 含全完成停轮询谓词）
+```
+

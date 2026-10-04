@@ -4,8 +4,8 @@
  *
  * 遵循 AD-3：页面仅负责组件编排和布局，
  * 业务逻辑由 useProducts / useSpecSheet / useOrders / useCart / useReorder / useCheckoutBar / useHomeTabs 七个 Composable 承载。
- * 遵循 AD-8：订单可见域 = 订单 tab 激活 且页面可见；进入可见域立即读取一次
- * （轮询 / 订阅的启停随 Story 4.3 接入，读取入口即那时共享状态应用路径的接入点）。
+ * 遵循 AD-8：订单可见域 = 订单 tab 激活 且页面可见；经 useOrders 的 setActive 接入
+ * 刷新编排（进入立即读一次 + 5s 轮询，离开停表；Story 4.3）。
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import { onHide, onShow } from '@dcloudio/uni-app'
@@ -92,7 +92,7 @@ const {
   isEmpty: ordersIsEmpty,
   skeletonVisible: ordersSkeletonVisible,
   refreshing: ordersRefreshing,
-  loadOrders,
+  setActive: setOrdersActive,
   refreshOrders,
   loadMoreOrders,
   goToOrderDetail,
@@ -147,15 +147,14 @@ onMounted(() => {
   initCheckoutBar()
 })
 
-// 订单可见域（AD-8）：订单 tab 激活 且页面可见；进入（含切回 tab、从详情返回、回到前台）读一次。
+// 订单可见域（AD-8）：订单 tab 激活 且页面可见；进入（含切回 tab、从详情返回、回到前台）
+// 立即读一次并重置轮询计时，离开 / 页面隐藏即停止轮询（Story 4.3 的 setActive 编排）。
 // 页面隐藏 / 离开订单 tab 不发请求；支付成功后的「切到订单 tab」也经此入口读取。
 const pageVisible = ref(false)
 const ordersInDomain = computed(() => activeTab.value === 'orders' && pageVisible.value)
 
 watch(ordersInDomain, (inDomain) => {
-  if (inDomain) {
-    void loadOrders()
-  }
+  void setOrdersActive(inDomain)
 })
 
 onShow(() => {

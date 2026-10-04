@@ -1,16 +1,18 @@
 <script setup lang="ts">
 /**
- * 订单详情页（FR-13；Story 4.2 切真实读取）
+ * 订单详情页（FR-13；Story 4.2 切真实读取 / 4.3 接入轮询）
  *
  * 订单经 api/orders 按 id 读取服务端快照（门店信息来自订单快照），
  * 业务逻辑由 useOrderDetail（数据加载与状态卡操作）与 useReorder（再来一单）承载（AD-3）。
- * 状态判定顺序为「加载 → 失败 → 内容」：首读期间全屏遮罩（延迟约 250ms），
+ * 状态判定顺序为「加载 → 失败 → 内容」：首个读取期间全屏遮罩（延迟约 250ms），
  * 失败进页面内失败态（文案 + 重试），不展示缓存数据；支持页面级下拉刷新。
+ * 刷新编排（AD-8）：onLoad 只登记 id，onShow 进入可见域（立即读一次并启动 5s 轮询，
+ * onHide / onUnload 停表）；订单已完成（终态）后不再轮询。
  * 三种状态共用同一套卡片，仅顶部状态卡不同：
  * 制作中显示取杯号与催单，待取餐显示取杯号与确认取餐，已完成显示再来一单。
  */
 import { computed } from 'vue'
-import { onLoad, onPullDownRefresh } from '@dcloudio/uni-app'
+import { onHide, onLoad, onPullDownRefresh, onShow, onUnload } from '@dcloudio/uni-app'
 import { useOrderDetail } from '@/sub-order-detail/composables/use-order-detail'
 import { useReorder } from '@/composables/use-reorder'
 import LoadFailure from '@/components/load-failure/index.vue'
@@ -28,7 +30,9 @@ const {
   loading,
   overlayVisible,
   modeLabel,
-  initOrderDetail,
+  prepareOrderDetail,
+  setActive,
+  dispose,
   retryOrderDetail,
   refreshOrderDetail,
   urgeOrder,
@@ -59,7 +63,22 @@ const STATUS_VIEW: Record<OrderStatus, { title: string; titleClass: string; desc
 const statusView = computed(() => (order.value ? STATUS_VIEW[order.value.status] : null))
 
 onLoad((query) => {
-  initOrderDetail(String(query?.id ?? ''))
+  // 只登记订单 id；读取由 onShow 进入可见域统一触发（Story 4.3）
+  prepareOrderDetail(String(query?.id ?? ''))
+})
+
+// 可见域（AD-8）：进入（首次 / 从后台回到前台）→ 立即读一次并启动轮询；离开 / 隐藏停表
+onShow(() => {
+  void setActive(true)
+})
+
+onHide(() => {
+  void setActive(false)
+})
+
+onUnload(() => {
+  // 页面卸载：停表并让编排失效，避免残留计时器继续发起读取
+  dispose()
 })
 
 /** 页面级下拉刷新：立即读取一次（失败口径由 Composable 决定），读完收起指示器 */
