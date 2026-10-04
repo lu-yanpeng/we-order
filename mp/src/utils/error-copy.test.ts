@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { LOGIN_ERROR_CODES, ORDER_ERROR_CODES } from '@/core/transport/error-codes'
-import { errorCopy, isAppError } from './error-copy'
+import { errorCopy, errorCopyOr, isAppError } from './error-copy'
 
 const SENSITIVE_MARKERS = [
   'PGRST',
@@ -94,5 +94,29 @@ describe('isAppError', () => {
     expect(isAppError({ source: 'server', code: 'unknown' })).toBe(false)
     expect(isAppError(null)).toBe(false)
     expect(isAppError('boom')).toBe(false)
+  })
+})
+
+describe('errorCopyOr：场景兜底（Story 4.6）', () => {
+  it('AppError → 唯一翻译结果（不回退场景兜底）', () => {
+    expect(errorCopyOr({ source: 'order', code: 'product_unavailable' }, '场景兜底')).toBe(
+      '部分商品已售罄或已下架，请调整购物车后重试',
+    )
+  })
+
+  it('AppError 未知类别 → 该域 unknown 文案，不回退场景兜底', () => {
+    expect(errorCopyOr({ source: 'order', code: '不存在的类别' }, '场景兜底')).toBe(
+      '操作失败，请稍后重试',
+    )
+  })
+
+  it('request_cancelled → 空串（保持「不产生提示」语义）', () => {
+    expect(errorCopyOr({ source: 'client', code: 'request_cancelled' }, '场景兜底')).toBe('')
+  })
+
+  it('非 AppError（程序缺陷）→ 场景兜底文案，不再静默', () => {
+    expect(errorCopyOr(new Error('boom'), '操作失败，请重试')).toBe('操作失败，请重试')
+    expect(errorCopyOr('boom', '操作失败，请重试')).toBe('操作失败，请重试')
+    expect(errorCopyOr(null, '操作失败，请重试')).toBe('操作失败，请重试')
   })
 })

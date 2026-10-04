@@ -19,23 +19,19 @@
  */
 import { ref } from 'vue'
 import { completeOrder as completeOrderRequest } from '@/api/orders'
-import { errorCopy, isAppError } from '@/utils/error-copy'
+import { errorCopyOr } from '@/utils/error-copy'
 
 /** 确认取餐请求在飞的订单 id（模块级共享、运行期记忆） */
 const confirmingOrderIds = ref(new Set<string>())
 
 /** 确认取餐成功提示（最小 UI 规范「确认取餐成功」） */
 const COMPLETE_SUCCESS_COPY = '取餐成功'
+/** 确认取餐失败的兜底文案（非 AppError 时使用；AppError 走唯一翻译、取消不提示；Story 4.6） */
+const COMPLETE_FAILURE_COPY = '操作失败，请重试'
 
 export function useConfirmPickup() {
   /** 该订单是否正在确认取餐（按钮 loading + 禁用） */
   const isConfirming = (orderId: string): boolean => confirmingOrderIds.value.has(orderId)
-
-  /** 异常 → 用户可见文案；非 AppError 与空文案（request_cancelled）走固定兜底 */
-  const messageOf = (err: unknown): string => {
-    const copy = isAppError(err) ? errorCopy(err) : ''
-    return copy !== '' ? copy : '操作失败，请重试'
-  }
 
   /**
    * 确认取餐：成功后先 toast、再执行调用方的「操作后立即读取」（loading 覆盖到读取完成）；
@@ -61,8 +57,10 @@ export function useConfirmPickup() {
       }
       return true
     } catch (err) {
-      // 失败不改变本地展示的状态、不刷新：按钮保持「确认取餐」可重试
-      uni.showToast({ title: messageOf(err), icon: 'none' })
+      // 失败不改变本地展示的状态、不刷新：按钮保持「确认取餐」可重试；
+      // 空文案（request_cancelled）不提示；非 AppError 用场景兜底（Story 4.6）
+      const message = errorCopyOr(err, COMPLETE_FAILURE_COPY)
+      if (message !== '') uni.showToast({ title: message, icon: 'none' })
       return false
     } finally {
       confirmingOrderIds.value.delete(orderId)

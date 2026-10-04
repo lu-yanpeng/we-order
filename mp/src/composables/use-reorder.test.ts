@@ -249,6 +249,16 @@ describe('useReorder 编排（Story 4.2）', () => {
     expect(toastMock).toHaveBeenCalledWith({ title: '请求超时，请重试', icon: 'none' })
   })
 
+  it('非 AppError（程序缺陷）失败：用场景兜底文案 toast，购物车不变（Story 4.6）', async () => {
+    fetchOrderByIdMock.mockRejectedValueOnce(new Error('boom'))
+    const { reorder } = useReorder()
+
+    await reorder(listItem)
+
+    expect(setItemsMock).not.toHaveBeenCalled()
+    expect(toastMock).toHaveBeenCalledWith({ title: '操作失败，请重试', icon: 'none' })
+  })
+
   it('重复点击守卫：在飞期间第二次调用不发请求、不重复写购物车', async () => {
     let resolveDetail: (value: OrderDetail) => void = () => {}
     fetchOrderByIdMock.mockImplementationOnce(

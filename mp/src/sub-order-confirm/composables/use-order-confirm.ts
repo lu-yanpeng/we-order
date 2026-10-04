@@ -22,7 +22,7 @@ import { useCartStore } from '@/stores/cart'
 import { clearCheckoutIntent, ensureCheckoutIntent, payOrder } from '@/api/orders'
 import { toCreateOrderItems } from '@/api/cart'
 import { fetchStore } from '@/api/catalog'
-import { errorCopy, isAppError } from '@/utils/error-copy'
+import { errorCopyOr, isAppError } from '@/utils/error-copy'
 import { shouldClearCheckoutIntent, shouldShowRetryHint } from '@/utils/checkout-intent'
 import { calcPackagingFee } from '@/utils/price'
 import type { DiningMode, StoreInfo } from '@/types/api-contracts'
@@ -35,6 +35,9 @@ const STORE_OVERLAY_DELAY_MS = 250
 
 /** 门店读取失败的兜底文案（无类别可翻译时；与目录失败态同一兜底口径） */
 const STORE_FAILURE_FALLBACK = '加载失败，请重试'
+
+/** 支付失败的兜底文案（非 AppError 时使用；AppError 走唯一翻译、取消不提示；Story 4.6） */
+const PAY_FAILURE_FALLBACK = '操作失败，请重试'
 
 export function useOrderConfirm() {
   const cartStore = useCartStore()
@@ -87,8 +90,8 @@ export function useOrderConfirm() {
     } catch (err) {
       // transport 只会抛 AppError；文案唯一来源 utils/error-copy.ts（AR-P3-20）
       store.value = null
-      const message = isAppError(err) ? errorCopy(err) : ''
-      // 空文案（request_cancelled 不展示）与未知异常兜底，保证失败态始终可渲染
+      const message = errorCopyOr(err, STORE_FAILURE_FALLBACK)
+      // 空文案（request_cancelled 不展示）与非 AppError 兜底，保证失败态始终可渲染
       storeError.value = message !== '' ? message : STORE_FAILURE_FALLBACK
     } finally {
       storeLoading.value = false
@@ -163,8 +166,9 @@ export function useOrderConfirm() {
       }
       // 超时 = 结果不明且键保留 → 结算页内联「可安全重试，不会重复下单」
       payRetryHint.value = isAppError(err) && shouldShowRetryHint(err)
-      const message = isAppError(err) ? errorCopy(err) : ''
-      // 空文案（request_cancelled）不提示；同一失败只提示一次（单次 catch 只 toast 一次）
+      // 空文案（request_cancelled）不提示；非 AppError 用场景兜底（Story 4.6）；
+      // 同一失败只提示一次（单次 catch 只 toast 一次）
+      const message = errorCopyOr(err, PAY_FAILURE_FALLBACK)
       if (message !== '') {
         uni.showToast({ title: message, icon: 'none' })
       }

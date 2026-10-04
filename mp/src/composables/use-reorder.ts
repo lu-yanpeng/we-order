@@ -9,7 +9,7 @@
  * 4. 回到首页「点餐」tab 并展开购物车面板，由用户手动结算（参考美团外卖）
  *
  * 失败与边界（FR-P3-19 不脏状态）：
- * - 详情 / 目录读取失败：errorCopy toast + 中止，购物车不变、可重试；
+ * - 详情 / 目录读取失败：errorCopy toast（非 AppError 用场景兜底，Story 4.6）+ 中止，购物车不变、可重试；
  * - 全部行失效：toast「部分商品已失效」+ 中止（不替换购物车、不跳转）；
  * - 部分失效：有效条目入车 + toast（面板就绪后提示，避开结算栏懒加载的 loading）。
  *
@@ -24,11 +24,14 @@ import { useCart } from '@/composables/use-cart'
 import { useCheckoutBar } from '@/composables/use-checkout-bar'
 import { HOME_TAB_SWITCH_EVENT } from '@/composables/use-home-tabs'
 import { buildReorderItems } from '@/utils/reorder'
-import { errorCopy, isAppError } from '@/utils/error-copy'
+import { errorCopyOr } from '@/utils/error-copy'
 import type { OrderDetail, OrderListItem } from '@/types/api-contracts'
 
 /** 快照部分行 / 全部行失效时的提示（spine 最小 UI 规范「再来一单部分失效」） */
 const PARTIAL_INVALID_TOAST = '部分商品已失效'
+
+/** 再来一单读取失败的兜底文案（非 AppError 时使用；AppError 走唯一翻译、取消不提示；Story 4.6） */
+const REORDER_FAILURE_COPY = '操作失败，请重试'
 
 /** 当前页是否为首页：首页订单卡触发时不需要返回，订单详情页触发时先返回首页 */
 function isHomePage(): boolean {
@@ -86,7 +89,8 @@ export function useReorder() {
         toast(PARTIAL_INVALID_TOAST)
       }
     } catch (err) {
-      toast(isAppError(err) ? errorCopy(err) : '')
+      // 空文案（request_cancelled）不提示；非 AppError 用场景兜底——不再静默（Story 4.6）
+      toast(errorCopyOr(err, REORDER_FAILURE_COPY))
     } finally {
       reordering.value = false
     }

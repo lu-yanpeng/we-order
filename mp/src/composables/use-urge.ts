@@ -16,7 +16,7 @@
  */
 import { ref } from 'vue'
 import { urgeOrder as urgeOrderRequest } from '@/api/orders'
-import { errorCopy, isAppError } from '@/utils/error-copy'
+import { errorCopyOr } from '@/utils/error-copy'
 
 /** 成功催过单的订单 id（模块级共享、运行期记忆；App 重启即忘） */
 const urgedOrderIds = ref(new Set<string>())
@@ -27,16 +27,12 @@ const inFlightOrderIds = new Set<string>()
 const URGE_SUCCESS_COPY = '已通知门店加快制作'
 /** 已催过单再点的重复提示（重复发请求没有意义；不提示会让用户以为按钮坏了） */
 const URGE_ALREADY_COPY = '已催单，请耐心等待'
+/** 催单失败的兜底文案（非 AppError 时使用；AppError 走唯一翻译、取消不提示；Story 4.6） */
+const URGE_FAILURE_COPY = '催单失败，请重试'
 
 export function useUrge() {
   /** 该订单是否已成功催过单（列表卡片 / 详情按钮的第二态） */
   const isUrged = (orderId: string): boolean => urgedOrderIds.value.has(orderId)
-
-  /** 异常 → 用户可见文案；非 AppError 与空文案（request_cancelled）走固定兜底 */
-  const messageOf = (err: unknown): string => {
-    const copy = isAppError(err) ? errorCopy(err) : ''
-    return copy !== '' ? copy : '催单失败，请重试'
-  }
 
   /**
    * 催单：成功标记「已催单」；失败不标记、可重试；
@@ -57,7 +53,9 @@ export function useUrge() {
       uni.showToast({ title: URGE_SUCCESS_COPY, icon: 'none' })
     } catch (err) {
       // 失败不标记：按钮保持「催单」，可重试；文案唯一来源 utils/error-copy.ts（AR-P3-20）
-      uni.showToast({ title: messageOf(err), icon: 'none' })
+      // 空文案（request_cancelled）不提示；非 AppError 用场景兜底（Story 4.6）
+      const message = errorCopyOr(err, URGE_FAILURE_COPY)
+      if (message !== '') uni.showToast({ title: message, icon: 'none' })
     } finally {
       inFlightOrderIds.delete(orderId)
     }

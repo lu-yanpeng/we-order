@@ -82,3 +82,15 @@ export function isAppError(value: unknown): value is AppError {
   const record = value as Record<string, unknown>
   return typeof record.code === 'string' && APP_ERROR_SOURCES.includes(record.source as ErrorSource)
 }
+
+/**
+ * 场景兜底（Story 4.6；AR-P3-20）：把任意异常翻译成场景文案。
+ * - AppError（含未知类别）→ `errorCopy()` 的结果（`request_cancelled` 仍为空串 = 不提示）；
+ * - 非 AppError（程序缺陷）→ 调用方给定的场景兜底文案，失败路径不再静默。
+ *
+ * 使用规则：操作提示（toast）对空串跳过；页面态渲染（失败态 / 页脚）对空串再兜一次，
+ * 保证不空白、不伪装空列表。`request_cancelled` 当前不可达（全仓无取消入口），属防御分支。
+ */
+export function errorCopyOr(error: unknown, fallback: string): string {
+  return isAppError(error) ? errorCopy(error) : fallback
+}

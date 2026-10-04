@@ -27,7 +27,7 @@
  */
 import { computed, ref } from 'vue'
 import { fetchOrderById } from '@/api/orders'
-import { errorCopy, isAppError } from '@/utils/error-copy'
+import { errorCopy, errorCopyOr } from '@/utils/error-copy'
 import { applyOrderRead } from '@/utils/order-status'
 import { useOrderStatus } from '@/composables/use-order-status'
 import type { OrderReadKind } from '@/composables/use-order-status'
@@ -63,9 +63,9 @@ export function useOrderDetail() {
     order.value?.dining_mode === 'takeout' ? '打包外带' : '店内堂食',
   )
 
-  /** 异常 → 用户可见文案；非 AppError 与空文案（request_cancelled）走固定兜底 */
+  /** 页面态失败文案：AppError 走唯一翻译；非 AppError 与空文案用场景兜底（保证可渲染） */
   const messageOf = (err: unknown): string => {
-    const copy = isAppError(err) ? errorCopy(err) : ''
+    const copy = errorCopyOr(err, FAILURE_FALLBACK)
     return copy !== '' ? copy : FAILURE_FALLBACK
   }
 
@@ -104,12 +104,16 @@ export function useOrderDetail() {
       return true
     } catch (err) {
       // transport 只会抛 AppError；文案唯一来源 utils/error-copy.ts（AR-P3-20）
-      const message = messageOf(err)
       if (order.value !== null) {
         // 已有数据：手动刷新（下拉 / 重试）toast；自动读取（轮询）静默保留数据
-        if (kind === 'manual') uni.showToast({ title: message, icon: 'none' })
+        // 空文案（request_cancelled）不提示；非 AppError 用场景兜底（Story 4.6）
+        if (kind === 'manual') {
+          const message = errorCopyOr(err, FAILURE_FALLBACK)
+          if (message !== '') uni.showToast({ title: message, icon: 'none' })
+        }
       } else {
-        error.value = message
+        // 无数据：失败态必须可渲染（空文案再兜一次，不展示缓存）
+        error.value = messageOf(err)
       }
       return false
     } finally {

@@ -33,7 +33,7 @@
 import { computed, ref } from 'vue'
 import type { OrderListItem, OrdersPage } from '@/types/api-contracts'
 import { fetchOrders } from '@/api/orders'
-import { errorCopy, isAppError } from '@/utils/error-copy'
+import { errorCopyOr } from '@/utils/error-copy'
 import { appendOrderPage, mergeOrderList, replaceOrderList } from '@/utils/order-status'
 import type { AppliedSeqMap } from '@/utils/order-status'
 import { useOrderStatus } from '@/composables/use-order-status'
@@ -41,6 +41,9 @@ import type { OrderReadKind } from '@/composables/use-order-status'
 
 /** 首屏骨架的防抖延迟（毫秒）：快网不显示；spine 最小 UI 规范取约 250ms */
 const SKELETON_DELAY_MS = 250
+
+/** 页面态失败文案的兜底（非 AppError 与空文案时使用；Story 4.6） */
+const FAILURE_FALLBACK = '加载失败，请重试'
 
 export function useOrders() {
   /** 订单列表（按时间倒序；分页为追加） */
@@ -76,10 +79,10 @@ export function useOrders() {
   /** 空态：读取成功且 0 条（失败态 / 加载中不算空） */
   const isEmpty = computed(() => loaded.value && error.value === null && orders.value.length === 0)
 
-  /** 异常 → 用户可见文案；非 AppError 与空文案（request_cancelled）走固定兜底 */
+  /** 页面态失败文案：AppError 走唯一翻译；非 AppError 与空文案用场景兜底（保证可渲染） */
   const messageOf = (err: unknown): string => {
-    const copy = isAppError(err) ? errorCopy(err) : ''
-    return copy !== '' ? copy : '加载失败，请重试'
+    const copy = errorCopyOr(err, FAILURE_FALLBACK)
+    return copy !== '' ? copy : FAILURE_FALLBACK
   }
 
   /**
@@ -119,12 +122,14 @@ export function useOrders() {
       return true
     } catch (err) {
       // transport 只会抛 AppError；文案唯一来源 utils/error-copy.ts（AR-P3-20）
-      const message = messageOf(err)
       if (orders.value.length === 0) {
-        error.value = message
+        // 无数据：页面失败态必须可渲染（空文案再兜一次，不伪装空列表）
+        error.value = messageOf(err)
       } else if (kind === 'manual') {
-        // 已有数据时失败不丢数据：仅对显式刷新的用户动作给出提示（同一失败只提示一次）
-        uni.showToast({ title: message, icon: 'none' })
+        // 已有数据时失败不丢数据：仅对显式刷新的用户动作给出提示（同一失败只提示一次；
+        // 空文案 request_cancelled = 不提示；非 AppError 用场景兜底——Story 4.6）
+        const message = errorCopyOr(err, FAILURE_FALLBACK)
+        if (message !== '') uni.showToast({ title: message, icon: 'none' })
       }
       return false
     } finally {

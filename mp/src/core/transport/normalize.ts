@@ -17,6 +17,11 @@
  *
  * `rest` 路由（目录 / 门店等 REST 读取）不在 AD-6 表的显式覆盖里：未归类的服务端
  * 失败统一落入 `order.unknown` 的兜底文案（域模型没有目录域，见 Story 1.2 验收记录）。
+ *
+ * 枚举外类别（RPC / pay-order / wechat-login）在归一为 `unknown` 的同时，以固定前缀
+ * `[transport]` 输出一条开发期日志（Story 4.6；FR-P3-18「新增失败类别先在客户端侧记录」）；
+ * REST 通用失败与平台 auth 不打日志（前者无独立域属常态、后者错误码由平台定义），
+ * 日志只含来源 / 类别 / 状态码，不含响应体与 message。
  */
 import type { AppError } from '@/types/errors'
 import { LOGIN_ERROR_CODE_SET, ORDER_ERROR_CODE_SET } from './error-codes'
@@ -148,6 +153,14 @@ export function sessionExpiredError(cause?: HttpFailure): AppError {
   }
 }
 
+/**
+ * 开发期观察（Story 4.6）：服务端发了枚举外的类别时以固定前缀记一行。
+ * 只承载来源 / 类别 / 状态码，供判断「要不要把新类别入库」，不接触响应体与凭据。
+ */
+function warnUnmappedCategory(route: EndpointRoute, code: string, status: number): void {
+  console.warn('[transport] unmapped category', { route, code, status })
+}
+
 /** 归一：原始失败 → AppError（唯一实现） */
 export function normalizeFailure(failure: RawFailure): AppError {
   if (failure.kind === 'transport') {
@@ -172,17 +185,24 @@ export function normalizeFailure(failure: RawFailure): AppError {
       if (category !== undefined && ORDER_ERROR_CODE_SET.has(category)) {
         return { source: 'order', code: category, ...context }
       }
+      if (category !== undefined) warnUnmappedCategory(failure.route, category, failure.status)
       return { source: 'order', code: 'unknown', ...context }
     }
     case 'pay-order': {
       if (serverError?.code !== undefined && ORDER_ERROR_CODE_SET.has(serverError.code)) {
         return { source: 'order', code: serverError.code, ...context }
       }
+      if (serverError?.code !== undefined) {
+        warnUnmappedCategory(failure.route, serverError.code, failure.status)
+      }
       return { source: 'order', code: 'unknown', ...context }
     }
     case 'wechat-login': {
       if (serverError?.code !== undefined && LOGIN_ERROR_CODE_SET.has(serverError.code)) {
         return { source: 'login', code: serverError.code, ...context }
+      }
+      if (serverError?.code !== undefined) {
+        warnUnmappedCategory(failure.route, serverError.code, failure.status)
       }
       return { source: 'login', code: 'unknown', ...context }
     }

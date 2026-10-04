@@ -4,7 +4,7 @@
  * 逐行覆盖 spine 的归一表：RPC / pay-order / wechat-login / 平台 auth / REST，
  * 以及会话类判定（401、PGRST301、not_authenticated、42501 优先）与传输失败三类别。
  */
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   isSessionFailure,
   normalizeFailure,
@@ -14,6 +14,15 @@ import {
   toTransportFailure,
   type HttpFailure,
 } from './normalize'
+
+beforeEach(() => {
+  // 归一表会按设计输出「枚举外类别」开发期日志；测试里静音，专项用例再用 vi.mocked 断言
+  vi.spyOn(console, 'warn').mockImplementation(() => {})
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
 function httpFailure(
   route: HttpFailure['route'],
@@ -223,5 +232,48 @@ describe('sessionExpiredError', () => {
       status: undefined,
       requestId: undefined,
     })
+  })
+})
+
+describe('normalizeFailure：枚举外类别的开发期记录（Story 4.6）', () => {
+  it('RPC / pay-order / wechat-login 收到枚举外类别 → console.warn 一次（带来源与状态码）', () => {
+    const warn = vi.mocked(console.warn)
+
+    expect(
+      normalizeFailure(httpFailure('rpc', 400, { code: 'P0001', message: 'brand_new_code' })),
+    ).toMatchObject({ source: 'order', code: 'unknown' })
+    expect(
+      normalizeFailure(httpFailure('pay-order', 500, { code: 'new_pay_code' })),
+    ).toMatchObject({ source: 'order', code: 'unknown' })
+    expect(
+      normalizeFailure(httpFailure('wechat-login', 500, { code: 'new_login_code' })),
+    ).toMatchObject({ source: 'login', code: 'unknown' })
+
+    expect(warn).toHaveBeenCalledTimes(3)
+    expect(warn).toHaveBeenCalledWith(
+      '[transport] unmapped category',
+      expect.objectContaining({ route: 'rpc', code: 'brand_new_code', status: 400 }),
+    )
+    expect(warn).toHaveBeenCalledWith(
+      '[transport] unmapped category',
+      expect.objectContaining({ route: 'pay-order', code: 'new_pay_code', status: 500 }),
+    )
+    expect(warn).toHaveBeenCalledWith(
+      '[transport] unmapped category',
+      expect.objectContaining({ route: 'wechat-login', code: 'new_login_code', status: 500 }),
+    )
+  })
+
+  it('已知类别 / 42501 / REST 通用失败 / 平台 auth → 不记录（避免噪音）', () => {
+    const warn = vi.mocked(console.warn)
+
+    normalizeFailure(httpFailure('rpc', 400, { code: 'P0001', message: 'invalid_quantity' }))
+    normalizeFailure(httpFailure('pay-order', 400, { code: 'product_unavailable' }))
+    normalizeFailure(httpFailure('wechat-login', 400, { code: 'invalid_code' }))
+    normalizeFailure(httpFailure('rpc', 403, { code: '42501', message: 'permission denied' }))
+    normalizeFailure(httpFailure('rest', 500, { message: 'internal' }))
+    normalizeFailure(httpFailure('platform-auth', 400, { error_code: 'invalid_grant' }))
+
+    expect(warn).not.toHaveBeenCalled()
   })
 })

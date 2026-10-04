@@ -687,3 +687,106 @@ PASS：16 项断言全部通过（订单 202610041852217559 并发确认后完�
 3. **loading 视觉为最小实现**：列表卡与详情按钮内联 `t-loading`（28 / 32rpx、inherit-color）；Story 4.7 重排卡片与三态详情页重新设计时统一皮肤，行为（loading + 禁用 + 在飞忽略）不变。
 4. **手动清单已执行（2026-10-04）**：1~4、6 项通过；#5 为可选构造项、跳过（Studio 直接改 `status` 触发 `orders_check1` / `orders_auto_complete_check`，可用的连带清空 SQL 已记入清单下方说明，时刻列约束与 Story 4.3 手动 #6 同口径）。真实链路（确认取餐两入口 / 连点单次调用 / 失败恢复 / 自动完成感知 / 杀进程一致性）由演示者在开发者工具复验——本项关闭，Story 4.5 验收关闭。
 
+## Story 4.6 错误提示收口与失败不脏状态
+
+- 日期：2026-10-04
+- 环境：mp 侧 `pnpm test`（vitest 3.2.7）、`pnpm type-check`（vue-tsc 3.3.6）、`pnpm lint`、`pnpm build:mp-weixin`；**后端零改动**（`order_error_code.unknown` 与错误类别契约在 Story 1.2 已就位；迁移 / 函数 / 类型 / 脚本均未动）
+- 范围：全量失败路径收口——统一兜底 `errorCopyOr`（7 个消费文件 10 处调用收敛 + 修掉「再来一单 / 支付」非 AppError 静默两个缺口）、枚举外类别的开发期记录（normalize `[transport]` 日志）、审计证据（敏感信息 / 无特判后门 / 单一数据源）、失败专项手动验证；**未含**：订阅建立 / 回退与「订阅失败静默」的运行时验收（Epic 5）、订单图片（4.7）、4.8 预演矩阵
+- 裁定记录（Ly，2026-10-04）：① 非 AppError 兜底统一为 `utils/error-copy.ts` 的 `errorCopyOr`（AppError 走唯一翻译、`request_cancelled` 保持空串、非 AppError 用场景兜底），7 个消费文件 10 处调用收敛；②「新增失败类别先在客户端侧记录」落地为 normalize 的开发期日志（仅 RPC / pay-order / wechat-login 的枚举外类别分支，只记来源 / 类别 / 状态码）；③ 目录 5xx 沿用订单域 `unknown` 文案（REST 无独立域，关闭 1.2 / 2.2 遗留）；④「已有数据时刷新失败」口径确认为最终（保留数据 + 手动 toast / 自动静默，关闭 4.1 遗留 3）；⑤ 订阅静默由 Epic 5 承接；⑥ 手动验证只做失败专项 2 个场景（登录失败与重试、订单页失败不伪装 + 只提示一次），业务拒绝 4 类与操作不脏状态引用 3.6 / 4.4 / 4.5 证据；⑦ 不为 `use-order-confirm` 新建测试文件（Pinia 成本），其改动仅是接到已单测的 helper
+
+### 交付物
+
+| 类别 | 内容 |
+| --- | --- |
+| 新增（客户端） | `src/utils/error-copy.ts`：`errorCopyOr(error, fallback)`——AppError 走 `errorCopy()`（`request_cancelled` 仍为空串 = 不提示）、非 AppError 用场景兜底；注释写明「操作提示空串跳过、页面态空串再兜」使用规则 |
+| 修改（客户端） | `src/core/transport/normalize.ts`：RPC / pay-order / wechat-login 的枚举外类别分支新增 `warnUnmappedCategory()`（`console.warn('[transport] unmapped category', { route, code, status })`，不含响应体 / message）；REST 通用失败与平台 auth 不记录（避免噪音） |
+| 修改（客户端） | `src/pages/home/composables/use-orders.ts`：失败文案改经 `errorCopyOr`；页面态（无数据）空串兜底、手动刷新 toast 空串跳过 |
+| 修改（客户端） | `src/pages/home/composables/use-products.ts`：目录失败态改经 `errorCopyOr` |
+| 修改（客户端） | `src/sub-order-detail/composables/use-order-detail.ts`：详情失败态 / 手动 toast 同口径；空 id 本地守卫仍用 `errorCopy` 直取 `order_not_found` |
+| 修改（客户端） | `src/sub-order-confirm/composables/use-order-confirm.ts`：门店卡失败态改经 `errorCopyOr`；支付失败 toast 改经 `errorCopyOr`（新增 `PAY_FAILURE_FALLBACK`，修静默） |
+| 修改（客户端） | `src/composables/use-urge.ts`：失败 toast 改经 `errorCopyOr`（`URGE_FAILURE_COPY`） |
+| 修改（客户端） | `src/composables/use-confirm-pickup.ts`：失败 toast 改经 `errorCopyOr`（`COMPLETE_FAILURE_COPY`） |
+| 修改（客户端） | `src/composables/use-reorder.ts`：失败 toast 改经 `errorCopyOr`（`REORDER_FAILURE_COPY`，修静默） |
+| 修改（测试） | `src/utils/error-copy.test.ts` +4（helper：AppError / 未知类别 / cancelled / 非 AppError）；`src/core/transport/normalize.test.ts` +2（三个分支各记一次；已知类别 / 42501 / REST / 平台 auth 不记；既有「未知类别」用例统一静音）；`src/composables/use-reorder.test.ts` +1（非 AppError 兜底） |
+| 未改动 | 后端全部（迁移 / 函数 / 类型 / 脚本）；`types/`；页面模板；`error-copy.ts` 既有文案表；`api/` 全部 |
+
+### 关键实现点
+
+1. **统一兜底语义**（`errorCopyOr`）：非 AppError（程序缺陷）→ 场景兜底文案，不再静默；AppError → 一律 `errorCopy()`；`request_cancelled`（唯一空串）在操作提示处跳过、页面态渲染处再兜一次——「不产生提示」与「不空白 / 不伪装空列表」两个 AC 同时成立。
+2. **两个静默缺口修复**：`use-reorder` 与支付 `startPay` 原来对非 AppError 完全无反馈；现在都经 `errorCopyOr` 给出场景兜底（「操作失败，请重试」），界面停留可重试；购物车与幂等键不受影响（非 AppError 按「结果不明」保留键）。
+3. **操作提示 vs 页面态分流**：`use-orders` / `use-order-detail` 同一 catch 内分流——无数据 → `messageOf`（必非空）写失败态；有数据 + 手动刷新 → `errorCopyOr` 空串跳过 toast；自动轮询失败仍静默（Story 4.3 口径不变）。
+4. **枚举外类别记录范围**：只在「服务端发了枚举外类别」时打日志；`rest` 通用失败（无独立域属常态）与 `platform-auth`（错误码由平台定义）不打，避免刷屏；日志只含 route / code / status，不含响应体、message、凭据或 OpenID。
+5. **订阅静默承接**：Epic 5 未启用订阅，本 Story 不产生订阅相关用户可见失败；运行时验收由 Epic 5 的 Story 5.3 / 5.4 完成，不阻塞本 Story。
+6. **文案与敏感信息审计**：全仓 `showToast` 的 title 均为文案常量或 `errorCopy` / `errorCopyOr` 产物；`error-copy.test.ts` 对全部类别断言不含 `PGRST` / `postgres` / `openid` / `Bearer` / `apikey` / stack 等标记。
+
+### 验收点与证据
+
+| Story 4.6 验收点 | 证据 |
+| --- | --- |
+| 全部错误类别（登录 / 订单 / 客户端）→ 文案由 `utils/error-copy.ts` 唯一函数产出（同时消费服务端与客户端两类）；域内穷尽、新增类别编译报错；未知类别以 `unknown` 兜底、不白屏 | `error-copy.ts` 唯一翻译 + `errorCopyOr` 统一入口；域表 `Record<联合, string>` 穷尽 + `error-codes.ts` 与生成枚举双向编译检查（Story 1.2 既有，本 Story 未动）；`error-copy.test.ts` 12 项（含 helper 4 项）；未知类别落 `unknown` 与页面态空串兜底由 `use-orders.test.ts` / `use-order-detail.test.ts` 既有失败用例回归 |
+| 页面级加载失败（目录 / 订单列表 / 订单详情）→ 页面内失败态：文案 + 「重试」；操作级失败（下单 / 催单 / 确认取餐）→ toast（`icon: 'none'`）+ 界面停留可重试 | 目录：Story 2.2；列表 / 详情：Story 4.1 / 4.2；操作：Story 3.6 / 4.4 / 4.5 + 本 Story 的 toast 收敛（`use-urge.test.ts` / `use-confirm-pickup.test.ts` 既有失败用例回归）；`grep showToast`：全部 `icon: 'none'`，无原始异常透传 |
+| 订单页加载失败不展示任何订单数据（含本地缓存）、不以空列表伪装；空态显示引导且停止轮询（订阅接入后同受同一启停控制，见 Epic 5） | Story 4.1 / 4.3 既有证据（失败态仅在无数据时进入、空态判定条件、`shouldPoll` 空态返回 false）；本 Story 未改状态机，仅改文案入口 |
+| 订阅失败对用户静默、不产生数据库类别；其它新增失败类别先在客户端侧记录（`unknown` 为加法型入库类别） | normalize 三个枚举外类别分支 `[transport]` 日志（`normalize.test.ts` 新增 2 项断言）；订阅部分由 Epic 5 承接（关键实现点 5）；`unknown` 入库在 Story 1.2 已完成 |
+| 登录失败不产生半登录；建单失败不丢购物车、不产生重复订单；催单 / 确认取杯失败不改变本地展示状态；任一步失败后用户都能找到明确的下一步（重试 / 返回） | 登录：Story 1.3（状态机单测 16 项 + 手动 11 步）+ 本 Story 手动 #1 / #2；建单：Story 3.6（手动 #1~#10）与 3.4（幂等键单测 16 项）；催单 / 确认：Story 4.4 / 4.5 手动与单测；本 Story 手动 #3 / #4 / #5 复验失败入口与下一步 |
+| 提示不含内部堆栈、数据库细节、密钥或 OpenID；演示路径不依赖任何「特判后门」或假数据兜底 | `error-copy.test.ts` 敏感信息断言；审计命令（见下）——无 mock 引用 / 无 `uni.request` / 存储出口收敛 / `import.meta.env` 仅配置读取；`fetchOrderById` 无桩、无假数据兜底（Story 4.2 已收口） |
+| 类型契约与编译期保护不回归；既有行为不回归 | `pnpm test` 186 项全过（原 179 + 新增 7）；`pnpm type-check` 0 错误；`pnpm lint` 0 错误；`pnpm build:mp-weixin` Build complete |
+
+### 验证命令与输出（可复现）
+
+```bash
+cd mp
+pnpm test             # 16 文件 / 186 项全过（原 179 + 新增 7）
+pnpm type-check       # 0 错误
+pnpm lint             # 0 错误
+pnpm build:mp-weixin  # Build complete.
+
+# 收口证据
+grep -rn "errorCopyOr" src/ | grep -v test | grep -v "utils/error-copy"  # 10 处调用 / 7 个文件
+grep -rn "\[transport\]" src/core/transport/normalize.ts               # 唯一日志点
+grep -rn "src/mock\|mock/orders\|initOrders\|mockOrders" src/          # 仅 api/orders.ts 历史说明注释
+grep -rn "uni\.request(" src/                                          # 0（请求全经 alova 通道）
+grep -rn "import\.meta\.env" src/                                      # 仅 core/transport/config.ts
+grep -rln "setStorageSync\|getStorageSync\|removeStorageSync" src/ | grep -v test
+# → core/session/storage.ts / api/cart.ts / api/orders.ts / api/storage.ts（四个允许出口；checkout-intent.ts 仅注释命中）
+grep -rn "showToast" src/ | grep -v test                               # title 均为文案常量或 errorCopy 产物
+```
+
+构建产物抽查（`dist/build/mp-weixin`）：`utils/error-copy.js` 含 `errorCopyOr`；`core/transport/normalize.js` 含 `[transport] unmapped category`；`composables/use-reorder.js` 与 `sub-order-confirm/composables/use-order-confirm.js` 含「操作失败，请重试」。
+
+```text
+✓ src/utils/error-copy.test.ts (12 tests)            # +4：helper 语义
+✓ src/core/transport/normalize.test.ts (20 tests)    # +2：枚举外类别记录 / 不记录
+✓ src/composables/use-reorder.test.ts (7 tests)      # +1：非 AppError 兜底
+✓ 其余 13 文件 147 项不回归
+
+Test Files  16 passed (16)
+     Tests  186 passed (186)
+```
+
+### 手动验证清单（演示者执行）
+
+前置：本地栈在跑（`supabase start`）、边缘函数已启动（`supabase functions serve`）、`mp/.env.local` 指向本地栈、开发者工具已勾选「不校验合法域名」；建议先「清缓存并重启」。
+
+| # | 操作 | 预期 | 结果 |
+| --- | --- | --- | --- |
+| 1 | 登录失败（矩阵 #2）：备份 `supabase/functions/.env` 并把 `WECHAT_APP_SECRET` 改成无效值 → 重启 `supabase functions serve` → 清缓存重启小程序 → 进订单 tab | 目录照常可浏览、无全局提示（启动预热失败静默）；订单 tab 失败态「登录状态已失效，请重试」+「重试」；不展示任何订单数据 | 通过 |
+| 2 | 停在第 1 步的失败态点「重试」 | 重试只触发一次登录尝试（无并发 / 无请求堆积），仍失败后回到失败态；`wechat_identities` 行数前后一致（无孤儿身份） | 通过 |
+| 3 | 恢复 `.env` 并重启 serve → 点「重试」；杀进程重启后再进订单 tab | 本人订单列表恢复（同一身份、订单不变） | 通过 |
+| 4 | 订单页失败不伪装 + 只提示一次：订单 tab 已有数据 → `supabase stop` → 下拉刷新 | 数据保留、只 1 条「网络不可用，请检查网络后重试」toast、不刷屏；轮询失败静默、连续 3 次后停止（网络面板不再有请求） | 通过 |
+| 5 | 清缓存并重启（后端仍停）→ 进订单 tab → 观察后 `supabase start` → 点「重试」 | 失败态（文案 + 「重试」），不是骨架、不是空态、不展示任何订单数据；恢复后列表回来 | 通过 |
+
+> #1 的「改坏 AppSecret」沿用 Story 3.6 手动 #5 的现场制造手法；`.env` 已 gitignore，验证后务必还原并重启 serve。#1 / #5 的登录类文案按 AD-7 统一为 `client.session_expired`（不暴露登录域内部类别）。
+
+> 2026-10-04 由演示者在微信开发者工具按上表执行，5 项全部通过（含登录失败现场制造与还原、`wechat_identities` 无孤儿身份核对）；Story 4.6 验收关闭。
+
+> 4.8 预演时，本表 #1 / #2 / #4 并入验证矩阵 #2（登录失败与重试）与 #11（失败可区分）；#3 / #5 属失败恢复复验。
+
+### 有意偏差与遗留
+
+1. **目录 5xx 文案确认**（裁定 ③）：REST 无独立错误域，目录加载 5xx 显示订单域 `unknown` → 「操作失败，请稍后重试」；关闭 Story 1.2 / 2.2 遗留，不再评估场景替换。
+2. **「已有数据时刷新失败」口径确认**（裁定 ④）：保留数据 + 仅手动刷新 toast / 自动静默；关闭 Story 4.1 遗留 3。
+3. **`request_cancelled` 属防御分支**：全仓无取消入口、适配器不产生 abort；「操作提示跳过、页面态兜底」的规则已在 `errorCopyOr` 注释与单测中固化，未来引入取消入口时直接消费。
+4. **`use-order-confirm` 无独立单测**（裁定 ⑦）：门店 / 支付失败分支的改动是接到已单测的 `errorCopyOr` 上；真实链路由手动行覆盖，后续如需再补测试文件（Pinia 搭建成本）。
+5. **订阅失败静默的运行时验收在 Epic 5**（裁定 ⑤）：本 Story 只保证不产生订阅相关失败路径与类别；Epic 5 落地后由矩阵 #5 / #6 / #12 补充证据。
+6. **手动清单已执行并全部通过（2026-10-04）**：5 行（登录失败与重试、无孤儿身份、失败不伪装、只提示一次、恢复回归）由演示者在开发者工具复验，结果列已补——本项关闭，Story 4.6 验收关闭。
+

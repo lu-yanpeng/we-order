@@ -12,7 +12,7 @@
 import { ref, nextTick } from 'vue'
 import type { MenuCategory } from '@/types/api-contracts'
 import { fetchCategories, productImageUrl } from '@/api/catalog'
-import { errorCopy, isAppError } from '@/utils/error-copy'
+import { errorCopyOr } from '@/utils/error-copy'
 
 /**
  * 分类锚点 id：真实分类 id 是 UUID（数字开头），而 `scroll-into-view` 与选择器
@@ -22,6 +22,9 @@ const anchorId = (categoryId: string) => `cat-${categoryId}`
 
 /** 首屏骨架的防抖延迟（毫秒）：快网不显示；spine 最小 UI 规范取约 250ms */
 const SKELETON_DELAY_MS = 250
+
+/** 页面态失败文案的兜底（非 AppError 与空文案时使用；Story 4.6） */
+const FAILURE_FALLBACK = '加载失败，请重试'
 
 export function useProducts() {
   /** 商品分类列表（含各分类下的商品） */
@@ -68,9 +71,9 @@ export function useProducts() {
       error.value = null
     } catch (err) {
       // transport 只会抛 AppError；文案唯一来源 utils/error-copy.ts（AR-P3-20）
-      const message = isAppError(err) ? errorCopy(err) : ''
-      // 空文案（request_cancelled 不展示）与未知异常兜底，保证失败态始终可渲染
-      error.value = message !== '' ? message : '加载失败，请重试'
+      // 空文案（request_cancelled 不展示）与非 AppError 用场景兜底，保证失败态始终可渲染
+      const message = errorCopyOr(err, FAILURE_FALLBACK)
+      error.value = message !== '' ? message : FAILURE_FALLBACK
     } finally {
       if (skeletonTimer) {
         clearTimeout(skeletonTimer)
