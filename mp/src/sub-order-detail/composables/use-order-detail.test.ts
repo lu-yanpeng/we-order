@@ -6,7 +6,9 @@
  * 2. 首读遮罩的 250ms 防抖延迟与完成即撤；失败重试不弹遮罩；
  * 3. 下拉刷新：成功更新；已有数据失败保留数据 + toast；无数据失败进失败态；
  * 4. 空 id 本地守卫不发请求、不轮询；
- * 5. 轮询 5s 更新、completed 终态停轮询、状态单调不倒退（Story 4.3）。
+ * 5. 轮询 5s 更新、completed 终态停轮询、状态单调不倒退（Story 4.3）；
+ * 6. 操作后读取 `refreshAfterAction`（Story 4.5）：确认取餐后读取变已完成并停轮询、
+ *    失败静默（保留数据、不 toast）。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { OrderDetail } from '@/types/api-contracts'
@@ -262,5 +264,35 @@ describe('useOrderDetail 轮询与状态单调（Story 4.3）', () => {
     await s.setActive(true)
     expect(fetchOrderByIdMock).toHaveBeenCalledTimes(2)
     expect(s.order.value?.status).toBe('pickup')
+  })
+})
+
+describe('useOrderDetail 操作后读取（Story 4.5）', () => {
+  it('refreshAfterAction：确认取餐后读取变已完成并停止轮询', async () => {
+    fetchOrderByIdMock.mockResolvedValueOnce({ ...detail, status: 'pickup' })
+    const s = useOrderDetail()
+    s.prepareOrderDetail(detail.id)
+    await s.setActive(true)
+
+    const completed = { ...detail, status: 'completed' as const }
+    fetchOrderByIdMock.mockResolvedValueOnce(completed)
+    await s.refreshAfterAction()
+
+    expect(s.order.value?.status).toBe('completed')
+    await vi.advanceTimersByTimeAsync(15000)
+    expect(fetchOrderByIdMock).toHaveBeenCalledTimes(2) // completed 终态：不再轮询
+  })
+
+  it('refreshAfterAction 失败静默：保留数据、不 toast', async () => {
+    fetchOrderByIdMock.mockResolvedValueOnce({ ...detail, status: 'pickup' })
+    const s = useOrderDetail()
+    s.prepareOrderDetail(detail.id)
+    await s.setActive(true)
+
+    fetchOrderByIdMock.mockRejectedValueOnce({ source: 'client', code: 'timeout' })
+    await s.refreshAfterAction()
+
+    expect(s.order.value?.status).toBe('pickup')
+    expect(toastMock).not.toHaveBeenCalled()
   })
 })

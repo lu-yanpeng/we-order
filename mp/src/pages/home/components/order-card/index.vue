@@ -13,6 +13,8 @@ const props = defineProps<{
   order: OrderListItem
   /** 已成功催过单（运行期标记，列表与详情共享；Story 4.4） */
   urged?: boolean
+  /** 确认取餐在飞（按钮 loading + 禁用防重复；Story 4.5） */
+  confirming?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -38,7 +40,7 @@ const STATUS_META: Record<OrderStatus, { label: string; textClass: string }> = {
 /** 底部操作按钮（原型 .btn-reorder 三态变体） */
 const ACTION_META: Record<OrderStatus, { label: string; class: string }> = {
   cooking: { label: '催单', class: 'border-ink-soft text-ink-soft' },
-  pickup: { label: '确认取杯', class: 'border-gold text-gold' },
+  pickup: { label: '确认取餐', class: 'border-gold text-gold' },
   completed: { label: '再来一单', class: 'border-green-accent text-green-accent' },
 }
 
@@ -51,6 +53,9 @@ const actionMeta = computed(() => {
   return ACTION_META[props.order.status]
 })
 
+/** 确认取餐在飞且按钮仍处「待取餐」：按钮呈现 loading 并禁用（防重复） */
+const confirmBusy = computed(() => props.confirming === true && props.order.status === 'pickup')
+
 /** 就餐方式文案 */
 const modeLabel = computed(() => (props.order.dining_mode === 'takeout' ? '打包外带' : '店内堂食'))
 
@@ -62,8 +67,9 @@ const goodsNotes = computed(() =>
   props.order.notes && props.order.notes !== '无备注要求' ? `备注: ${props.order.notes}` : '',
 )
 
-/** 底部按钮按状态派发对应操作 */
+/** 底部按钮按状态派发对应操作（确认取餐在飞期间忽略点击，防重复提交） */
 const handleAction = () => {
+  if (confirmBusy.value) return
   if (props.order.status === 'cooking') emit('urge')
   else if (props.order.status === 'pickup') emit('confirm-pickup')
   else emit('reorder')
@@ -111,13 +117,14 @@ const handleAction = () => {
       </view>
     </view>
 
-    <!-- 卡尾：状态操作 -->
+    <!-- 卡尾：状态操作（确认取餐在飞：loading + 禁用，Story 4.5） -->
     <view class="flex justify-end border-t border-dashed border-border-hairline pt-[20rpx]">
       <view
-        class="flex h-[52rpx] items-center justify-center rounded-full border px-[32rpx] text-[24rpx]"
-        :class="actionMeta.class"
+        class="flex h-[52rpx] items-center justify-center gap-[8rpx] rounded-full border px-[32rpx] text-[24rpx]"
+        :class="[actionMeta.class, confirmBusy ? 'pointer-events-none opacity-60' : '']"
         @click.stop="handleAction"
       >
+        <t-loading v-if="confirmBusy" theme="spinner" size="28rpx" inherit-color />
         <text class="leading-[1] font-semibold">{{ actionMeta.label }}</text>
       </view>
     </view>

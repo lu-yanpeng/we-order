@@ -108,7 +108,7 @@ NFR-P3-5 可观测性（开发期）：订阅连接、回退与重连过程可�
 
 - AR-P3-18 类型契约与客户端唯一契约文件（AD-14）：唯一生成命令 `supabase gen types typescript --local > supabase/types/database.types.ts`，生成物入仓、不手工编辑；mp 以相对路径 `import type` 引用同一份生成物（编译期擦除、不进包），不复制 / 不做手工同步步骤；**客户端唯一契约文件 `types/api-contracts.ts`**——`OrderResult` / `OrderListItem` / `OrderDetail` / `OrdersPage` / `CreateOrderItem` / `CreateOrderRequest` / `SpecSelections` 各自标注服务端来源（`order_result_json` / `get_my_orders` / `get_my_order_detail` / `menu` …），目录、订单、结算、再来一单都从此引用、不得各建一份，用 `satisfies` / 穷尽键检查防漂移；身份映射——`order.id` = 服务端 UUID（RPC / 订阅 / 列表 key）、`order_number` = 展示编号，并同步修改既有 UI（`order-card`、`order-detail`、`use-orders.goToOrderDetail`、`use-reorder`）；JSON 形态——金额为 jsonb 数字（元、两位小数），时间为服务端按门店时区格式化的 `YYYY-MM-DD HH:mm:ss` 文本，快照类 JSON 字段（`selections`、`create_order` 入参、订单读取返回等）保留手工覆盖类型并标注出处；字段可空性与生成类型一致（如 `pickup_code` 恒有值）；落点沿用 P1 约定（共享业务类型以生成类型窄别名形式留在 `types/`，`api/` 专属请求 / 响应类型定义在 `api/` 文件内）。
 - AR-P3-19 存量清理与单一数据源（AD-15）：删除 `src/mock/`、Phase 2 遗留 `api/` 实现（重建）与 `pages/auth-check/` 验证入口，**同步更新 `pages.json` 首页与声明**；不存在任何 Mock 回退开关；清理是 `onLaunch` 的第一步同步操作（执行者唯一：`api/storage.ts` 的 `migrateStorageOnce()`；版本标记 `weorder_schema_version` 由其写入）；清理集合 `weorder_orders` / `weorder_cart` / `weorder_checkout_intent`（跨版本复用会取回旧订单）→ 版本 ≠ 3 时清空并写 3，`weorder_session` 保留（有效会话直接复用）；清理后购物车 store 重新水合（空）；「再来一单」只从服务端快照还原、wire 转换复用唯一转换器，快照中已失效的行丢弃并 toast「部分商品已失效」。
-- AR-P3-20 最小 UI 规范与失败不脏状态（AD-17 + spine「最小 UI 规范」节）：单一文案来源 `utils/error-copy.ts`（按 `AppError.source` 分域），场景专属补充（如支付超时提示）由场景 Composable 追加、不复制翻译；P1 AD-7 承接——数据加载失败由 Composable 返回 error 状态供页面失败态渲染，客户端业务校验失败（如空购物车结算）由场景 Composable 以 toast 阻断并保留可重试；形态分工——操作级失败（下单 / 催单 / 确认取杯）用 `uni.showToast({ icon: 'none' })` 且界面停留可重试，页面级加载失败（目录 / 订单列表 / 订单详情）用页面内失败态（文案 + 「重试」），确认订单页门店读取失败用卡片内失败态（文案 + 「重试」，不阻断支付、重试不弹全屏遮罩）；订单页加载失败不展示任何订单数据（含本地缓存）、不以空列表伪装；空态（订单列表）显示「还没有订单」+「去点餐」并停止轮询与订阅；提交类操作进入 loading 防重复态、失败后恢复可点（支付过程保留 Phase 1 的 loading 与成功反馈）；缺图以色块占位、不阻塞列表渲染；启动静默登录失败不弹全局提示、在需要身份的动作处暴露失败类别（不暴露会话状态）；关键失败不留脏状态（下单失败保留购物车、不产生重复订单；催单 / 确认取杯失败不改变本地展示状态）；文案表（登录类沿用 Phase 2、订单类新增 10 项、客户端类 4 项）与形态表（含催单成功 / 确认取杯成功 / 支付超时内联提示 / 再来一单部分失效 toast）为内容基准。
+- AR-P3-20 最小 UI 规范与失败不脏状态（AD-17 + spine「最小 UI 规范」节）：单一文案来源 `utils/error-copy.ts`（按 `AppError.source` 分域），场景专属补充（如支付超时提示）由场景 Composable 追加、不复制翻译；P1 AD-7 承接——数据加载失败由 Composable 返回 error 状态供页面失败态渲染，客户端业务校验失败（如空购物车结算）由场景 Composable 以 toast 阻断并保留可重试；形态分工——操作级失败（下单 / 催单 / 确认取杯）用 `uni.showToast({ icon: 'none' })` 且界面停留可重试，页面级加载失败（目录 / 订单列表 / 订单详情）用页面内失败态（文案 + 「重试」），确认订单页门店读取失败用卡片内失败态（文案 + 「重试」，不阻断支付、重试不弹全屏遮罩）；订单页加载失败不展示任何订单数据（含本地缓存）、不以空列表伪装；空态（订单列表）显示「还没有订单」+「去点餐」并停止轮询与订阅；提交类操作进入 loading 防重复态、失败后恢复可点（支付过程保留 Phase 1 的 loading 与成功反馈）；缺图以色块占位、不阻塞列表渲染；启动静默登录失败不弹全局提示、在需要身份的动作处暴露失败类别（不暴露会话状态）；关键失败不留脏状态（下单失败保留购物车、不产生重复订单；催单 / 确认取杯失败不改变本地展示状态）；文案表（登录类沿用 Phase 2、订单类新增 10 项、客户端类 4 项）与形态表（含催单成功 / 确认取餐成功 / 支付超时内联提示 / 再来一单部分失效 toast）为内容基准。
 - AR-P3-21 演示参数（AD-16）：参数分两类载体、均为服务端 / 声明式、演示前可调，客户端不参与任何时间判定；门店行——推进时长 15s / 催单提前量 3s / 自动完成等待 30s，对新建单与新催单立即生效、已出单的时刻不变；cron 声明——扫描周期 3s（由 15s 调小），修改必须**同名替换** `order-sweep`、不得留下第二个扫描任务；演示前调整方式：门店行 `UPDATE` 即时生效，cron 周期走迁移或 `cron.alter_job` 后重新确认任务列表。
 
 **验证与节奏**
@@ -635,7 +635,7 @@ So that 我能表达「我这单着急」，而不是干等。
 ### Story 4.5: 确认取杯与自动完成
 
 As a 取到餐的用户，
-I want 点确认取杯把订单完成，忘记点也会自动完成，
+I want 点确认取餐把订单完成，忘记点也会自动完成，
 So that 订单列表反映真实进度，而不是一直挂在「待取餐」。
 
 **Requirements:** FR-P3-14; AR-P3-20, AR-P3-21
@@ -643,8 +643,8 @@ So that 订单列表反映真实进度，而不是一直挂在「待取餐」。
 **Acceptance Criteria:**
 
 **Given** 本人「待取餐」的订单
-**When** 点确认取杯
-**Then** 立即进入「已完成」并 toast「取杯成功」+ 状态即时更新；重复确认幂等（不报错、不改完成时间）；按钮 loading + 禁用防重复
+**When** 点确认取餐
+**Then** 立即进入「已完成」并 toast「取餐成功」+ 状态即时更新；重复确认幂等（不报错、不改完成时间）；按钮 loading + 禁用防重复
 **And** 确认失败不改变本地展示的状态，并给出类别提示
 
 **Given** 「待取餐」后不做任何操作

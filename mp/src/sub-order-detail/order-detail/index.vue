@@ -17,6 +17,7 @@ import { onHide, onLoad, onPullDownRefresh, onShow, onUnload } from '@dcloudio/u
 import { useOrderDetail } from '@/sub-order-detail/composables/use-order-detail'
 import { useReorder } from '@/composables/use-reorder'
 import { useUrge } from '@/composables/use-urge'
+import { useConfirmPickup } from '@/composables/use-confirm-pickup'
 import LoadFailure from '@/components/load-failure/index.vue'
 import type { OrderStatus } from '@/types/api-contracts'
 
@@ -37,13 +38,16 @@ const {
   dispose,
   retryOrderDetail,
   refreshOrderDetail,
-  confirmPickup,
+  refreshAfterAction,
 } = useOrderDetail()
 
 const { reorder } = useReorder()
 
 /** 催单（Story 4.4）：模块级共享标记——与列表一致，已催过显示「已催单」、再点只提示 */
 const { isUrged, urge: urgeOrder } = useUrge()
+
+/** 确认取餐（Story 4.5）：模块级共享在飞状态；成功后立即读取一次（auto 语义）再清 loading */
+const { isConfirming, confirmPickup } = useConfirmPickup()
 
 /** 状态卡文案与状态色（FR-13：制作中-蓝 / 待取餐-金 / 已完成-绿） */
 const STATUS_VIEW: Record<OrderStatus, { title: string; titleClass: string; desc: string }> = {
@@ -140,9 +144,11 @@ onPullDownRefresh(async () => {
         </view>
         <view
           v-else-if="order.status === 'pickup'"
-          class="flex h-[76rpx] w-full items-center justify-center rounded-button bg-gold"
-          @click="confirmPickup"
+          class="flex h-[76rpx] w-full items-center justify-center gap-[12rpx] rounded-button bg-gold"
+          :class="isConfirming(order.id) ? 'pointer-events-none opacity-60' : ''"
+          @click="confirmPickup(order.id, refreshAfterAction)"
         >
+          <t-loading v-if="isConfirming(order.id)" theme="spinner" size="32rpx" inherit-color />
           <text class="leading-[1] font-bold text-[26rpx] text-black">确认取餐</text>
         </view>
         <view

@@ -8,7 +8,9 @@
  * 4. 触底分页的追加去重；
  * 5. 骨架的 250ms 防抖延迟；
  * 6. 失败保留已有数据（自动 / 轮询静默、用户主动刷新才 toast）；
- * 7. 轮询 5s 刷新、状态单调不倒退、空态停止轮询（Story 4.3）。
+ * 7. 轮询 5s 刷新、状态单调不倒退、空态停止轮询（Story 4.3）；
+ * 8. 操作后读取 `refreshAfterAction`（Story 4.5）：立即读取 + auto 语义合并（保游标、
+ *    状态更新）、失败静默（保留数据、不 toast）。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { OrderListItem, OrdersPage, OrderStatus } from '@/types/api-contracts'
@@ -355,5 +357,52 @@ describe('useOrders 轮询与状态单调（Story 4.3）', () => {
     expect(fetchOrdersMock).toHaveBeenCalledTimes(3)
     expect(s.orders.value.map((o) => o.id)).toEqual([item(3).id, item(2).id])
     expect(s.orders.value[0].status).toBe('pickup')
+  })
+})
+
+describe('useOrders 操作后读取（Story 4.5）', () => {
+  it('refreshAfterAction：立即读取一次并按 auto 语义合并（保游标、保已翻页、状态更新）', async () => {
+    fetchOrdersMock
+      .mockResolvedValueOnce(page([item(3, 'pickup'), item(2, 'completed')], cursor(2)))
+      .mockResolvedValueOnce(page([item(1)])) // 触底翻第 2 页 → 到底
+      // 确认取餐后的操作读取：第一页里该单已变已完成（服务端读时自动完成 / 确认成功）
+      .mockResolvedValueOnce(page([item(3, 'completed'), item(2, 'completed')], cursor(2)))
+
+    const s = useOrders()
+    await enter(s)
+    await s.loadMoreOrders()
+    expect(s.hasMore.value).toBe(false)
+
+    await s.refreshAfterAction()
+
+    // 操作读取第一页（不传游标）→ 合并：已翻的第 2 页保留、游标保持「已到底」
+    expect(fetchOrdersMock).toHaveBeenCalledTimes(3)
+    expect(fetchOrdersMock).toHaveBeenLastCalledWith(null)
+    expect(s.orders.value.map((o) => o.id)).toEqual([item(3).id, item(2).id, item(1).id])
+    expect(s.orders.value[0].status).toBe('completed')
+    expect(s.hasMore.value).toBe(false)
+  })
+
+  it('refreshAfterAction 失败静默（保留数据、不 toast），并重置轮询计时', async () => {
+    fetchOrdersMock
+      .mockResolvedValueOnce(page([item(1, 'pickup')]))
+      .mockRejectedValueOnce({ source: 'client', code: 'timeout' })
+      .mockResolvedValueOnce(page([item(1, 'completed')]))
+
+    const s = useOrders()
+    await enter(s)
+
+    await vi.advanceTimersByTimeAsync(2000)
+    await s.refreshAfterAction()
+    expect(fetchOrdersMock).toHaveBeenCalledTimes(2)
+    expect(s.orders.value[0].status).toBe('pickup') // 失败保留数据
+    expect(toastMock).not.toHaveBeenCalled() // 静默：由轮询自愈
+
+    // 计时重置：距操作读取 5000ms 后下一次轮询（而非距首读 5000ms）
+    await vi.advanceTimersByTimeAsync(4999)
+    expect(fetchOrdersMock).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(fetchOrdersMock).toHaveBeenCalledTimes(3)
+    expect(s.orders.value[0].status).toBe('completed')
   })
 })

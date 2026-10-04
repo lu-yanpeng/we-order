@@ -17,6 +17,7 @@ import { useOrders } from './composables/use-orders'
 import { useCart } from '@/composables/use-cart'
 import { useReorder } from '@/composables/use-reorder'
 import { useUrge } from '@/composables/use-urge'
+import { useConfirmPickup } from '@/composables/use-confirm-pickup'
 import { useCheckoutBar } from '@/composables/use-checkout-bar'
 import { useHomeTabs } from '@/composables/use-home-tabs'
 import ProductCard from './components/product-card/index.vue'
@@ -95,15 +96,18 @@ const {
   refreshing: ordersRefreshing,
   setActive: setOrdersActive,
   refreshOrders,
+  refreshAfterAction,
   loadMoreOrders,
   goToOrderDetail,
-  confirmPickup,
 } = useOrders()
 
 const { reorder } = useReorder()
 
 /** 催单（Story 4.4）：模块级共享标记——列表与详情一致，已催过显示「已催单」、再点只提示 */
 const { isUrged, urge: urgeOrder } = useUrge()
+
+/** 确认取餐（Story 4.5）：模块级共享在飞状态；成功后立即读取一次（auto 语义）再清 loading */
+const { isConfirming, confirmPickup } = useConfirmPickup()
 
 /** 点击商品加号 → 打开规格弹窗 */
 const handleAddToCart = (product: MenuProduct) => {
@@ -302,9 +306,10 @@ onHide(() => {
                 :key="order.id"
                 :order="order"
                 :urged="isUrged(order.id)"
+                :confirming="isConfirming(order.id)"
                 @click="goToOrderDetail(order)"
                 @urge="urgeOrder(order.id)"
-                @confirm-pickup="confirmPickup"
+                @confirm-pickup="confirmPickup(order.id, refreshAfterAction)"
                 @reorder="reorder(order)"
               />
 

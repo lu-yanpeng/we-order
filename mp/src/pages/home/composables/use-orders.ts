@@ -12,8 +12,8 @@
  *    FR-P3-12）——空态与「全部已完成」停止轮询（FR-P3-10 + 2026-10-04 补记）、
  *    连续失败 3 次降级为手动刷新入口；
  * 3. 状态机与交互：加载 → 失败 → 空 → 内容；骨架 / 下拉刷新 / 触底分页；
- *    卡片操作：进入订单详情、确认取杯（催单由根 `use-urge` 承接，Story 4.4；
- *    取杯的真实调用见 Story 4.5）。
+ *    卡片操作：进入订单详情；催单 / 确认取餐的真实动作分别由根 `use-urge` /
+ *    `use-confirm-pickup` 承接（Story 4.4 / 4.5）；操作后立即读取入口 `refreshAfterAction`。
  *
  * 状态判定顺序固定为「加载 → 失败 → 空 → 内容」（spine 最小 UI 规范）：
  * - 加载：首屏无数据时延迟 250ms 显示骨架（快网不闪烁；刷新 / 重试不回骨架）；
@@ -170,6 +170,13 @@ export function useOrders() {
   }
 
   /**
+   * 操作后立即读取（确认取餐成功后由根 `use-confirm-pickup` 调用；Story 4.5）：
+   * 与进入可见域同语义（auto——合并应用、失败静默、保游标），并重置轮询计时；
+   * 不整表替换、不重置分页（确认取餐不是显式刷新，AD-7）。
+   */
+  const refreshAfterAction = () => status.runAutoRead()
+
+  /**
    * 触底加载下一页（scroll-view 的 scrolltolower）：
    * 有游标才发请求；追加去重（已知 id 不重复插入、不更新已有条目）；
    * 读取序号经同一编排铸造（比较范围仍是订单 id）；失败保留已加载数据并在页脚重试。
@@ -217,11 +224,6 @@ export function useOrders() {
     })
   }
 
-  /** 确认取杯（真实调用见 Story 4.5） */
-  const confirmPickup = () => {
-    uni.showToast({ title: '确认取杯功能开发中', icon: 'none' })
-  }
-
   return {
     orders,
     error,
@@ -235,8 +237,8 @@ export function useOrders() {
     refreshing,
     setActive,
     refreshOrders,
+    refreshAfterAction,
     loadMoreOrders,
     goToOrderDetail,
-    confirmPickup,
   }
 }

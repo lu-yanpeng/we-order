@@ -10,7 +10,9 @@
  * 4. `fetchOrderById`：断言详情读取走服务端 RPC（订单 id 是唯一参数、`session-required`），
  *    不发起真实网络请求；
  * 5. `urgeOrder`：断言催单走服务端 RPC（订单 id 是唯一参数、`session-required`、无用户标识），
- *    不发起真实网络请求。
+ *    不发起真实网络请求；
+ * 6. `completeOrder`：断言确认取餐走服务端 RPC（订单 id 是唯一参数、`session-required`、
+ *    无用户标识与完成时刻），不发起真实网络请求。
  *
  * 生成 / 序列化 / 校验 / 决策的纯函数测试见 `utils/checkout-intent.test.ts`。
  */
@@ -25,6 +27,7 @@ import type { CartItem } from '@/types/cart'
 import type { CheckoutIntent } from '@/utils/checkout-intent'
 import {
   clearCheckoutIntent,
+  completeOrder,
   ensureCheckoutIntent,
   fetchOrderById,
   fetchOrders,
@@ -325,5 +328,44 @@ describe('urgeOrder（Story 4.4；FR-P3-13）', () => {
 
     const [, body] = postMock.mock.calls[0] as [string, Record<string, unknown>]
     expect(Object.keys(body)).toEqual(['p_order_id'])
+  })
+})
+
+describe('completeOrder（Story 4.5；FR-P3-14）', () => {
+  /** 服务端确认取餐返回 = 完成后的订单对外形状（展示经读取路径刷新，本端不直接消费） */
+  const order: OrderResult = {
+    id: '44444444-4444-4444-8444-444444444444',
+    order_number: '202610041200000002',
+    status: 'completed',
+    dining_mode: 'dinein',
+    packaging_fee: 0,
+    total_amount: 32,
+    notes: '无备注要求',
+    pickup_code: 'C-0001',
+    created_at: '2026-10-04 12:00:00',
+  }
+
+  beforeEach(() => {
+    postMock.mockReset()
+    postMock.mockResolvedValue(order)
+  })
+
+  it('经对接层 POST complete_order：订单 id 是唯一参数、session-required', async () => {
+    await expect(completeOrder(order.id)).resolves.toEqual(order)
+
+    expect(postMock).toHaveBeenCalledTimes(1)
+    const [url, body, config] = postMock.mock.calls[0] as [string, Record<string, unknown>, unknown]
+    expect(url).toBe('/rest/v1/rpc/complete_order')
+    expect(body).toEqual({ p_order_id: order.id })
+    expect(config).toEqual({ meta: { auth: 'session-required' } })
+  })
+
+  it('请求体只有订单 id：不传用户标识与完成时刻（归属与时间由服务端决定）', () => {
+    void completeOrder(order.id)
+
+    const [, body] = postMock.mock.calls[0] as [string, Record<string, unknown>]
+    expect(Object.keys(body)).toEqual(['p_order_id'])
+    expect(body).not.toHaveProperty('completed_at')
+    expect(body).not.toHaveProperty('user_id')
   })
 })

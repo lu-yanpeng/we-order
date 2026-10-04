@@ -7,8 +7,9 @@
  * 2. 刷新编排：经 `composables/use-order-status.ts` 管理可见域与 5s 轮询（Story 4.3；
  *    FR-P3-12）——订单已完成（终态）停止轮询；连续失败 3 次降级为手动刷新入口；
  * 3. 状态应用单调：序号门 + 状态不倒退（`utils/order-status.ts`；AD-7）；
- * 4. 封装状态卡操作：确认取餐（催单由根 `use-urge` 承接——成功标记「已催单」、重复点击
- *    只提示不再发请求，Story 4.4；确认取杯真实调用见 Story 4.5）。
+ * 4. 操作后立即读取入口 `refreshAfterAction`（确认取餐成功后由根 `use-confirm-pickup` 调用，
+ *    Story 4.5；同 auto 语义：合并 / 静默 + 重置轮询计时）；确认取餐与催单的真实动作分别由
+ *    根 `use-confirm-pickup` / `use-urge` 承接。
  *
  * 触发路径唯一：`onLoad` 只登记订单 id（`prepareOrderDetail`），读取一律由页面的
  * `onShow → setActive(true)`（可见域进入）与下拉刷新 / 失败重试（显式刷新）发起。
@@ -146,10 +147,11 @@ export function useOrderDetail() {
   /** 下拉刷新：显式刷新（同重试），失败口径由 readOrder 决定 */
   const refreshOrderDetail = () => status.runManualRead()
 
-  /** 确认取杯（真实调用见 Story 4.5） */
-  const confirmPickup = () => {
-    uni.showToast({ title: '确认取杯功能开发中', icon: 'none' })
-  }
+  /**
+   * 操作后立即读取（确认取餐成功后由根 `use-confirm-pickup` 调用；Story 4.5）：
+   * 与进入可见域同语义（auto——失败静默），并重置轮询计时；completed 后自然停轮询。
+   */
+  const refreshAfterAction = () => status.runAutoRead()
 
   return {
     order,
@@ -162,6 +164,6 @@ export function useOrderDetail() {
     dispose,
     retryOrderDetail,
     refreshOrderDetail,
-    confirmPickup,
+    refreshAfterAction,
   }
 }

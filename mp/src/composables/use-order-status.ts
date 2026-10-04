@@ -14,7 +14,9 @@
  * 4. 订阅接入点：`setSubscriptionHealthy(true)` 即停轮询（Epic 5 的「先补读再停」在置位前完成）；
  *    未启用订阅（默认）时轮询是唯一刷新路径；
  * 5. 串行化：同一时刻最多一个在飞读取；轮询与进入触发与在飞读取合并（跳过），
- *    手动读取不丢弃（等待在飞读取完成后补跑一次，兑现「下拉必然读取一次」）。
+ *    手动读取不丢弃（等待在飞读取完成后补跑一次，兑现「下拉必然读取一次」）；
+ * 6. 操作触发读取（Story 4.5）：确认取餐等动作成功后立即读取一次，复用 auto 语义
+ *    （合并应用、失败静默——刷新失败由轮询自愈），并重置轮询计时。
  *
  * 状态呈现（失败态 / toast / 骨架 / 遮罩）由使用方在 `read` 内负责；本 Composable 不碰 UI。
  * 开发期可观察：`isPolling` 暴露轮询计时器状态（NFR-P3-5）。
@@ -46,6 +48,11 @@ export interface OrderStatusController {
   setSubscriptionHealthy: (healthy: boolean) => void
   /** 显式刷新（下拉 / 失败重试）：立即读一次并重置轮询计时；在飞时等待后补跑，可 await */
   runManualRead: () => Promise<void>
+  /**
+   * 操作触发的立即读取（确认取餐等，Story 4.5）：与进入可见域同语义（`auto`——
+   * 合并应用、失败静默，刷新失败由轮询自愈），并重置轮询计时；在飞时合并跳过。
+   */
+  runAutoRead: () => Promise<void>
   /** 铸造下一个读取序号（供分页等非编排读取复用同一条单调路径） */
   nextSeq: () => number
   /** 停止编排（页面卸载 / 测试清理）：停表、不再发起任何读取；之后所有入口 no-op */
@@ -181,6 +188,12 @@ export function useOrderStatus(options: UseOrderStatusOptions): OrderStatusContr
   /** 显式刷新（下拉 / 失败重试）：立即读一次并重置轮询计时 */
   const runManualRead = () => (disposed ? Promise.resolve() : startRead('manual'))
 
+  /**
+   * 操作触发的立即读取（确认取餐等，Story 4.5）：同 auto 语义（合并、静默）+
+   * 重置轮询计时；在飞时与在飞读取合并跳过（最坏由下一个轮询周期自愈）。
+   */
+  const runAutoRead = () => (disposed ? Promise.resolve() : startRead('auto'))
+
   /** 停止编排：停表并让所有入口失效（页面卸载后残留计时器 / 补跑不再触发） */
   const dispose = () => {
     disposed = true
@@ -189,5 +202,13 @@ export function useOrderStatus(options: UseOrderStatusOptions): OrderStatusContr
     cancelTimer()
   }
 
-  return { setActive, setSubscriptionHealthy, runManualRead, nextSeq, dispose, isPolling }
+  return {
+    setActive,
+    setSubscriptionHealthy,
+    runManualRead,
+    runAutoRead,
+    nextSeq,
+    dispose,
+    isPolling,
+  }
 }

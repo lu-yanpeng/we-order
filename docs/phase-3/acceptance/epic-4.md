@@ -549,3 +549,141 @@ order-sweep | 3 seconds | t
 4. **门店行参数无代码改动**：默认值即 15/3/30；本 Story 只固化 cron 3 秒。演示前如需调整推进时长，按 addendum §F 的 `UPDATE` 方式，并记录还原方式。
 5. **手动清单 6 项已执行并全部通过（2026-10-04）**：真实链路（催单两态 / 连点单次调用 / 跨页面共享 / 待取餐无入口 / 失败可重试 / cron 参数核对）由演示者在开发者工具按上表执行，结果列已补——本项关闭。
 
+## Story 4.5 确认取餐与自动完成
+
+- 日期：2026-10-04
+- 环境：mp 侧 `pnpm test`（vitest 3.2.7）、`pnpm type-check`（vue-tsc 3.3.6）、`pnpm lint`、`pnpm build:mp-weixin`；supabase 侧 `supabase db reset`（重放全部迁移 + 种子）、`supabase test db`（19 文件 / 632 项）、`deno task verify:complete`（16 项断言）
+- 范围：客户端确认取餐真实调用（`complete_order` RPC）+ 操作后立即读取（`runAutoRead`，auto 语义）+ 按钮 loading / 禁用 + 文案统一（「确认取餐」/「取餐成功」）+ 文档回写；**未含**：错误提示全量收口（4.6）、订单图片（4.7）、订阅（Epic 5）
+- 裁定记录（Ly，2026-10-04）：① 动作逻辑落在根 composable `use-confirm-pickup.ts`（与 `use-urge` 同模式：动作唯一实现、列表与详情共享在飞状态；页内占位删除）；② 操作后读取新增 `runAutoRead()`——**auto 语义**（列表合并、保分页游标、失败静默由轮询自愈）+ 重置轮询计时，不按「显式刷新」整表替换（AD-7；4.3 遗留「接入时确认口径」的收敛）；③ 按钮 loading 从点击保持到**操作后读取完成**（状态更新前不闪回「确认取餐」）；④ 界面文案统一「确认取餐」、成功提示「取餐成功」——只统一用户可见文案，功能名与后端函数名（`complete_order`）保持「确认取杯」；⑤ 点击瞬间恰有轮询在飞时操作后读取合并跳过，最坏一个轮询周期（5s）自愈，不额外加「在飞补跑」。
+- 后端背景：`complete_order` / `complete_due_orders`（含读时自动完成）在 Phase 2 已交付，cron 扫描周期 3s 已在 Story 4.4 固化；本 Story **零后端改动**，只重跑基线取证。
+
+### 交付物
+
+| 类别 | 内容 |
+| --- | --- |
+| 新增（客户端） | `src/composables/use-confirm-pickup.ts`：模块级在飞记录（按订单 id、跨页共享）+ `isConfirming` + `confirmPickup(orderId, refreshAfterAction?)`——成功 toast「取餐成功」→ 操作后读取 → 清 loading；失败类别 toast（唯一翻译）、不刷新、可重试 |
+| 修改（客户端） | `src/api/orders.ts`：新增 `completeOrder(orderId)` → `POST /rest/v1/rpc/complete_order`（体只有 `p_order_id`、`session-required`）；头注释补确认取餐职责 |
+| 修改（客户端） | `src/composables/use-order-status.ts`：新增 `runAutoRead()`——操作触发立即读取，同 auto 语义（合并 / 静默）+ 重置轮询计时 |
+| 修改（客户端） | `src/pages/home/composables/use-orders.ts`：删除占位 `confirmPickup`；新增并暴露 `refreshAfterAction`（= `status.runAutoRead()`） |
+| 修改（客户端） | `src/sub-order-detail/composables/use-order-detail.ts`：同上（占位删除 + `refreshAfterAction`） |
+| 修改（客户端） | `src/pages/home/components/order-card/index.vue`：新增 `confirming` prop；待取餐按钮 loading（`t-loading`）+ 禁用 + 在飞忽略点击；按钮文案「确认取杯」→「确认取餐」 |
+| 修改（客户端） | `src/pages/home/index.vue`：接入 `useConfirmPickup`（`:confirming`、`@confirm-pickup="confirmPickup(order.id, refreshAfterAction)"`） |
+| 修改（客户端） | `src/sub-order-detail/order-detail/index.vue`：同上接入（按钮 loading / 禁用） |
+| 新增（测试） | `src/composables/use-confirm-pickup.test.ts`（5 项） |
+| 修改（测试） | `src/api/orders.test.ts` +2（completeOrder 请求形状）；`src/composables/use-order-status.test.ts` +2（runAutoRead）；`src/pages/home/composables/use-orders.test.ts` +2（refreshAfterAction）；`src/sub-order-detail/composables/use-order-detail.test.ts` +2（refreshAfterAction） |
+| 修改（文档） | `ARCHITECTURE-SPINE.md`（AD-8 操作后立即读取 + 形态表 + 修订记录）、`epics.md`（Story 4.5 验收口径 + AR-P3-20 引用）、`docs/phase-1/prd.md`（FR-12 按钮文案统一）、本验收记录 |
+| 未改动 | 后端全部（迁移 / 函数 / 类型 / 脚本）；`types/api-contracts.ts`；`utils/error-copy.ts`（订单域类别与文案已齐备） |
+
+### 关键实现点
+
+1. **服务端零改动、职责边界清晰**：确认取餐写路径仍是 `complete_order`（唯一状态写入经 `transition_order`）；自动完成由服务端承担（cron 3s + 读时即时完成），客户端只感知。本 Story 不新增第二套时间判定。
+2. **动作唯一实现（根 composable）**：列表与详情共用 `useConfirmPickup`；「在飞」记录按订单 id 模块级共享、运行期内存、不落存储；服务端幂等为纵深防御（重复确认返回成功且不改完成时间）。
+3. **操作后立即读取 = auto 语义**：`runAutoRead()` 复用 `startRead('auto')`——列表合并（保游标、保已翻页）、失败静默、重置轮询计时；不整表替换（AD-7 只允许首屏 / 显式刷新 / 分页重置）。
+4. **loading 覆盖到状态更新**：`confirmPickup` 在 `refreshAfterAction` 完成后才清 loading，按钮不会在成功与状态更新之间闪回「确认取餐」；读取失败静默、由轮询自愈（不叠加第二条错误提示）。
+5. **失败不脏状态**：确认失败只 toast 类别文案，不刷新、不改本地展示状态；按钮恢复可点、可重试（`invalid_status` / `order_not_found` / 网络类均可区分）。
+6. **文案统一**：界面按钮与提示统一「确认取餐」/「取餐成功」；功能名与后端函数名保持「确认取杯」/ `complete_order`（迁移与测试注释作为历史记录不改）。
+7. **已知边界**：列表分页第二页的订单确认后，操作后读取只覆盖第一页（4.3 已知「轮询只读第一页」的延伸，演示主路径活跃单恒在第一页）；点击瞬间恰有轮询在飞时合并跳过，最坏一个轮询周期（5s）自愈。
+
+### 验收点与证据
+
+| Story 4.5 验收点 | 证据 |
+| --- | --- |
+| 点确认取餐 → 立即进入「已完成」+ toast「取餐成功」+ 状态即时更新 | `use-confirm-pickup.test.ts`：成功用例断言「调一次 API → toast → 操作后读取」；`use-orders.test.ts` / `use-order-detail.test.ts` 的 `refreshAfterAction` 用例断言读取后该单变 `completed`（合并、保游标）；真实链路属手动 #1 / #2 |
+| 按钮 loading + 禁用防重复（连点只发一条） | `use-confirm-pickup.test.ts`「在飞期间连点」：同一订单只调一次 API、loading 保持到读取完成；`order-card` 的 `confirming` prop + 在飞忽略点击；构建产物两者均为 `t-loading` 组件声明；手动 #1 |
+| 重复确认幂等（不报错、不改完成时间） | 服务端基线：`supabase test db`（`93_complete.test.sql` 覆盖重复确认与并发）+ `deno task verify:complete`「并发两次确认取杯都成功」「重复确认返回成功（目标状态已达成）」「重复确认不修改完成时间」「确认一张已由超时自动完成的订单：返回成功」 |
+| 确认失败不改变本地展示的状态，并给出类别提示 | `use-confirm-pickup.test.ts` 失败用例：类别文案 toast（`invalid_status` →「当前状态不支持该操作，请刷新后重试」）、不刷新、可重试；手动 #3 / #5 |
+| 「待取餐」后不操作 → 服务端自动完成，页面 ≤ 一个轮询周期感知；已完成单归组、详情可再次打开 | 服务端基线：`verify:complete`「自动完成发生在落库时刻 + 一个扫描周期内（1.0 秒）」「时刻是数据、不是派生值」；客户端感知由 4.3 的 5s 轮询与读时自动完成承担（本 Story 零新增代码）；手动 #4 |
+| 自动完成感知与手动确认共用状态应用路径（单调、不倒退） | 手动确认后的读取与轮询同走 `useOrderStatus` + `utils/order-status.ts` 序号门 / 单调（4.3 既有 11 + 12 项单测）；`refreshAfterAction` 用例断言 completed 后停轮询 |
+| 类型契约与编译期保护不回归；既有行为不回归 | `types/api-contracts.ts` 未改动、`pnpm type-check` 0 错误；`pnpm test` 179 项全过（原 166 + 新增 13）；`pnpm build:mp-weixin` Build complete |
+
+### 验证命令与输出（可复现）
+
+```bash
+cd mp
+pnpm test             # 16 文件 / 179 项全过（新增 13）
+pnpm type-check       # 0 错误
+pnpm lint             # 0 错误
+pnpm build:mp-weixin  # Build complete.
+
+cd ../supabase
+supabase db reset          # 重放全部迁移（含 cron 3s）+ 种子
+supabase test db           # 19 文件 / 632 项全过（Result: PASS）
+deno task verify:complete  # PASS：16 项断言全部通过
+
+# 文案与接线证据
+grep -rn "确认取杯\|取杯成功" src/ | grep -v test    # 仅 api-contracts.ts 的能力描述注释（功能名）
+grep -rn "确认取杯" dist/build/mp-weixin/ | wc -l    # 0
+ls dist/build/mp-weixin/composables/use-confirm-pickup.js
+```
+
+```text
+✓ src/composables/use-confirm-pickup.test.ts (5 tests)   # 成功顺序 / 连点单次 / 失败可重试 / 读取失败静默 / 跨订单独立
+✓ src/api/orders.test.ts (16 tests)                      # + completeOrder 2
+✓ src/composables/use-order-status.test.ts (12 tests)    # + runAutoRead 2
+✓ src/pages/home/composables/use-orders.test.ts (18)     # + refreshAfterAction 2
+✓ src/sub-order-detail/composables/use-order-detail.test.ts (15)  # + refreshAfterAction 2
+✓ 其余 11 文件 113 项不回归
+
+Test Files  16 passed (16)
+     Tests  179 passed (179)
+```
+
+```text
+PASS：16 项断言全部通过（订单 202610041852217559 并发确认后完成；订单 202610041852210401 在无人操作下按落库时刻自动完成，取杯号 A-0003）
+  ✓ 并发两次确认取杯都成功（一个真的完成、另一个按「目标状态已达成」返回）
+  ✓ 重复确认不修改完成时间（仍是最早写入的那一次）
+  ✓ 自动完成发生在落库时刻之后：配置改成 600 秒后仍按 5 秒的落库时刻完成（时刻是数据、不是派生值）
+  ✓ 确认一张已由超时自动完成的订单：返回成功
+  ✓ 自动完成的订单：确认不改写完成时间
+```
+
+构建产物抽查（`dist/build/mp-weixin`）：`composables/use-confirm-pickup.js` 已产出；`api/orders.js` 含 `complete_order`；`composables/use-order-status.js` 含 `runAutoRead`；`pages/home/index.js` 含 `confirming` 绑定；`order-card/index.js`、`sub-order-detail/order-detail/index.wxml` 含「确认取餐」且全仓构建产物无「确认取杯」；两处 `index.json` 均声明 `t-loading`。
+
+### 手动验证清单（演示者执行）
+
+前置：本地栈在跑、已 `supabase db reset`（cron 3 秒）、`mp/.env.local` 指向本地栈、开发者工具已勾选「不校验合法域名」；建议先「清缓存并重启」；准备「待取餐」订单（下单后等 15 秒推进或点催单）。
+
+| # | 操作 | 预期 | 结果 |
+| --- | --- | --- | --- |
+| 1 | 列表点「确认取餐」并连点几次 | 按钮出现 loading、全程只发 1 条 `complete_order`（网络面板确认）；toast「取餐成功」；卡片变「已完成」/ 按钮变「再来一单」 | 通过 |
+| 2 | 另起一张单，在详情页点「确认取餐」 | 按钮 loading、toast「取餐成功」；状态卡变「已完成」并显示取餐码；完成后网络面板不再有 `get_my_order_detail`（停轮询） | 通过 |
+| 3 | 停后端（`supabase stop`）→ 点确认 → 起后端 → 重试 | 失败：类别文案 toast（如「网络不可用，请检查网络后重试」）、状态仍「待取餐」、按钮恢复可点；恢复后重试成功 | 通过 |
+| 4 | 下单后不操作，等进入「待取餐」后约 30 秒（详情保持可见） | 页面 ≤6 秒内自动变「已完成」（自动完成）；已完成单可再次打开详情 | 通过 |
+| 5 | （可选）SQL 把一张「待取餐」单改回 `cooking`（清 `auto_complete_at` / `completed_at`、推后 `ready_at`），再点确认 | `invalid_status` 文案 toast「当前状态不支持该操作，请刷新后重试」；状态不变；轮询拉到最新状态后可再操作 | 跳过（可选） |
+| 6 | 确认成功后立刻杀进程重启（或换页面清缓存重进） | 订单为「已完成」（服务端事实）；列表 / 详情正确展示，不产生第二条完成记录 | 通过 |
+
+> 2026-10-04 由演示者在微信开发者工具按上表执行；1~4、6 项全部通过；#5 为可选构造项，未执行（原因与可用的构造 SQL 见下）；Story 4.5 验收关闭。
+
+> **#5 构造说明（可选，2026-10-04 记录）**：在 Supabase Studio 直接 `update public.orders set status = 'cooking'` 会触发 `orders_check1`（`已完成 ⇔ 有完成时刻`）与 `orders_auto_complete_check`（`非制作中 ⇔ 有自动完成时刻`）——改状态必须连带清空两个时刻列，否则约束拒绝。可用的构造 SQL（与 Story 4.3 手动 #6 同口径）：
+>
+> ```sql
+> -- 0) 先挑一张「待取餐」单并记下原状态
+> select id, order_number, status, pickup_code, ready_at, auto_complete_at from public.orders order by created_at desc limit 5;
+>
+> -- 1) 改回「制作中」：清两个时刻列 + 推后 ready_at（防止服务端读时推进立刻纠正回「待取餐」）
+> update public.orders
+> set status = 'cooking',
+>     completed_at = null,
+>     auto_complete_at = null,
+>     ready_at = now() + interval '1 hour'
+> where id = '<订单 id>';
+>
+> -- 2) 验证后还原为「待取餐」（接近其原本的自动完成时刻）
+> update public.orders
+> set status = 'pickup',
+>     completed_at = null,
+>     auto_complete_at = now() + interval '30 seconds'
+> where id = '<订单 id>';
+> ```
+>
+> 本项为可选边界（UI 正常路径不会出现「制作中却可点确认」）；`invalid_status` 的文案分支已由 `use-confirm-pickup.test.ts` 确定性覆盖（toast「当前状态不支持该操作，请刷新后重试」），跳过不影响验收。
+
+> 4.8 预演时，本表 #1 / #2 / #4 并入验证矩阵 #1（演示主路径：确认取餐 / 自动完成感知）与 #9（界面无回归：确认取餐 loading / 文案）；#3 并入 #11（失败类别可区分）；#6 属专项抽查（杀进程后状态一致性）；#5 未执行（可选构造项）。
+
+### 有意偏差与遗留
+
+1. **操作后读取的已知边界**（裁定 ⑤）：分页第二页的老单确认后，操作后读取只覆盖第一页（4.3「轮询只读第一页」的延伸）；点击瞬间恰有轮询在飞时合并跳过、最坏一个轮询周期（5s）自愈。演示主路径活跃单恒在第一页，不额外加「在飞补跑」。
+2. **详情按钮文案本来就已是「确认取餐」**：本 Story 只改列表卡「确认取杯」→「确认取餐」，统一结果两处一致；「取杯号」「取餐码」为业务名词，不在改名范围。
+3. **loading 视觉为最小实现**：列表卡与详情按钮内联 `t-loading`（28 / 32rpx、inherit-color）；Story 4.7 重排卡片与三态详情页重新设计时统一皮肤，行为（loading + 禁用 + 在飞忽略）不变。
+4. **手动清单已执行（2026-10-04）**：1~4、6 项通过；#5 为可选构造项、跳过（Studio 直接改 `status` 触发 `orders_check1` / `orders_auto_complete_check`，可用的连带清空 SQL 已记入清单下方说明，时刻列约束与 Story 4.3 手动 #6 同口径）。真实链路（确认取餐两入口 / 连点单次调用 / 失败恢复 / 自动完成感知 / 杀进程一致性）由演示者在开发者工具复验——本项关闭，Story 4.5 验收关闭。
+

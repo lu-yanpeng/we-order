@@ -4,6 +4,7 @@
  * 用 mock 的 `read` + fake timers 驱动，不发起真实网络请求：
  * 1. 进入可见域立即读一次 + 5s 轮询；离开 / dispose 停表；
  * 2. 重新进入立即读一次并重置轮询计时；手动读取立即执行 + 重置计时；
+ *    操作触发读取（runAutoRead，Story 4.5）立即执行 auto 语义 + 重置计时；
  * 3. shouldPoll（空态 / 终态）停轮询、恢复后重排；
  * 4. 串行化：在飞时自动读取合并（不重复）、手动读取等待后补跑（不丢弃）；
  * 5. 连续失败 3 次降级为手动刷新入口；任一成功清零并恢复轮询；
@@ -93,6 +94,51 @@ describe('useOrderStatus 刷新编排（Story 4.3）', () => {
     await vi.advanceTimersByTimeAsync(1)
     expect(read).toHaveBeenCalledTimes(3)
     expect(read).toHaveBeenNthCalledWith(3, 3, 'auto')
+  })
+
+  it('操作触发读取（runAutoRead）：立即执行 auto 语义并重置轮询计时', async () => {
+    const read = vi.fn(async () => true)
+    const s = useOrderStatus({ read })
+
+    await s.setActive(true) // 读 1，计时器在 5000
+    await vi.advanceTimersByTimeAsync(2000)
+
+    await s.runAutoRead() // 读 2 立即（2000），auto 语义（合并 / 静默），计时器重置在 7000
+    expect(read).toHaveBeenNthCalledWith(2, 2, 'auto')
+
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS - 1)
+    expect(read).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(read).toHaveBeenCalledTimes(3)
+    expect(read).toHaveBeenNthCalledWith(3, 3, 'auto')
+  })
+
+  it('操作触发读取在在飞时合并跳过（同 auto 语义）；dispose 后 no-op', async () => {
+    let release: () => void = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const read = vi
+      .fn<(seq: number, kind: OrderReadKind) => Promise<boolean>>()
+      .mockImplementationOnce(async () => {
+        await gate
+        return true
+      })
+      .mockImplementation(async () => true)
+
+    const s = useOrderStatus({ read })
+    const entering = s.setActive(true)
+    const actionRead = s.runAutoRead()
+    expect(read).toHaveBeenCalledTimes(1) // 在飞时合并跳过，不并发
+
+    release()
+    await entering
+    await actionRead
+    expect(read.mock.calls.map((call) => call[1])).toEqual(['auto'])
+
+    s.dispose()
+    await s.runAutoRead()
+    expect(read).toHaveBeenCalledTimes(1)
   })
 
   it('串行化：在飞时自动读取合并（不重复）、手动读取等待后补跑（不丢弃）', async () => {

@@ -9,7 +9,9 @@
  * 3. 订单详情：经服务端读取路径 `get_my_order_detail`（Story 4.2；读时推进、只含本人订单，
  *    非本人 / 不存在同一类别 `order_not_found`，不泄露订单存在性）；
  * 4. 催单：经服务端 `urge_order`（Story 4.4）——只提前推进时刻、不直接改状态；
- * 5. 结算意图（幂等键）生命周期（Story 3.4；AD-10）——`weorder_checkout_intent` 唯一出口。
+ * 5. 确认取餐：经服务端 `complete_order`（Story 4.5；FR-P3-14）——把本人「待取餐」订单置为
+ *    「已完成」，重复确认幂等（返回成功且不改完成时间）；超时自动完成由服务端兜底；
+ * 6. 结算意图（幂等键）生命周期（Story 3.4；AD-10）——`weorder_checkout_intent` 唯一出口。
  *
  * 订单侧 Mock 数据源（`mock/orders.ts`）已随 Story 4.2 删除；本文件不存在任何
  * Mock 读写路径或回退开关，读取只有服务端一条通路（FR-P3-3 整体收口）。
@@ -110,6 +112,30 @@ export function payOrder(request: CreateOrderRequest) {
 export function urgeOrder(orderId: string) {
   return transport.Post<OrderResult>(
     '/rest/v1/rpc/urge_order',
+    { p_order_id: orderId },
+    { meta: { auth: 'session-required' } },
+  )
+}
+
+// ── 订单操作：确认取餐（Story 4.5；FR-P3-14） ───────────────────────────────
+
+/**
+ * 确认取餐（`complete_order` RPC）：把本人「待取餐」的订单置为「已完成」，
+ * 完成时间由服务端记录；与超时自动完成共用同一处状态迁移实现。
+ *
+ * - `session-required`：先会合登录 / 续期，401 时自动续期并重放一次（AD-3 / AD-4）；
+ * - 请求体只有订单 id，身份与服务端归属谓词同源（归属不可伪造）；
+ * - 重复确认幂等：已完成（含已由超时自动完成）再确认返回成功且不改写完成时间；
+ *   非本人 / 不存在返回同一类别 `order_not_found`；本人非「待取餐」返回 `invalid_status`
+ *   （AD-13，不泄露存在性）；失败经对接层归一为 `AppError`，文案走 `utils/error-copy.ts`；
+ * - 返回值即完成后的订单对外形状；客户端展示仍经读取路径刷新（AD-7：状态的唯一来源是
+ *   服务端读取——由调用方的「操作后读取」完成，本方法不直接写 UI 状态）。
+ *
+ * 返回 alova Method：可 `await`，也可用 `useRequest` 包裹（AD-5）。
+ */
+export function completeOrder(orderId: string) {
+  return transport.Post<OrderResult>(
+    '/rest/v1/rpc/complete_order',
     { p_order_id: orderId },
     { meta: { auth: 'session-required' } },
   )
