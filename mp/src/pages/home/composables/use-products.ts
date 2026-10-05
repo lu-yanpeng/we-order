@@ -26,6 +26,16 @@ const SKELETON_DELAY_MS = 250
 /** 页面态失败文案的兜底（非 AppError 与空文案时使用；Story 4.6） */
 const FAILURE_FALLBACK = '加载失败，请重试'
 
+/**
+ * 高亮边界的容差（px）。
+ *
+ * `@scroll` 事件里的 `scrollTop` 是 float32 精度，而 `boundingClientRect` 预算出的
+ * 分类 top 是 double：例如目标 top=6020.8（double），事件给出 6020.7998046875
+ * （float32 向下偏约 0.0002px），严格 `>=` 会差之毫厘地把高亮判给前一个分类。
+ * 1px 的模糊带可吸收浮点误差与真机像素对齐残差；分类间距有几百 px，不会误判。
+ */
+const BOUNDARY_TOLERANCE_PX = 1
+
 export function useProducts() {
   /** 商品分类列表（含各分类下的商品） */
   const categories = ref<MenuCategory[]>([])
@@ -46,8 +56,17 @@ export function useProducts() {
   const scrollIntoViewId = ref('')
   /** 各分类区块在 scroll-view 中的 top 偏移量 */
   const sectionPositions = ref<{ id: string; top: number }[]>([])
-  /** 是否为程序触发的滚动（防止与用户滚动互相干扰） */
-  const isProgrammaticScroll = ref(false)
+
+  /**
+   * 程序化滚动目标锁：点击侧边栏后记录目标分类及其预算 top，非 null 时右→左联动
+   * 不参与高亮判定（高亮由点击目标兜底），直到滚动真正到达目标附近、或用户手指
+   * 接管列表才解锁。
+   *
+   * 不用「布尔标志 + 固定时长解锁」的原因见 docs/一些思考/双区联动.md 复盘：
+   * scroll-into-view 的动画时长与定时器同量级，末尾 scroll 事件早到/晚到会导致
+   * 同一次操作时对时错；不设超时则避免动画尾部的不完整事件在超时后把高亮带偏。
+   */
+  let programmaticTarget: { id: string; top: number } | null = null
 
   /** 加载分类数据：成功渲染完整目录；失败产出文案、保留失败态供页面渲染（Story 2.2） */
   const loadCategories = async () => {
@@ -87,35 +106,54 @@ export function useProducts() {
 
   /**
    * 侧边栏点击 → 滚动商品列表到对应分类
-   * 先清空 scrollIntoViewId 再赋值，触发小程序 scroll-into-view 重新定位
+   * 先清空 scrollIntoViewId 再赋值，触发小程序 scroll-into-view 重新定位；
+   * 同时立目标锁：程序化动画期间左侧高亮钉在点击分类上。
    */
   const handleSidebarClick = (categoryId: string) => {
     activeCategory.value = categoryId
-    isProgrammaticScroll.value = true
+
+    const targetTop = sectionPositions.value.find((pos) => pos.id === categoryId)?.top
+    // 位置尚未测量时退化为无锁，由右侧滚动的常规匹配兜底
+    programmaticTarget = targetTop === undefined ? null : { id: categoryId, top: targetTop }
+
     scrollIntoViewId.value = ''
     nextTick(() => {
       scrollIntoViewId.value = anchorId(categoryId)
-      // 程序滚动完成后，延时重置 isProgrammaticScroll 标志
-      setTimeout(() => {
-        isProgrammaticScroll.value = false
-      }, 400)
     })
   }
 
   /**
+   * 用户手指触碰商品列表：立即解除目标锁，把高亮交还给滚动位置判定。
+   *
+   * 注意：微信 scroll-view 在执行 `scroll-into-view` 平滑动画期间通常不接受拖拽
+   * （动画由平台掌控、无法打断），所以这里不是"抢在动画中接管滚动"，而是安全网——
+   * 当真机落点残差大于容差、目标锁无法因"到达"而释放时，用户一碰列表即可恢复
+   * 右→左联动，避免高亮被永久锁死。
+   */
+  const handleContentTouchStart = () => {
+    programmaticTarget = null
+  }
+
+  /**
    * 用户滚动商品列表 → 更新侧边栏高亮
-   * 通过对比预计算的各分类 top 位置确定当前所在分类
+   * 通过对比预计算的各分类 top 位置确定当前所在分类；比较带 1px 容差
+   * （吸收 float32/double 精度差与像素对齐残差，见 BOUNDARY_TOLERANCE_PX）。
    */
   const handleContentScroll = (e: { detail: { scrollTop: number } }) => {
-    if (isProgrammaticScroll.value) return
-
     const { scrollTop } = e.detail
+
+    // 目标锁生效期间：未到达目标前不改高亮；到达（或已越过）目标后解锁并继续常规匹配
+    if (programmaticTarget) {
+      if (scrollTop + BOUNDARY_TOLERANCE_PX < programmaticTarget.top) return
+      programmaticTarget = null
+    }
+
     const positions = sectionPositions.value
     if (positions.length === 0) return
 
-    // 从后往前匹配，找到第一个 top <= scrollTop 的分类
+    // 从后往前匹配，找到第一个 top <= scrollTop + 容差 的分类
     for (let i = positions.length - 1; i >= 0; i--) {
-      if (scrollTop >= positions[i].top) {
+      if (scrollTop + BOUNDARY_TOLERANCE_PX >= positions[i].top) {
         if (activeCategory.value !== positions[i].id) {
           activeCategory.value = positions[i].id
         }
@@ -194,9 +232,9 @@ export function useProducts() {
     skeletonVisible,
     activeCategory,
     scrollIntoViewId,
-    isProgrammaticScroll,
     footerHeight,
     handleSidebarClick,
+    handleContentTouchStart,
     handleContentScroll,
     computeSectionPositions,
     init,

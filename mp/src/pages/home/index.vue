@@ -35,6 +35,7 @@ const {
   scrollIntoViewId,
   handleSidebarClick,
   handleContentScroll,
+  handleContentTouchStart,
   footerHeight,
   init: initProducts,
   anchorId,
@@ -235,6 +236,7 @@ onHide(() => {
             :scroll-into-view="scrollIntoViewId"
             :scroll-with-animation="true"
             @scroll="handleContentScroll"
+            @touchstart="handleContentTouchStart"
           >
             <view
               v-for="cat in categories"
