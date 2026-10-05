@@ -242,9 +242,9 @@ describe('normalizeFailure：枚举外类别的开发期记录（Story 4.6）', 
     expect(
       normalizeFailure(httpFailure('rpc', 400, { code: 'P0001', message: 'brand_new_code' })),
     ).toMatchObject({ source: 'order', code: 'unknown' })
-    expect(
-      normalizeFailure(httpFailure('pay-order', 500, { code: 'new_pay_code' })),
-    ).toMatchObject({ source: 'order', code: 'unknown' })
+    expect(normalizeFailure(httpFailure('pay-order', 500, { code: 'new_pay_code' }))).toMatchObject(
+      { source: 'order', code: 'unknown' },
+    )
     expect(
       normalizeFailure(httpFailure('wechat-login', 500, { code: 'new_login_code' })),
     ).toMatchObject({ source: 'login', code: 'unknown' })

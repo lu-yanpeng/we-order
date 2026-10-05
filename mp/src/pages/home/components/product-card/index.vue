@@ -22,7 +22,7 @@ const handleAddToCart = (product: MenuProduct) => {
 
 <template>
   <view class="flex items-center gap-[24rpx] border-border-hairline border-b-[2rpx] py-[28rpx]">
-    <view class="h-[144rpx] w-[144rpx] shrink-0 overflow-hidden rounded-[24rpx] bg-surface-ceramic">
+    <view class="h-[160rpx] w-[160rpx] shrink-0 overflow-hidden rounded-[24rpx] bg-surface-ceramic">
       <image
         v-if="imageUrl && !imageFailed"
         class="h-full w-full"

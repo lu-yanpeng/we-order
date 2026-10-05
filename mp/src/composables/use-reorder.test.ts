@@ -102,6 +102,7 @@ const validItem: OrderDetailItem = {
   selections: { size: 'grande' },
   unit_price: 99,
   quantity: 2,
+  image_path: null,
 }
 
 /** 失效快照行：商品不在当前目录（已下架） */
@@ -129,7 +130,7 @@ function detailOf(items: OrderDetailItem[]): OrderDetail {
   }
 }
 
-/** 列表卡条目（只有摘要，没有明细） */
+/** 列表卡条目（只有图片行，没有明细） */
 const listItem: OrderListItem = {
   id: '22222222-2222-4222-8222-222222222222',
   order_number: '202609301200000001',
@@ -140,7 +141,7 @@ const listItem: OrderListItem = {
   notes: '无备注要求',
   pickup_code: 'A-0001',
   created_at: '2026-09-30 12:00:00',
-  item_summary: '拿铁 ×2',
+  item_images: [{ image_path: 'products/latte.png' }],
 }
 
 /** 还原后的购物车条目：当前价 30 + 大杯 3 = 33 */

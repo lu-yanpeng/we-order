@@ -72,6 +72,7 @@ function snapshotItem(overrides: Partial<OrderDetailItem> = {}): OrderDetailItem
     selections: { size: 'grande', addons: ['shot'] },
     unit_price: 99,
     quantity: 2,
+    image_path: null,
     ...overrides,
   }
 }

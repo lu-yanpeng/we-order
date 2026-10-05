@@ -12,12 +12,13 @@
  * 制作中显示取杯号与催单（已催过显示「已催单」，Story 4.4），待取餐显示取杯号与确认取餐，
  * 已完成显示再来一单。
  */
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { onHide, onLoad, onPullDownRefresh, onShow, onUnload } from '@dcloudio/uni-app'
 import { useOrderDetail } from '@/sub-order-detail/composables/use-order-detail'
 import { useReorder } from '@/composables/use-reorder'
 import { useUrge } from '@/composables/use-urge'
 import { useConfirmPickup } from '@/composables/use-confirm-pickup'
+import { productImageUrl } from '@/api/catalog'
 import LoadFailure from '@/components/load-failure/index.vue'
 import type { OrderStatus } from '@/types/api-contracts'
 
@@ -69,6 +70,17 @@ const STATUS_VIEW: Record<OrderStatus, { title: string; titleClass: string; desc
 }
 
 const statusView = computed(() => (order.value ? STATUS_VIEW[order.value.status] : null))
+
+/**
+ * 明细缩略图（Story 4.7）：快照路径 → 对象存储 URL（复用目录图片的同一构造）；
+ * 空路径返回空串 → 色块占位；加载失败同样回退色块、不阻塞列表渲染。
+ */
+const failedItemImages = ref<Record<number, boolean>>({})
+const itemImageUrl = (imagePath: string | null) => productImageUrl(imagePath)
+const markItemImageFailed = (index: number) => {
+  failedItemImages.value[index] = true
+}
+const isItemImageFailed = (index: number) => failedItemImages.value[index] === true
 
 onLoad((query) => {
   // 只登记订单 id；读取由 onShow 进入可见域统一触发（Story 4.3）
@@ -182,10 +194,23 @@ onPullDownRefresh(async () => {
 
         <view class="flex flex-col gap-[20rpx]">
           <view
-            v-for="item in order.items"
+            v-for="(item, index) in order.items"
             :key="item.product_id + item.spec_summary"
-            class="flex items-start justify-between gap-[20rpx]"
+            class="flex items-start gap-[20rpx]"
           >
+            <!-- 商品图片缩略图：下单时刻快照；缺图 / 加载失败灰块占位（Story 4.7） -->
+            <view
+              class="h-[160rpx] w-[160rpx] shrink-0 overflow-hidden rounded-[16rpx] bg-surface-ceramic"
+            >
+              <image
+                v-if="itemImageUrl(item.image_path) && !isItemImageFailed(index)"
+                class="h-full w-full"
+                :src="itemImageUrl(item.image_path)"
+                mode="aspectFill"
+                lazy-load
+                @error="markItemImageFailed(index)"
+              />
+            </view>
             <view class="flex min-w-0 flex-1 flex-col gap-[4rpx]">
               <text class="font-semibold text-[24rpx] text-ink">{{ item.product_name }}</text>
               <text class="leading-[1.3] text-[20rpx] text-ink-soft">{{ item.spec_summary }}</text>

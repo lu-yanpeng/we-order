@@ -46,6 +46,7 @@ const detail: OrderDetail = {
       selections: { size: 'grande' },
       unit_price: 32,
       quantity: 1,
+      image_path: null,
     },
   ],
 }

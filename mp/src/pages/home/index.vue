@@ -9,7 +9,7 @@
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import { onHide, onShow } from '@dcloudio/uni-app'
-import type { MenuProduct } from '@/types/api-contracts'
+import type { MenuProduct, OrderListItem } from '@/types/api-contracts'
 import type { CartItem } from '@/types/cart'
 import { useProducts } from './composables/use-products'
 import { useSpecSheet } from './composables/use-spec-sheet'
@@ -108,6 +108,13 @@ const { isUrged, urge: urgeOrder } = useUrge()
 
 /** 确认取餐（Story 4.5）：模块级共享在飞状态；成功后立即读取一次（auto 语义）再清 loading */
 const { isConfirming, confirmPickup } = useConfirmPickup()
+
+/**
+ * 订单卡片图片行 URL（Story 4.7）：快照路径 → 对象存储 URL，复用目录图片的同一构造；
+ * 空路径返回空串 → 卡片以色块占位。数组顺序与 `order.item_images` 一一对应。
+ */
+const orderImageUrls = (order: OrderListItem) =>
+  order.item_images.map((image) => productImageUrl(image.image_path))
 
 /** 点击商品加号 → 打开规格弹窗 */
 const handleAddToCart = (product: MenuProduct) => {
@@ -305,6 +312,7 @@ onHide(() => {
                 v-for="order in orders"
                 :key="order.id"
                 :order="order"
+                :image-urls="orderImageUrls(order)"
                 :urged="isUrged(order.id)"
                 :confirming="isConfirming(order.id)"
                 @click="goToOrderDetail(order)"

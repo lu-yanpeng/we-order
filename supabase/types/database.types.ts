@@ -55,6 +55,7 @@ export type Database = {
       order_items: {
         Row: {
           id: string
+          image_path: string | null
           order_id: string
           product_id: string
           product_name: string
@@ -65,6 +66,7 @@ export type Database = {
         }
         Insert: {
           id?: string
+          image_path?: string | null
           order_id: string
           product_id: string
           product_name: string
@@ -75,6 +77,7 @@ export type Database = {
         }
         Update: {
           id?: string
+          image_path?: string | null
           order_id?: string
           product_id?: string
           product_name?: string

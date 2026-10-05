@@ -1,7 +1,7 @@
 -- 我的订单列表（Story 5.1；FR-P2-14；AD-5、AD-6、AD-10、AD-13、AD-22、AD-23；AR-16、NFR1）
 -- 覆盖：函数属性与权限、未认证拒绝、分页参数边界、默认 20 条与游标信封、
 --       倒序稳定与翻页不重不漏（含翻页期间插入新单、并列时间边界）、列表形状
---       （订单对外形状 + item_summary、取杯号恒有值、门店时区时间）、
+--       （订单对外形状 + item_images、取杯号恒有值、门店时区时间；item_summary 已随 Story 4.7 退役）、
 --       读时推进/超时自动完成、归属隔离（他人订单不可见）。
 -- 分工（避免重复）：
 --   * 订单对外形状与写入口共用映射在 80_create_order / 92_urge / 93_complete；
@@ -42,7 +42,7 @@ end;
 $$;
 grant execute on function public.test_collect_order_list(integer) to authenticated;
 
-select plan(46);
+select plan(48);
 
 -- ── 测试数据 ────────────────────────────────────────────────────────────────
 -- 用户 A（主测）、B（他人订单）、C（无订单）。
@@ -101,13 +101,14 @@ select
 from generate_series(1, 25) i
 join public.stores s on s.id = '00000000-0000-4000-8000-0000000b0001';
 
--- i25 的两条明细：摘要应为「拿铁 ×1、美式 ×2」（明细 id 决定摘要顺序）
-insert into public.order_items (id, order_id, product_id, product_name, spec_summary, unit_price, quantity)
+-- i25 的两条明细：第一条带图片路径、第二条无图（明细 id 决定行顺序），
+-- 用于断言图片行的顺序与可空性（Story 4.7）
+insert into public.order_items (id, order_id, product_id, product_name, spec_summary, unit_price, quantity, image_path)
 values
   ('00000000-0000-4000-8000-000000000901', '00000000-0000-4000-8000-000000000025',
-   '00000000-0000-4000-8000-0000000d0001', '拿铁', '中杯 Tall / 冰饮推荐', 30.00, 1),
+   '00000000-0000-4000-8000-0000000d0001', '拿铁', '中杯 Tall / 冰饮推荐', 30.00, 1, 'products/list-latte.png'),
   ('00000000-0000-4000-8000-000000000902', '00000000-0000-4000-8000-000000000025',
-   '00000000-0000-4000-8000-0000000d0002', '美式', '大杯 Grande / 热饮', 27.00, 2);
+   '00000000-0000-4000-8000-0000000d0002', '美式', '大杯 Grande / 热饮', 27.00, 2, null);
 
 -- 并列订单：创建时间完全相同（2026-08-01 10:00:00+08），id 101 < 102
 insert into public.orders (
@@ -263,9 +264,9 @@ select is(
 select is(
   (select array_agg(k order by k)
      from jsonb_object_keys(public.get_my_orders() -> 'items' -> 0) k),
-  array['created_at', 'dining_mode', 'id', 'item_summary', 'notes', 'order_number',
+  array['created_at', 'dining_mode', 'id', 'item_images', 'notes', 'order_number',
         'packaging_fee', 'pickup_code', 'status', 'total_amount'],
-  '列表项字段集合 = 订单对外形状 + item_summary（内部列不外泄）'
+  '列表项字段集合 = 订单对外形状 + item_images（Story 4.7；item_summary 已退役；内部列不外泄）'
 );
 select is(
   (select array_agg(value ->> 'order_number')
@@ -422,11 +423,26 @@ select ok(
   '金额是定点 JSON 数字（数值而非字符串）'
 );
 select is(
-  (select value ->> 'item_summary'
+  (select value -> 'item_images'
      from jsonb_array_elements(public.get_my_orders(50) -> 'items')
     where value ->> 'order_number' = '202609010000000025'),
-  '拿铁 ×1、美式 ×2',
-  '商品摘要 = 商品名 ×数量、顿号连接（服务端从明细快照生成）'
+  '[{"image_path": "products/list-latte.png"}, {"image_path": null}]'::jsonb,
+  '图片行按明细行顺序返回，元素 { image_path } 且路径可空（Story 4.7）'
+);
+select is(
+  (select array_agg(distinct k order by k)
+     from jsonb_array_elements(public.get_my_orders(50) -> 'items') e,
+          jsonb_array_elements(e.value -> 'item_images') img,
+          jsonb_object_keys(img.value) k),
+  array['image_path'],
+  '图片行元素只有 image_path 一个键（不对客户端暴露多余列）'
+);
+select is(
+  (select value -> 'item_images'
+     from jsonb_array_elements(public.get_my_orders(50) -> 'items')
+    where value ->> 'order_number' = '202609010000000001'),
+  '[]'::jsonb,
+  '没有明细的订单图片行为空数组（不是 null）'
 );
 select is(
   (select value ->> 'created_at'

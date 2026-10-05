@@ -53,20 +53,36 @@ export type OrderResult = Pick<
 >
 
 /**
- * 订单列表项。
- * 服务端来源：`public.get_my_orders(...)` 的 `items[]`（migrations/20260923055705_get_my_orders.sql）
- * = 订单对外形状 + `item_summary`（商品名 ×数量、顿号连接）。
+ * 订单列表图片行元素（一行 = 一条明细快照）。
+ * 服务端来源：`public.get_my_orders(...)` 的 `items[].item_images[]`
+ * （migrations/20261005090000_order_item_image_snapshot.sql）；
+ * `image_path` 为下单时刻快照（可空——历史订单 / 商品当时无图 → 客户端色块占位）。
+ * 2026-10-05 范围修订：元素只保留 `image_path`（列表 UI 不展示数量、详情已有 `items[].quantity`）。
  */
-export type OrderListItem = OrderResult & { item_summary: string }
+export type OrderItemImage = Pick<Tables<'order_items'>, 'image_path'>
+
+/**
+ * 订单列表项。
+ * 服务端来源：`public.get_my_orders(...)` 的 `items[]`（migrations/20260923055705_get_my_orders.sql、
+ * migrations/20261005090000_order_item_image_snapshot.sql）
+ * = 订单对外形状 + `item_images`（图片行，按明细行顺序）。
+ * 2026-10-05 范围修订：`item_summary` 退役——卡片图片化后全仓无消费方，服务端不再返回
+ * （属显式减法型修订，见 epics.md Story 4.7 AC）。
+ */
+export type OrderListItem = OrderResult & {
+  item_images: OrderItemImage[]
+}
 
 /**
  * 订单明细快照项。
- * 服务端来源：`public.get_my_order_detail(...)` 的 `items[]`（migrations/20260923124452_get_my_order_detail.sql）
- * = `order_items` 快照六列；标量列取自生成类型，`selections` 为 JSON 人工覆盖。
+ * 服务端来源：`public.get_my_order_detail(...)` 的 `items[]`
+ * （migrations/20260923124452_get_my_order_detail.sql、20261005090000_order_item_image_snapshot.sql）
+ * = `order_items` 快照列；标量列取自生成类型，`selections` 为 JSON 人工覆盖；
+ * `image_path` 为下单时刻图片路径快照（可空 → 客户端色块占位）。
  */
 export type OrderDetailItem = Pick<
   Tables<'order_items'>,
-  'product_id' | 'product_name' | 'spec_summary' | 'unit_price' | 'quantity'
+  'product_id' | 'product_name' | 'spec_summary' | 'unit_price' | 'quantity' | 'image_path'
 > & { selections: SpecSelections }
 
 /**
@@ -163,6 +179,7 @@ type IsJson<T> = T extends Json ? true : false
 export type ContractDriftChecks = [
   Expect<IsJson<OrderResult>>,
   Expect<IsJson<OrderListItem>>,
+  Expect<IsJson<OrderItemImage>>,
   Expect<IsJson<OrderDetail>>,
   Expect<IsJson<OrdersPage>>,
   Expect<IsJson<CreateOrderItem>>,

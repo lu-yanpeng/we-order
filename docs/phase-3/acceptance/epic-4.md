@@ -790,3 +790,118 @@ Test Files  16 passed (16)
 5. **订阅失败静默的运行时验收在 Epic 5**（裁定 ⑤）：本 Story 只保证不产生订阅相关失败路径与类别；Epic 5 落地后由矩阵 #5 / #6 / #12 补充证据。
 6. **手动清单已执行并全部通过（2026-10-04）**：5 行（登录失败与重试、无孤儿身份、失败不伪装、只提示一次、恢复回归）由演示者在开发者工具复验，结果列已补——本项关闭，Story 4.6 验收关闭。
 
+## Story 4.7 订单商品图片呈现（范围修订）
+
+- 日期：2026-10-05
+- 环境：mp 侧 `pnpm test`（vitest 3.2.7）、`pnpm type-check`（vue-tsc 3.3.6）、`pnpm lint`、`pnpm build:mp-weixin`；supabase 侧 `supabase db reset`（重放全部迁移 + 种子）、`supabase test db`（19 文件 / 640 项）、`deno task verify:rebuild`（25 项断言）
+- 范围：后端迁移（`order_items.image_path` 快照列 + `create_order` 写快照 + `get_my_orders` 增 `item_images`、退役 `item_summary` + `get_my_order_detail` 增 `image_path`；加法为主、附一次显式减法型修订）+ 类型再生成 + pgTAP / verify 同步；客户端契约增量 + 订单卡片图片化重排 + 详情缩略图 + 骨架同步 + 图片行纯函数；**未含**：图片对象入仓与上传（Ly 自备，沿用 FR-P3-7）、4.8 预演矩阵
+- 裁定记录（Ly，2026-10-05）：① 卡片按 spine 形态表只保留六项（编号 / 状态 / 图片行 / 时间 / 金额 / 按钮）——**卡片的取杯号块删除**（详情页保留「制作中即展示」）；② `item_images` 元素去掉 quantity、只留 `{ image_path }`（列表 UI 不展示数量、详情已有 `items[].quantity`，不保留无人消费的字段；epics AC 同步修订）；③ 图片行固定一行 4 格，格子 / 间距先取 144rpx / 12rpx 初值，皮肤级尺寸由演示者在模拟器调整并记入本记录；④ 快照语义：下单时读一次商品图片路径入库，展示永不现场查商品；对象缺失按加载失败色块占位；⑤ 详情缩略图先做再调；⑥ `item_summary` 退役（验收后追加裁定）：卡片图片化后全仓无消费方（界面 / composable 0 读取），删除返回字段与 `string_agg` 生成逻辑——属显式减法型修订（FR-P3-2「对接期只允许加法型改动」的例外，唯一消费方在本仓库、无外部客户端）；采用方案 A 折入未提交的 4.7 迁移（不另起迁移）
+
+### 交付物
+
+| 类别 | 内容 |
+| --- | --- |
+| 新增（后端） | `migrations/20261005090000_order_item_image_snapshot.sql`：`order_items` 加 `image_path text`（可空，形状同 `products.image_path`）+ `create or replace` 三个函数（`create_order` 写快照；`get_my_orders` 增 `item_images`、**退役 `item_summary`**；`get_my_order_detail` 增 `image_path`）；ACL 由 replace 保留、未重发授权；历史订单不回填 |
+| 修改（后端测试） | `60_orders`（列集合 +image_path、文本 / 可空断言，plan 53→55）；`80_create_order`（fixture 商品加图；下单写入快照断言；改图后历史快照不变断言，plan 102→104）；`95_order_list`（fixture 明细加图含 null；字段集合 +item_images、−item_summary；图片行顺序 / 键集合 / 空数组断言、删除商品摘要断言，plan 46→48）；`96_order_detail`（fixture 加图含 null；字段集合 +image_path；快照断言；列表比对只扣 item_images，plan 40→42） |
+| 修改（后端脚本） | `scripts/verify-rebuild.ts`：ListItem / Detail 类型同步（去 item_summary、补 image_path）+ 新增图片行元素形状与详情字段可空 2 项断言、删除商品摘要断言（净 24→25 项）；`verify-two-identities.ts`：ListItem 类型去 item_summary |
+| 修改（生成物） | `types/database.types.ts` 重新生成（order_items Row/Insert/Update +`image_path`，零手工） |
+| 修改（客户端） | `types/api-contracts.ts`：新增 `OrderItemImage`；`OrderListItem` +`item_images`、−`item_summary`；`OrderDetailItem` +`image_path`；`ContractDriftChecks` +`OrderItemImage` |
+| 新增（客户端） | `utils/order-gallery.ts`：`gallerySlots(total, capacity)` 纯函数（可见格数 / 溢出 N / 容量下限保护） |
+| 修改（客户端） | `order-card/index.vue` 图片化重排（编号 + 状态 / 单行图片行 + 溢出格 / 时间 + 金额 / 操作按钮；催单 / 确认取餐 / 再来一单行为与 loading 不变）；`order-card-skeleton/index.vue` 同步新结构；`pages/home/index.vue` 新增 `orderImageUrls()` 并传入；`sub-order-detail/order-detail/index.vue` 明细名称前加 144rpx 缩略图 + 失败占位 |
+| 修改（测试） | 夹具同步 5 文件（api/orders、use-orders、use-order-detail、use-reorder、reorder）；新增 `utils/order-gallery.test.ts`（6 项） |
+| 修改（文档） | `epics.md` Story 4.7 AC（`item_images` 元素去掉 quantity、`item_summary` 退役，2026-10-05 范围修订）；`supabase/tests/README.md` 当前状态表；本验收记录 |
+| 未改动 | 图片桶与公开读策略；`api/catalog.ts` 的 `productImageUrl`（订单复用同一构造）；上传路径（仍不交付）；结算 / 再来一单逻辑 |
+
+### 关键实现点
+
+1. **图片路径是快照、不是现场查询**：`create_order` 在逐行校验时读一次 `products.image_path`，随明细快照落库；列表 / 详情读取只读 `order_items` 存的那一列，不 join `products`。所以商品换图 / 改名 / 改价都不影响历史订单；对象存储里的图被删（路径还在、文件没了）→ `<image>` 加载失败 → 色块占位；老订单 / 商品当时无图 → `null` → 同一占位分支。
+2. **加法型迁移、函数整段替换**：`create or replace` 保留函数对象的 ACL 与属主，权限断言（80）全部沿用不变；迁移只加列与三个函数的形状增量。`item_images` 在 `get_my_orders` 已有的 lateral join 内用第二条聚合拼出（`jsonb_agg(... order by oi.id)`），不新增查询；无明细时 `coalesce` 成 `[]`（不是 null）。
+3. **列表形状**：`item_images` 按明细行顺序（`order_items.id`，与详情 `items` 同序），元素只有 `image_path` 一个键；`item_summary` 退役（4.7 卡片图片化后无消费方，返回字段与 `string_agg` 生成逻辑一并删除——裁定 ⑥）。
+4. **卡片布局**：只保留六项；图片行单行、每明细行一张方图（数量不展开）；`total ≤ 4` 全展示、`total > 4` 前 3 张 + 第 4 格（垫第 4 张图 + 渐变遮罩 + `+N`，N = total − 3）；缺图 / 失败以色块占位，不阻塞列表渲染；溢出格底图失败也退化为纯色块 +N。
+5. **编译期契约保护**：`OrderListItem.item_images` / `OrderDetailItem.image_path` 为必填，`pnpm type-check` 直接暴露 5 个测试文件的 7 处夹具缺字段，逐个补齐——不存在「类型说有、实际没有」的静默漂移。
+6. **同一图片构造**：卡片与详情都经 `api/catalog.ts` 的 `productImageUrl()` 拼 URL（唯一 `<项目地址>/storage/v1/object/public/product-images/<路径>` 出口）；页面负责构造、组件纯展示（沿用 product-card 的分工）。
+
+### 验收点与证据
+
+| Story 4.7 验收点 | 证据 |
+| --- | --- |
+| `order_items` 新增 `image_path`（可空，形状同 `products.image_path`）；`create_order` 写入当时快照；既有订单不回填 | `60_orders`：列集合含 image_path、类型 text、可空；`80_create_order`：「明细保存下单时刻的图片路径快照」；迁移为 `add column`（无 backfill） |
+| `get_my_order_detail` 明细增 `image_path`；`get_my_orders` 列表项增 `item_images`（按明细行顺序、元素 `{ image_path }`、可空）、退役 `item_summary`；其余字段逐字段一致 | `95_order_list`：字段集合（`item_summary` 已从集合消失）、图片行顺序与值、键集合、空数组；`96_order_detail`：字段集合、快照值、null 值、列表 vs 详情共有 9 字段逐字段一致；`verify:rebuild`：真实链路两个字段均出现 |
+| pgTAP 列集合与形状断言同步（60 明细列、80 快照列、95 列表项、96 明细）；新增「商品改图后历史订单快照不变」；verify 脚本同步；`supabase test db` 全绿；类型重新生成；mp 契约同步 | `supabase test db` 全绿（19 文件 / 640 项 = 原 632 + 8）；`80`、`96` 均有改图 / 改名 / 改价后快照不变断言；`verify-rebuild` 25 项 PASS；`git diff types/database.types.ts` 仅 +3 行；`types/api-contracts.ts` 从生成类型 `Pick` 出 `image_path`（`pnpm type-check` 0 错误） |
+| 图片对象仍由 Ly 自备；本 story 不做入仓与上传 | 无上传路径改动；手动清单前置 = 演示者上传 ≥3 张图并写 `products.image_path` |
+| 卡片只保留：编号 / 状态 / 图片行 / 时间 / 金额 / 按钮；不展示商品名、规格摘要、备注、就餐方式 | `order-card/index.vue` 模板；`grep item_summary/notes src/pages/home/components/order-card` 0 命中；构建产物卡片 `index.js` 含 `imageUrls` / `overflowCount` |
+| 图片行只占一行：每明细行一张（同规格合并、不同规格分行、不按数量展开）；溢出前 k−1 图 + 第 k 格渐变遮罩 + `+N`（N = 总数 − (k−1)），k 由宽度决定 | `utils/order-gallery.ts` 纯函数 + `order-gallery.test.ts` 6 项（容量内 / 占满 / 超 1 / 远超 / 空 / 容量下限）；卡片容量常量 4（144rpx 格 + 12rpx 间距 = 612rpx ≤ 622rpx 内容区）；构建产物 `index.wxss` 含 `gallery-overflow-mask`（渐变）、`index.wxml` 含溢出格 |
+| 图片经对象存储 URL 构造（复用目录图片同一构造与占位规则）；`image_path` 空 / 加载失败色块占位、不阻塞渲染 | `grep storage/v1/object/public src/`：唯一在 `api/catalog.ts`；卡片 / 详情均消费 `productImageUrl()`；`@error` 回退色块（与 `product-card` 同规则） |
+| 详情每条明细名称前显示缩略图；名称与完整规格摘要一条不少；金额与数量沿用；其余卡片结构不变 | `sub-order-detail/order-detail/index.vue`：缩略图 + 原 name / `spec_summary` / 金额 / `xN` 结构；门店卡、订单信息卡、状态卡未动 |
+| 类型契约与编译期保护不回归；既有行为不回归 | `pnpm test` 192 项全过（原 186 + 新增 6）；`pnpm type-check` / `pnpm lint` / `pnpm build:mp-weixin` 全过 |
+
+### 验证命令与输出（可复现）
+
+```bash
+cd mp
+pnpm test             # 17 文件 / 192 项全过（新增 6：order-gallery 纯函数）
+pnpm type-check       # 0 错误（契约新字段由编译器暴露 7 处夹具，全部补齐）
+pnpm lint             # 0 错误
+pnpm build:mp-weixin  # Build complete.
+
+cd ../supabase
+supabase db reset         # 重放全部迁移（含 20261005090000_order_item_image_snapshot.sql）+ 种子
+supabase test db          # 19 文件 / 640 项全过（原 632 + 新增 8：60 +2、80 +2、95 +2（新增 3、退役摘要断言 1）、96 +2）
+deno task verify:rebuild  # PASS：25 项断言全部通过（新增图片 2 项、删除摘要 1 项，净 +1）
+
+# 形状 / 单一构造证据
+grep -rn "storage/v1/object/public" mp/src/ | grep -v test   # 唯一在 api/catalog.ts
+grep -rn "productImageUrl" mp/src/ | grep -v test            # 目录与订单消费同一构造
+ls dist/build/mp-weixin/utils/order-gallery.js               # 纯函数已产出
+```
+
+```text
+✓ src/utils/order-gallery.test.ts (6 tests)   # 容量内 / 占满 / 溢出 +N / 空 / 容量下限
+✓ 其余 16 文件 186 项不回归（夹具同步后）
+
+Test Files  17 passed (17)
+     Tests  192 passed (192)
+```
+
+```text
+All tests successful.
+Files=19, Tests=640
+Result: PASS
+```
+
+```text
+PASS：25 项断言全部通过（干净重建后：匿名读目录与门店 → 登录 → 下单 202610052352307001 → 列表与详情 → 他人不可见）
+  ✓ 列表项带图片行（每明细行一个 { image_path } 元素，路径可空；Story 4.7）
+  ✓ 详情明细带图片路径快照字段（可空；Story 4.7）
+```
+
+构建产物抽查（`dist/build/mp-weixin`）：`utils/order-gallery.js` 已产出；`pages/home/components/order-card/index.wxss` 含 `gallery-overflow-mask`（渐变）、`index.wxml` 含溢出格与 `absolute inset-0`、`index.js` 含 `imageUrls` / `overflowCount`；`pages/home/index.js` 含 `orderImageUrls`；`sub-order-detail/order-detail/index.js` 含 `productImageUrl` 消费；`order-card-skeleton` 已重排为图片行结构。
+
+### 手动验证清单（演示者执行）
+
+前置：本地栈在跑、已 `supabase db reset`、`mp/.env.local` 指向本地栈、开发者工具已勾选「不校验合法域名」；**图片自备**：向 `product-images` 桶上传 ≥3 张图，并给对应商品写 `update public.products set image_path = '<对象路径>' where id = '<商品 id>';`；建议先「清缓存并重启」。
+
+| # | 操作 | 预期 | 结果 |
+| --- | --- | --- | --- |
+| 1 | 用 ≥2 个有图商品 + 1 个无图商品下一单（并另造一单 ≥5 个明细行，可用规格区分）→ 进订单 tab | 卡片只显示：订单编号 / 状态 / 图片行 / 下单时间 / 金额 / 按钮；有图商品显示商品图（方形裁切）、无图商品色块；不显示商品名、规格摘要、备注、就餐方式、取杯号 | 通过 |
+| 2 | 找到 ≥5 明细行的订单卡片 | 前 3 格为商品图、第 4 格显示第 4 行的图 + 渐变遮罩 + `+N`（N = 总行数 − 3）；同一明细行数量 >1 也只出一张图；不同规格分别出一张 | 通过 |
+| 3 | 打开订单详情（含一单多明细、含无图商品） | 每条明细名称前有方形缩略图；名称与完整规格摘要、金额、数量与 Phase 1 一致；无图商品缩略图为色块 | 通过 |
+| 4 | 对某历史单里的商品换图（`update products set image_path = '<新路径>'`）→ 重新打开该订单列表 / 详情；再把旧对象从桶里删除 | 列表与详情仍用下单时的旧路径（换图不影响历史单）；删除对象后该图位置变为色块占位，不白屏、不阻塞渲染 | 通过 |
+| 5 | 未设 `image_path` 的商品下单 → 进列表 / 详情；已 `db reset` 后老单等价为无图快照 | 图片行走色块占位（每明细行一个格子），不阻塞列表渲染 | 通过 |
+| 6 | 观察卡片观感（4 格是否刚好占满、是否拥挤） | 由演示者裁定是否调格子 / 间距（皮肤级调整记入本记录「补记」）；若 4 格拥挤可将容量降为 3 并核对 `+N` 语义 | 通过 |
+| 7 | 图片行上的操作按钮（制作中催单 / 待取餐确认取餐 / 已完成再来一单）与图片共存 | 行为与 Story 4.4 / 4.5 一致（toast、loading、已催单弱化）；点卡片空白处仍进详情、点按钮不触发跳转 | 通过 |
+
+> 2026-10-05 由演示者在微信开发者工具按上表执行，7 项全部通过（含图片行溢出 `+N`、详情缩略图、换图 / 删图的快照语义与无图占位复验）；Story 4.7 验收关闭。
+
+> 4.8 预演时，本表 #1 / #2 / #3 / #5 并入验证矩阵 #9（界面无回归）的复验项：卡片图片行与 `+N` 溢出、同规格合并 / 不同规格分行、详情缩略图、缺图占位（含无图快照）；#4 属快照语义专项（并入 #1 或 #9 备注）。
+
+### 有意偏差与遗留
+
+1. **卡片删除取杯号块**（裁定 ①）：4.1 / 4.2 加入卡片取杯块的旧假设被 spine 形态表（卡片只留六项）与 wireframe 取代；取杯号仍在详情「制作中即展示」，属 4.7 显式范围修订，非缺陷。4.8 矩阵 #9 的复验项需按新卡片清单核对。
+2. **`item_images` 元素去掉 quantity、`item_summary` 退役**（裁定 ②⑥）：epics AC 已同步修订（2026-10-05）；PRD / spine 未提及 quantity，无需回写。`item_summary` 是显式减法型修订（FR-P3-2 的例外）：4.7 卡片图片化后全仓无消费方，返回字段与生成逻辑删除；唯一消费方在本仓库、无外部客户端，风险闭合。若日后需要文本摘要，按加法型改动重新引入即可。
+3. **格子尺寸为初值**：4 格 144rpx + 间距 12rpx = 612rpx（内容区 622rpx）；皮肤级尺寸调整以模拟器实测为准，调整后在「补记」记录，不改行为（`+N` 语义随容量常量走）。
+4. **老订单空图**：`db reset` 会清空既有订单，真正的「迁移前老单」无法在本地存活；以「无 `image_path` 商品下单」等价验证 null 快照占位（用户级联删除后其余路径由 pgTAP 确定性覆盖：95 / 96 的 null 断言）。
+5. **图片对象由 Ly 自备**：本 Story 不做入仓与上传（沿用 FR-P3-7）；未上传图片时全链路走色块占位，功能不阻塞。
+6. **卡片溢出格底图**：按 AC「可垫下一张商品图」实现为「垫第 k 张图 + 渐变遮罩」；底图加载失败时退化为纯色块 + `+N`（不空白）。
+
+

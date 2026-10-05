@@ -301,7 +301,7 @@ type OrderJson = {
   created_at: string;
 };
 
-type ListItem = OrderJson & { item_summary: string };
+type ListItem = OrderJson;
 
 function asObject(value: Json | null, what: string): Record<string, Json> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {

@@ -30,7 +30,7 @@ as $$
 $$;
 grant execute on function public.test_spec_items() to authenticated;
 
-select plan(102);
+select plan(104);
 
 -- ── 函数属性与权限：写入口收在服务端，客户端没有执行入口 ───────────────────────
 
@@ -136,11 +136,11 @@ values (
 insert into public.categories (id, name)
 values ('00000000-0000-4000-8000-00000000e021', '测试分类');
 
-insert into public.products (id, category_id, name, price, availability) values
-  ('00000000-0000-4000-8000-00000000e031', '00000000-0000-4000-8000-00000000e021', '测试拿铁', 32.00, 'on_sale'),
-  ('00000000-0000-4000-8000-00000000e032', '00000000-0000-4000-8000-00000000e021', '测试气泡水', 22.00, 'on_sale'),
-  ('00000000-0000-4000-8000-00000000e033', '00000000-0000-4000-8000-00000000e021', '售罄商品', 30.00, 'sold_out'),
-  ('00000000-0000-4000-8000-00000000e034', '00000000-0000-4000-8000-00000000e021', '下架商品', 30.00, 'delisted');
+insert into public.products (id, category_id, name, price, availability, image_path) values
+  ('00000000-0000-4000-8000-00000000e031', '00000000-0000-4000-8000-00000000e021', '测试拿铁', 32.00, 'on_sale', 'products/test-latte-v1.png'),
+  ('00000000-0000-4000-8000-00000000e032', '00000000-0000-4000-8000-00000000e021', '测试气泡水', 22.00, 'on_sale', null),
+  ('00000000-0000-4000-8000-00000000e033', '00000000-0000-4000-8000-00000000e021', '售罄商品', 30.00, 'sold_out', null),
+  ('00000000-0000-4000-8000-00000000e034', '00000000-0000-4000-8000-00000000e021', '下架商品', 30.00, 'delisted', null);
 
 insert into public.spec_groups (id, title, multi) values
   ('00000000-0000-4000-8000-00000000e041', '杯型', false),
@@ -499,6 +499,12 @@ select is(
   '明细保存商品名快照'
 );
 select is(
+  (select image_path from public.order_items
+    where order_id = (select id from public.orders where idempotency_key = 'key-specs')),
+  'products/test-latte-v1.png',
+  '明细保存下单时刻的图片路径快照（Story 4.7）'
+);
+select is(
   (select spec_summary from public.order_items),
   '大杯 / 冰 / 焦糖 / 可可碎片',
   '规格摘要由服务端按规格组与选项的 sort_order 生成'
@@ -588,7 +594,8 @@ select is(
 
 -- ── 快照隔离：商品改名改价不影响历史订单（AD-9） ─────────────────────────────
 
-update public.products set name = '改名后的拿铁', price = 1.00
+update public.products set name = '改名后的拿铁', price = 1.00,
+       image_path = 'products/test-latte-v2.png'
  where id = '00000000-0000-4000-8000-00000000e031';
 
 set local role service_role;
@@ -609,6 +616,12 @@ select is(
   (select total_amount from public.orders where idempotency_key = 'key-specs'),
   86.00::numeric,
   '商品改价后历史订单总额不变'
+);
+select is(
+  (select image_path from public.order_items
+    where order_id = (select id from public.orders where idempotency_key = 'key-specs')),
+  'products/test-latte-v1.png',
+  '商品改图后历史订单仍是下单时的图片路径快照（Story 4.7）'
 );
 
 -- ── 配置驱动：改门店配置后按新值计算（AD-6、AD-8） ───────────────────────────

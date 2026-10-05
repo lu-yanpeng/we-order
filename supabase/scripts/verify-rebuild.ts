@@ -203,7 +203,9 @@ type OrderJson = {
   created_at: string;
 };
 
-type ListItem = OrderJson & { item_summary: string };
+type ListItem = OrderJson & {
+  item_images: Array<{ image_path: string | null }>;
+};
 
 type Detail = OrderJson & {
   store_name: string;
@@ -216,6 +218,7 @@ type Detail = OrderJson & {
     selections: Json;
     unit_price: number;
     quantity: number;
+    image_path: string | null;
   }>;
 };
 
@@ -334,9 +337,11 @@ try {
   check(listed !== undefined, "刚下的订单出现在本人列表里");
   if (listed === undefined) throw new Error("FAIL: 列表里找不到刚下的订单");
   check(
-    listed.item_summary.includes(product.name) &&
-      listed.item_summary.includes("×1"),
-    `列表项包含商品摘要（${listed.item_summary}）`,
+    Array.isArray(listed.item_images) && listed.item_images.length === 1 &&
+      Object.keys(listed.item_images[0]).join(",") === "image_path" &&
+      (listed.item_images[0].image_path === null ||
+        typeof listed.item_images[0].image_path === "string"),
+    "列表项带图片行（每明细行一个 { image_path } 元素，路径可空；Story 4.7）",
   );
   check(
     STORE_TIME_RE.test(listed.created_at),
@@ -363,6 +368,11 @@ try {
       detail.items[0].spec_summary !== "" &&
       detail.items[0].quantity === 1,
     "详情带商品明细快照（引用、商品名、规格摘要、数量）",
+  );
+  check(
+    "image_path" in detail.items[0] &&
+      (detail.items[0].image_path === null || typeof detail.items[0].image_path === "string"),
+    "详情明细带图片路径快照字段（可空；Story 4.7）",
   );
   const sameFields = (["order_number", "status", "pickup_code", "created_at", "total_amount"] as const)
     .every((field) => listed[field] === detail[field]);

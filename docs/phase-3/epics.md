@@ -686,7 +686,7 @@ So that 订单页不再是一屏文字，核对商品更快。
 **Given** 后端快照与读取形状
 **When** 应用迁移
 **Then** `order_items` 新增图片快照列 `image_path`（可空，形状同 `products.image_path`）；`create_order` 下单时把商品**当时**的 `image_path` 写入快照；既有订单行不回填（历史单显示占位）
-**And** `get_my_order_detail` 的明细形状增加 `image_path`；`get_my_orders` 的列表项增加 `item_images`（按明细行顺序，元素 `{ image_path, quantity }`，`image_path` 可空）；两处其余字段与既有形状逐字段一致（只增不改；`item_summary` 保留在契约中，客户端不再展示）
+**And** `get_my_order_detail` 的明细形状增加 `image_path`；`get_my_orders` 的列表项增加 `item_images`（按明细行顺序，元素 `{ image_path }`，`image_path` 可空；2026-10-05 范围修订：元素去掉 quantity——列表 UI 不展示数量、详情已有 `items.quantity`）；`item_summary` 退役（2026-10-05 范围修订：卡片图片化后全仓无消费方，删除返回字段与生成逻辑，属显式减法型修订）；两处其余字段与既有形状逐字段一致（只增不改）
 **And** pgTAP 的列集合与形状断言按新列同步（`60_orders` 明细列、`80_create_order` 快照列、`95_order_list` 列表项、`96_order_detail` 明细），新增断言「商品改图后历史订单快照不变」；verify 脚本同步；`supabase test db` 全绿；类型重新生成、mp 契约（`OrderDetailItem` / `OrderListItem`）同步
 **And** 图片对象仍由 Ly 自备（沿用 FR-P3-7），本 story 不做图片入仓与上传
 

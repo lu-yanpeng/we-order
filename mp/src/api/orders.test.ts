@@ -205,7 +205,7 @@ describe('fetchOrders（Story 4.1；AD-7 / AR-P3-18）', () => {
         notes: '少冰',
         pickup_code: 'A-0001',
         created_at: '2026-09-29 12:00:00',
-        item_summary: '拿铁 ×1',
+        item_images: [{ image_path: 'products/latte.png' }],
       },
     ],
     next_cursor: {
@@ -267,6 +267,7 @@ describe('fetchOrderById（Story 4.2；FR-P3-11 / AR-P3-18）', () => {
         selections: { size: 'grande' },
         unit_price: 32,
         quantity: 1,
+        image_path: null,
       },
     ],
   }

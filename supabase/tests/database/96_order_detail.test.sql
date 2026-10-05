@@ -26,7 +26,7 @@ as $$
 $$;
 grant execute on function public.test_list_item(uuid) to authenticated;
 
-select plan(40);
+select plan(42);
 
 -- ── 测试数据 ────────────────────────────────────────────────────────────────
 -- 用户 A（主测）、B（他人的订单）。
@@ -80,20 +80,20 @@ values
    '2026-07-01 10:00:00+08');
 
 insert into public.order_items (
-  id, order_id, product_id, product_name, spec_summary, selections, unit_price, quantity
+  id, order_id, product_id, product_name, spec_summary, selections, unit_price, quantity, image_path
 )
 values
   ('00000000-0000-4000-8000-00000000e001', '00000000-0000-4000-8000-00000000d001',
    '00000000-0000-4000-8000-00000000f101', '拿铁', '大杯 Grande / 冰饮',
    '{"00000000-0000-4000-8000-00000000f201": "00000000-0000-4000-8000-00000000f302"}',
-   33.00, 1),
+   33.00, 1, 'products/detail-latte.png'),
   ('00000000-0000-4000-8000-00000000e002', '00000000-0000-4000-8000-00000000d001',
    '00000000-0000-4000-8000-00000000f102', '美式', '中杯 Tall / 燕麦奶 / 2份浓缩',
    '{"00000000-0000-4000-8000-00000000f202": [
       "00000000-0000-4000-8000-00000000f303",
       "00000000-0000-4000-8000-00000000f304"
     ]}',
-   31.50, 2);
+   31.50, 2, null);
 
 -- d2：纽约门店，12:00+08 = 当日 00:00 纽约时间（详情时间按订单所属门店的时区输出）
 insert into public.orders (
@@ -228,8 +228,8 @@ select is(
             public.get_my_order_detail('00000000-0000-4000-8000-00000000d001') -> 'items'
           ) e,
           jsonb_object_keys(e.value) k),
-  array['product_id', 'product_name', 'quantity', 'selections', 'spec_summary', 'unit_price'],
-  '明细字段集合 = 下单时刻快照六列（含商品引用与结构化规格选择）'
+  array['image_path', 'product_id', 'product_name', 'quantity', 'selections', 'spec_summary', 'unit_price'],
+  '明细字段集合 = 下单时刻快照六列 + 图片路径快照（含商品引用与结构化规格选择，Story 4.7）'
 );
 select is(
   (select value -> 'selections'
@@ -294,6 +294,24 @@ select is(
   '明细数量来自快照（美式 ×2）'
 );
 select is(
+  (select value -> 'image_path'
+     from jsonb_array_elements(
+            public.get_my_order_detail('00000000-0000-4000-8000-00000000d001') -> 'items'
+          ) e
+    where value ->> 'product_name' = '拿铁'),
+  '"products/detail-latte.png"'::jsonb,
+  '明细的图片路径来自下单时刻快照（Story 4.7）'
+);
+select is(
+  (select value -> 'image_path'
+     from jsonb_array_elements(
+            public.get_my_order_detail('00000000-0000-4000-8000-00000000d001') -> 'items'
+          ) e
+    where value ->> 'product_name' = '美式'),
+  'null'::jsonb,
+  '商品当时无图时图片路径为 JSON null（客户端色块占位）'
+);
+select is(
   public.get_my_order_detail('00000000-0000-4000-8000-00000000d001') ->> 'created_at',
   '2026-07-01 10:00:00',
   '下单时间按订单所属门店的时区输出（上海门店）'
@@ -342,7 +360,8 @@ select ok(
 reset role;
 
 update public.products
-   set name = '拿铁（已改名）', price = 99.00
+   set name = '拿铁（已改名）', price = 99.00,
+       image_path = 'products/detail-latte-renamed.png'
  where id = '00000000-0000-4000-8000-00000000f101';
 
 update public.stores
@@ -356,11 +375,12 @@ select ok(
   (select value ->> 'product_name' = '拿铁'
       and value ->> 'spec_summary' = '大杯 Grande / 冰饮'
       and value -> 'unit_price' = '33.00'::jsonb
+      and value -> 'image_path' = '"products/detail-latte.png"'::jsonb
      from jsonb_array_elements(
             public.get_my_order_detail('00000000-0000-4000-8000-00000000d001') -> 'items'
           ) e
     where value ->> 'product_id' = '00000000-0000-4000-8000-00000000f101'),
-  '商品改名改价后，详情里的商品名、规格摘要与单价仍是下单时的快照'
+  '商品改名改价改图后，详情里的商品名、规格摘要、单价与图片路径仍是下单时的快照'
 );
 select is(
   public.get_my_order_detail('00000000-0000-4000-8000-00000000d001') ->> 'store_name',
@@ -371,10 +391,10 @@ select is(
 -- ── 与列表同一映射：共有订单字段逐字段相同（AD-22）────────────────────────────
 
 select is(
-  public.test_list_item('00000000-0000-4000-8000-00000000d001') - 'item_summary',
+  public.test_list_item('00000000-0000-4000-8000-00000000d001') - 'item_images',
   public.get_my_order_detail('00000000-0000-4000-8000-00000000d001')
     - 'store_name' - 'store_address' - 'store_phone' - 'items',
-  '详情与列表共有的 9 个订单字段逐字段相同（同一映射，不存在两套口径）'
+  '详情与列表共有的 9 个订单字段逐字段相同（同一映射，不存在两套口径；item_images 属列表便利字段）'
 );
 
 -- ── 拒绝语义：非本人与不存在返回同一结果（AD-13）──────────────────────────────

@@ -38,7 +38,7 @@ function item(n: number, status: OrderStatus = 'cooking'): OrderListItem {
     notes: '无备注要求',
     pickup_code: `A-000${n}`,
     created_at: `2026-09-30 12:00:00`,
-    item_summary: `拿铁 ×${n}`,
+    item_images: [],
   }
 }
 

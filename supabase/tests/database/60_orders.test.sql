@@ -5,7 +5,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(53);
+select plan(55);
 
 -- ── 结构：RLS 与策略 ───────────────────────────────────────────────────────
 
@@ -59,9 +59,9 @@ select is(
 select is(
   (select array_agg(column_name::text order by column_name) from information_schema.columns
     where table_schema = 'public' and table_name = 'order_items'),
-  array['id', 'order_id', 'product_id', 'product_name', 'quantity', 'selections',
+  array['id', 'image_path', 'order_id', 'product_id', 'product_name', 'quantity', 'selections',
         'spec_summary', 'unit_price'],
-  'order_items 的列集合固定且不携带归属字段（AD-4）'
+  'order_items 的列集合固定且不携带归属字段（AD-4）；image_path 为 Story 4.7 的下单时刻图片路径快照'
 );
 select is(
   (select array_agg(enumlabel::text order by enumsortorder) from pg_enum
@@ -88,6 +88,17 @@ select is(
     where attrelid = 'public.order_items'::regclass and attname = 'unit_price'),
   'numeric(10,2)',
   'order_items.unit_price 是 numeric(10,2)'
+);
+select is(
+  (select format_type(atttypid, atttypmod) from pg_attribute
+    where attrelid = 'public.order_items'::regclass and attname = 'image_path'),
+  'text',
+  'order_items.image_path 是文本列（形状同 products.image_path，Story 4.7）'
+);
+select ok(
+  (select not attnotnull from pg_attribute
+    where attrelid = 'public.order_items'::regclass and attname = 'image_path'),
+  'order_items.image_path 可空：历史订单与商品当时无图时为 null（Story 4.7）'
 );
 select is(
   (select array_agg(attname::text order by attname) from pg_attribute
