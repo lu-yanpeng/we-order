@@ -38,6 +38,8 @@ const {
 
 vi.mock('@/api/orders', () => ({
   fetchOrderById: fetchOrderByIdMock,
+  // Story 5.1 被动接线：订阅入口（返回空句柄；订阅行为由 core/realtime 单测覆盖）
+  subscribeOrders: () => ({ unsubscribe: vi.fn(), onStatus: () => () => {} }),
 }))
 vi.mock('@/api/catalog', () => ({
   fetchCategories: fetchCategoriesMock,

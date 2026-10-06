@@ -32,14 +32,28 @@ import {
   fetchOrderById,
   fetchOrders,
   payOrder,
+  subscribeOrders,
   urgeOrder,
 } from './orders'
+import type { RealtimeChannelSpec } from '@/core/realtime'
 
 /** 支付接口调用经 mock 的对接层断言；`vi.hoisted` 保证 mock 工厂先于模块导入生效 */
-const { postMock } = vi.hoisted(() => ({ postMock: vi.fn() }))
+const { openChannelMock, postMock } = vi.hoisted(() => ({
+  postMock: vi.fn(),
+  openChannelMock: vi.fn(),
+}))
+
+vi.mock('@/core/realtime', () => ({
+  openChannel: openChannelMock,
+}))
 
 vi.mock('@/core/transport', () => ({
   transport: { Post: postMock },
+  // core/session 装载链在本测试中经过 mock 通道：补上它注册 provider 与调平台端点所需的导出
+  registerSessionProvider: vi.fn(),
+  rawTransport: {},
+  supabaseUrl: vi.fn(),
+  supabasePublishableKey: vi.fn(),
 }))
 
 const INTENT_KEY = 'weorder_checkout_intent'
@@ -368,5 +382,43 @@ describe('completeOrder（Story 4.5；FR-P3-14）', () => {
     expect(Object.keys(body)).toEqual(['p_order_id'])
     expect(body).not.toHaveProperty('completed_at')
     expect(body).not.toHaveProperty('user_id')
+  })
+})
+
+describe('subscribeOrders（Story 5.1 订阅入口；AD-9）', () => {
+  beforeEach(() => {
+    openChannelMock.mockReset()
+  })
+
+  it('列表：key / topic 固定，本人 id 过滤的 INSERT + UPDATE 两条绑定', () => {
+    subscribeOrders({ scope: 'list' })
+
+    expect(openChannelMock).toHaveBeenCalledTimes(1)
+    const spec = openChannelMock.mock.calls[0][0] as RealtimeChannelSpec
+    expect(spec.key).toBe('orders:list')
+    expect(spec.topic).toBe('orders')
+    expect(typeof spec.resolveUserId).toBe('function')
+    expect(spec.bindingFor('user-1')).toEqual([
+      { event: 'INSERT', schema: 'public', table: 'orders', filter: 'user_id=eq.user-1' },
+      { event: 'UPDATE', schema: 'public', table: 'orders', filter: 'user_id=eq.user-1' },
+    ])
+  })
+
+  it('详情：按订单 id 过滤（只订 INSERT / UPDATE）；缺订单 id 时静态 unavailable、不发起订阅', () => {
+    subscribeOrders({ scope: 'order', orderId: 'o-9' })
+    const spec = openChannelMock.mock.calls[0][0] as RealtimeChannelSpec
+    expect(spec.key).toBe('orders:o-9')
+    expect(spec.bindingFor('user-1').map((binding) => binding.filter)).toEqual([
+      'id=eq.o-9',
+      'id=eq.o-9',
+    ])
+    expect(spec.bindingFor('user-1').map((binding) => binding.event)).toEqual(['INSERT', 'UPDATE'])
+
+    openChannelMock.mockReset()
+    const statuses: string[] = []
+    const handle = subscribeOrders({ scope: 'order' })
+    handle.onStatus((status) => statuses.push(status))
+    expect(statuses).toEqual(['unavailable'])
+    expect(openChannelMock).not.toHaveBeenCalled()
   })
 })

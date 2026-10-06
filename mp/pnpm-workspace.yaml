@@ -4,3 +4,5 @@ allowBuilds:
   core-js-pure: true
   esbuild: true
   vue-demi: true
+patchedDependencies:
+  '@supabase/realtime-js@2.117.1': patches/@supabase__realtime-js@2.117.1.patch

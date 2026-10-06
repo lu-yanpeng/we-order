@@ -59,6 +59,8 @@
     "@dcloudio/uni-mp-weixin": "3.0.0-5010420260703001",
     "@dcloudio/uni-mp-xhs": "3.0.0-5010420260703001",
     "@dcloudio/uni-quickapp-webview": "3.0.0-5010420260703001",
+    "@supabase/phoenix": "0.4.5",
+    "@supabase/realtime-js": "2.117.1",
     "@tdesign/uniapp": "^0.10.1",
     "alova": "3.5.5",
     "pinia": "^2.3.1",

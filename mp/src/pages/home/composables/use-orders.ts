@@ -32,7 +32,8 @@
  */
 import { computed, ref } from 'vue'
 import type { OrderListItem, OrdersPage } from '@/types/api-contracts'
-import { fetchOrders } from '@/api/orders'
+import { fetchOrders, subscribeOrders } from '@/api/orders'
+import type { RealtimeSubscriptionHandle } from '@/types/realtime'
 import { errorCopyOr } from '@/utils/error-copy'
 import { appendOrderPage, mergeOrderList, replaceOrderList } from '@/utils/order-status'
 import type { AppliedSeqMap } from '@/utils/order-status'
@@ -160,9 +161,24 @@ export function useOrders() {
 
   /**
    * 可见域开关（AD-8）：页面把「订单 tab 激活 且页面可见」合成后调用。
-   * 进入（含切回 tab、从详情返回、回到前台）→ 立即读一次并重置轮询计时；离开 → 停表。
+   * 进入（含切回 tab、从详情返回、回到前台）→ 立即读一次并重置轮询计时；
+   * 离开 → 停表。
+   *
+   * Story 5.1 被动接线：进入时建立订单列表订阅、离开时退订——只负责连接与日志，
+   * 不改变刷新策略（轮询照旧）；5.2 在同一接入点接「健康→停轮询、推送→读取」。
+   * 订阅 / 退订在 core/realtime 幂等，重复调用安全（切 tab / 回前台可能重复触发）。
    */
-  const setActive = status.setActive
+  let subscription: RealtimeSubscriptionHandle | null = null
+
+  const setActive = (next: boolean): Promise<void> => {
+    if (next) {
+      subscription = subscribeOrders({ scope: 'list' })
+    } else {
+      subscription?.unsubscribe()
+      subscription = null
+    }
+    return status.setActive(next)
+  }
 
   /** 下拉刷新：显式刷新（整表替换 + 重置轮询计时）；失败保留数据 */
   const refreshOrders = async () => {

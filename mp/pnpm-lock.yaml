@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  '@supabase/realtime-js@2.117.1': 32322c60e138f82d0a29a9a19d2154ebaf5aeb54eea0167ac4f70978529d2104
+
 importers:
 
   .:
@@ -62,6 +65,12 @@ importers:
       '@dcloudio/uni-quickapp-webview':
         specifier: 3.0.0-5010420260703001
         version: 3.0.0-5010420260703001(postcss@8.5.17)(rollup@4.62.2)(supports-color@8.1.1)(vue@3.5.39(typescript@6.0.3))
+      '@supabase/phoenix':
+        specifier: 0.4.5
+        version: 0.4.5
+      '@supabase/realtime-js':
+        specifier: 2.117.1
+        version: 2.117.1(patch_hash=32322c60e138f82d0a29a9a19d2154ebaf5aeb54eea0167ac4f70978529d2104)
       '@tdesign/uniapp':
         specifier: ^0.10.1
         version: 0.10.1
@@ -1529,6 +1538,13 @@ packages:
 
   '@sinonjs/fake-timers@8.0.1':
     resolution: {integrity: sha512-AU7kwFxreVd6OAXcAFlKSmZquiRUU0FvYm44k1Y1QbK7Co4m0aqfGMhjykIeQp/H6rcl+nFmj0zfdUcGVs9Dew==}
+
+  '@supabase/phoenix@0.4.5':
+    resolution: {integrity: sha512-aAn9H9ovVyeApKy11OWOrrOGq8DV68yWeH4ud2lN9fzn4aO8Zb5GLL9m1pUg9nLqIcT+ZDfAcsZe0E/nqdv2lw==}
+
+  '@supabase/realtime-js@2.117.1':
+    resolution: {integrity: sha512-GkbZfeh5F5aqnUhG1chrdaVQmnRK8ZUL8H16Km/eVVsX99x0w2AijfxjONCB9YKgrXArcnMsKSJzOIQGCv+qvQ==}
+    engines: {node: '>=22.0.0'}
 
   '@tailwindcss-mangle/engine@0.1.3':
     resolution: {integrity: sha512-ChEDnwpMgeNKN7fekKkPfJ1rcmdY9MiqmGtKjIA+ULj4iTt7cOJqLlh0oHXaZc4m5rtC8rVv0hEern2snVvdYA==}
@@ -4298,6 +4314,9 @@ packages:
     peerDependencies:
       typescript: '>=4.8.4'
 
+  tslib@2.8.1:
+    resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
+
   type-check@0.4.0:
     resolution: {integrity: sha512-XleUoc9uwGXqjWwXaUTZAmzMcFZ5858QA2vvx1Ur5xIcixXIP+8LnFDgRplU30us6teqdlskFfu+ae4K79Ooew==}
     engines: {node: '>= 0.8.0'}
@@ -6891,6 +6910,13 @@ snapshots:
   '@sinonjs/fake-timers@8.0.1':
     dependencies:
       '@sinonjs/commons': 1.8.6
+
+  '@supabase/phoenix@0.4.5': {}
+
+  '@supabase/realtime-js@2.117.1(patch_hash=32322c60e138f82d0a29a9a19d2154ebaf5aeb54eea0167ac4f70978529d2104)':
+    dependencies:
+      '@supabase/phoenix': 0.4.5
+      tslib: 2.8.1
 
   '@tailwindcss-mangle/engine@0.1.3(tailwindcss@4.3.2)':
     dependencies:
@@ -9899,6 +9925,8 @@ snapshots:
   ts-api-utils@2.5.0(typescript@6.0.3):
     dependencies:
       typescript: 6.0.3
+
+  tslib@2.8.1: {}
 
   type-check@0.4.0:
     dependencies:

@@ -8,6 +8,7 @@ Phase 3 的验收记录按 Epic 拆分（2026-09-27 起，替代原单文件 `do
 | `epic-2.md` | Epic 2 打开就是真菜单（Story 2.1 ~ 2.3） |
 | `epic-3.md` | Epic 3 下单：支付接口说了算（Story 3.1 ~ 3.6，已完成） |
 | `epic-4.md` | Epic 4 一单到底：订单进度与失败可控（Story 4.1 起） |
+| `epic-5.md` | Epic 5 状态自己找上门：Realtime 订阅自适配（Story 5.1 起） |
 | `validation-matrix.md` | 手动验证矩阵（13 行模板；Story 4.8 覆盖 #1 ~ #4、#7 ~ #11、#13；#5 / #6 / #12 由 Epic 5 补充） |
 
 后续 Epic 记录按需新增（`epic-5.md`）。Story 4.8 的手动验证矩阵单独成文（`validation-matrix.md`），由 `epic-4.md` 的 Story 4.8 记录链回。

@@ -26,12 +26,13 @@
  * 遵循 AD-9：分包专属 composable 放在分包目录内。
  */
 import { computed, ref } from 'vue'
-import { fetchOrderById } from '@/api/orders'
+import { fetchOrderById, subscribeOrders } from '@/api/orders'
 import { errorCopy, errorCopyOr } from '@/utils/error-copy'
 import { applyOrderRead } from '@/utils/order-status'
 import { useOrderStatus } from '@/composables/use-order-status'
 import type { OrderReadKind } from '@/composables/use-order-status'
 import type { OrderDetail } from '@/types/api-contracts'
+import type { RealtimeSubscriptionHandle } from '@/types/realtime'
 
 /** 首读遮罩延迟（毫秒）：约 250ms 防闪烁（spine 最小 UI 规范；快网不显示） */
 const OVERLAY_DELAY_MS = 250
@@ -139,11 +140,34 @@ export function useOrderDetail() {
     orderId.value = id
   }
 
-  /** 可见域开关（页面 onShow / onHide / onUnload）：进入时返回首个读取的完成 Promise */
-  const setActive = status.setActive
+  /**
+   * 订阅句柄（Story 5.1 被动接线）：进入可见域建立单笔订单订阅、离开退订；
+   * 只负责连接与日志，不改变刷新策略（轮询照旧）；5.2 接「健康→停轮询、推送→读取」。
+   */
+  let subscription: RealtimeSubscriptionHandle | null = null
 
-  /** 停止编排（页面 onUnload）：停表，不再发起任何读取 */
-  const dispose = status.dispose
+  const releaseSubscription = () => {
+    subscription?.unsubscribe()
+    subscription = null
+  }
+
+  /**
+   * 可见域开关（页面 onShow / onHide / onUnload）：进入时返回首个读取的完成 Promise；
+   * 订单 id 未登记（直接访问页面无参数）时不建立订阅，读取侧走本地守卫失败态。
+   */
+  const setActive = (next: boolean): Promise<void> => {
+    if (next && orderId.value !== '') {
+      subscription = subscribeOrders({ scope: 'order', orderId: orderId.value })
+    }
+    if (!next) releaseSubscription()
+    return status.setActive(next)
+  }
+
+  /** 停止编排（页面 onUnload）：退订 + 停表，不再发起任何读取 */
+  const dispose = () => {
+    releaseSubscription()
+    status.dispose()
+  }
 
   /** 失败态重试：显式刷新（走统一读取入口 + 重置轮询计时），不弹全屏遮罩 */
   const retryOrderDetail = () => status.runManualRead()

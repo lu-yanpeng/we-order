@@ -21,6 +21,8 @@ const { urgeOrderApiMock, toastMock } = vi.hoisted(() => ({
 
 vi.mock('@/api/orders', () => ({
   urgeOrder: urgeOrderApiMock,
+  // Story 5.1 被动接线：订阅入口（返回空句柄；订阅行为由 core/realtime 单测覆盖）
+  subscribeOrders: () => ({ unsubscribe: vi.fn(), onStatus: () => () => {} }),
 }))
 
 let useUrge: (typeof import('./use-urge'))['useUrge']

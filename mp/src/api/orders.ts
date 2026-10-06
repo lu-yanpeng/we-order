@@ -11,12 +11,16 @@
  * 4. 催单：经服务端 `urge_order`（Story 4.4）——只提前推进时刻、不直接改状态；
  * 5. 确认取餐：经服务端 `complete_order`（Story 4.5；FR-P3-14）——把本人「待取餐」订单置为
  *    「已完成」，重复确认幂等（返回成功且不改完成时间）；超时自动完成由服务端兜底；
- * 6. 结算意图（幂等键）生命周期（Story 3.4；AD-10）——`weorder_checkout_intent` 唯一出口。
+ * 6. 结算意图（幂等键）生命周期（Story 3.4；AD-10）——`weorder_checkout_intent` 唯一出口；
+ * 7. 订阅入口（Story 5.1；AD-9）——`subscribeOrders()` 无状态工厂：构造 orders 的订阅规格
+ *    （表 / 事件 / filter）并交给 `core/realtime`；本文件不持有模块级 channel。
  *
  * 订单侧 Mock 数据源（`mock/orders.ts`）已随 Story 4.2 删除；本文件不存在任何
  * Mock 读写路径或回退开关，读取只有服务端一条通路（FR-P3-3 整体收口）。
  */
 import { transport } from '@/core/transport'
+import { openChannel } from '@/core/realtime'
+import { getUserId } from '@/core/session'
 import type {
   CreateOrderRequest,
   DiningMode,
@@ -24,6 +28,7 @@ import type {
   OrderResult,
   OrdersPage,
 } from '@/types/api-contracts'
+import type { RealtimeSubscriptionHandle } from '@/types/realtime'
 import type { CartItem } from '@/types/cart'
 import type { CheckoutIntent } from '@/utils/checkout-intent'
 import { toCreateOrderItems } from '@/api/cart'
@@ -78,6 +83,61 @@ export function fetchOrderById(id: string) {
     { meta: { auth: 'session-required' } },
   )
 }
+
+// ── 订阅（Story 5.1；AD-9） ─────────────────────────────────────────────────
+// 推送只作触发信号：命中回调不带原始行，由使用方（5.2 的刷新编排）走服务端读取路径。
+// 入口无状态：每次调用返回句柄，不持有模块级 channel；同键重复订阅在 core/realtime 幂等复用。
+
+/** 订阅范围：列表 = 本人全部订单（`user_id` 过滤）；order = 单笔订单（`id` 过滤） */
+export type OrderSubscriptionScope = 'list' | 'order'
+
+export interface OrderSubscriptionOptions {
+  scope: OrderSubscriptionScope
+  /** `scope = 'order'` 时必填：订单服务端 UUID（仅作 filter，不构成归属判定） */
+  orderId?: string
+}
+
+/** 不成立的单笔订阅（缺订单 id）：形状不变，静态回报 unavailable；不发起任何连接 */
+function inactiveSubscription(): RealtimeSubscriptionHandle {
+  return {
+    unsubscribe: () => {},
+    onStatus: (callback) => {
+      callback('unavailable')
+      return () => {}
+    },
+  }
+}
+
+/**
+ * 订阅本人订单变化（Story 5.1；AD-9）：只订 `orders` 的 `INSERT` / `UPDATE`，
+ * 不订 `DELETE`（Realtime 的 RLS 过滤不适用于 DELETE）与 `order_items`。
+ *
+ * - filter 由本工厂构造：列表 `user_id=eq.<本人 id>`、详情 `id=eq.<订单 id>`；
+ *   本人 id 来源 `core/session`（**经 api/ 传入 core/realtime**，core 不自己发明身份）；
+ * - filter 不构成归属判定：RLS 是唯一裁决（两个身份的隔离验证属 Story 5.3）；
+ * - 会话未就绪时入口等待、不阻塞页面；失败对用户静默，经 `onStatus` 上浮 `unavailable`；
+ * - 退订幂等；同一视图单活跃 channel（列表与详情互斥）由 core/realtime 兜底保证。
+ */
+export function subscribeOrders(options: OrderSubscriptionOptions): RealtimeSubscriptionHandle {
+  const orderId = options.orderId ?? ''
+  if (options.scope === 'order' && orderId === '') return inactiveSubscription()
+
+  const key = options.scope === 'list' ? 'orders:list' : `orders:${orderId}`
+  return openChannel({
+    key,
+    topic: 'orders',
+    resolveUserId: getUserId,
+    bindingFor: (userId) => {
+      const filter = options.scope === 'list' ? `user_id=eq.${userId}` : `id=eq.${orderId}`
+      return [
+        { event: 'INSERT', schema: 'public', table: 'orders', filter },
+        { event: 'UPDATE', schema: 'public', table: 'orders', filter },
+      ]
+    },
+  })
+}
+
+// ── 订单操作：支付（Story 3.5；AD-11） ──────────────────────────────────────
 
 /**
  * 提交支付并创建订单（Story 3.5；AD-10 / AD-11）
