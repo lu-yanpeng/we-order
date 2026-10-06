@@ -904,4 +904,63 @@ PASS：25 项断言全部通过（干净重建后：匿名读目录与门店 →
 5. **图片对象由 Ly 自备**：本 Story 不做入仓与上传（沿用 FR-P3-7）；未上传图片时全链路走色块占位，功能不阻塞。
 6. **卡片溢出格底图**：按 AC「可垫下一张商品图」实现为「垫第 k 张图 + 渐变遮罩」；底图加载失败时退化为纯色块 + `+N`（不空白）。
 
+## Story 4.8 演示主路径预演与手动验证矩阵（M1 收口）
+
+- 日期：2026-10-06
+- 环境：微信开发者工具（模拟器为主 + 真机最小冒烟）；WSL 本地 Supabase 栈（迁移 + seed + 边缘函数 serve）；mp 侧 `pnpm test`（vitest 3.2.7）/ `pnpm type-check`（vue-tsc 3.3.6）/ `pnpm lint` / `pnpm build:mp-weixin`；supabase 侧 `supabase db reset` / `supabase test db` / `deno task verify:*` 全部
+- 范围：M1 收口——按 UJ-P3-1 完整预演（静默登录 → 目录 → 加购 → 支付建单 → 催单 → 待取餐 → 确认取杯 / 自动完成 → 已完成 → 详情）+ 手动验证矩阵 #1 ~ #4、#7 ~ #11、#13 全量执行 + 加载态复验（慢 3G）+ 真机最小冒烟；#5 / #6 / #12 留 Epic 5。**本 Story 为验证收口性质、无功能需求改动**；后端全部未动。
+- 裁定记录（Ly，2026-10-06）：
+  ① **轻量验收**——不保留截图 / 录屏 / 命令输出，不引用既有记录；矩阵「结果」列由本人实操确认（自审自负责）；
+  ② 矩阵**单独成文**（`validation-matrix.md`），Epic 5 续填 #5 / #6 / #12；
+  ③ #3 单飞并发：以 Storage 操纵（主动续期 / 到期 / 回退重登）现场复跑，端到端窗口制造不出时以单测语义口径为准；
+  ④ 真机最小冒烟纳入本次；
+  ⑤ 演示参数调整与还原方式记录在矩阵，面试当天按需执行。
+
+### 交付物
+
+| 类别 | 内容 |
+| --- | --- |
+| 新增（文档） | `docs/phase-3/acceptance/validation-matrix.md`——13 行矩阵（本次覆盖 10 行 + 3 行 Epic 5 占位）+「行 #9 明细清单」+「加载态复验」+「演示参数调整与还原」+「常用构造 SQL」 |
+| 修改（文档） | `acceptance/README.md`（索引增加矩阵行）；`addendum.md` §F 校准（`pay-order` serve + 预热、演示图片 `image_path` 回填两项） |
+| 修改（文档） | 本记录 |
+| 未改动 | 客户端功能逻辑与后端全部（迁移 / 函数 / 类型 / 脚本） |
+
+### 验收点与结论
+
+| Story 4.8 验收点 | 结论 |
+| --- | --- |
+| 按 UJ-P3-1 完整预演：全程真实数据、无人工补救（UI 上点重试不算）——SM-1 | 通过（本人实操；催单后 ≤ 一个轮询周期 + 3 秒可见「待取餐」） |
+| 矩阵 #1 / #2 / #3 / #4 / #7 / #8 / #9 / #10 / #11 / #13 覆盖并落定 | 通过（本人实操确认，2026-10-06；结果见矩阵） |
+| #9 界面无回归（含 AD-4 四项专项、图片增量、骨架 / 下拉 / 分页 / 轮询 / 催单 / 确认取餐） | 通过（明细清单逐项确认） |
+| 加载态复验（慢 3G：两 tab 骨架、确认页 / 详情遮罩、不与支付 loading 叠加、不加代码延迟） | 通过 |
+| 真机最小冒烟 | 通过 |
+| 演示参数调整 / 还原方式记录在案 | 已记录（矩阵「演示参数调整与还原」节） |
+| 演示预检清单（addendum §F）逐项可执行 | 已核对并校准（pay-order 预热、演示图片两项补入） |
+| 基线不回归 | `pnpm test` 17 文件 / 192 项全过；`type-check` / `lint` 0 错误；`build:mp-weixin` Build complete；`supabase db reset` + `test db` 全绿；`deno task verify:*` 全部 PASS（均由演示者本人执行，输出不入档） |
+| 订阅行（#5 / #6 / #12）与「续期后同步订阅凭证」 | 留 Epic 5 补充 |
+
+### 验证命令（由演示者本人执行，输出不入档）
+
+```bash
+cd mp
+pnpm test && pnpm type-check && pnpm lint && pnpm build:mp-weixin
+
+cd ../supabase
+supabase db reset && supabase test db
+deno task verify:login && deno task verify:pay-order && deno task verify:idempotency \
+  && deno task verify:state-machine && deno task verify:sweep && deno task verify:urge \
+  && deno task verify:complete && deno task verify:pickup-codes \
+  && deno task verify:rebuild && deno task verify:two-identities
+```
+
+### 有意偏差与遗留
+
+1. **轻量验收为本 Story 的显式裁定**：矩阵采用「场景 / 前置 / 步骤 / 期望 / 结果」五列、不设「证据」列；截图 / 录屏 / 命令输出一律不入仓、不留档（自审自负责）。与 spine 模板的「证据」列差异属有意简化，已在矩阵头部与本记录留存口径。
+2. **#4 杀进程复现**：沿用本地代理扣响应 / 占端口的现场手法（工具不入仓，机制记于矩阵步骤内）。
+3. **#3 的单飞并发**：端到端窗口制造不出时以 `pnpm test` 的会话 / 通道单测语义为准（矩阵行内已注明口径）。
+4. **#11 构造状态**：验证后按步骤还原（商品 `on_sale` 等）。
+5. **订阅相关**：`orders` publication / `core/realtime` 未启用，本 Story 不产生订阅验收内容；#5 / #6 / #12 与「续期后同步订阅凭证」由 Epic 5 落定。
+6. **演示参数**：本次以默认值（推进 15s / 催单提前 3s / 自动完成 30s / 扫描 3s）为基准；调整与还原方式见矩阵，面试当天按需执行并还原。
+
+
 

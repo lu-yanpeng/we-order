@@ -200,7 +200,7 @@ onPullDownRefresh(async () => {
           >
             <!-- 商品图片缩略图：下单时刻快照；缺图 / 加载失败灰块占位（Story 4.7） -->
             <view
-              class="h-[160rpx] w-[160rpx] shrink-0 overflow-hidden rounded-[16rpx] bg-surface-ceramic"
+              class="h-[144rpx] w-[144rpx] shrink-0 overflow-hidden rounded-[16rpx] bg-surface-ceramic"
             >
               <image
                 v-if="itemImageUrl(item.image_path) && !isItemImageFailed(index)"

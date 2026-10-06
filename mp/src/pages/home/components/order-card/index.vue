@@ -116,7 +116,7 @@ const handleAction = () => {
     <!-- 卡身：商品图片行（只占一行；每个明细行一张方图，不按数量展开） -->
     <view
       v-if="imageUrls.length > 0"
-      class="flex items-center justify-between gap-[12rpx] border-t border-border-hairline pt-[24rpx]"
+      class="grid grid-cols-[repeat(4,144rpx)] items-center justify-between border-t border-border-hairline pt-[24rpx]"
     >
       <view
         v-for="(url, index) in visibleImages"
