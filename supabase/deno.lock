@@ -1,6 +1,7 @@
 {
   "version": "5",
   "specifiers": {
+    "npm:@supabase/realtime-js@2.116.0": "2.116.0",
     "npm:@supabase/supabase-js@2": "2.116.0",
     "npm:zod@4": "4.6.5"
   },

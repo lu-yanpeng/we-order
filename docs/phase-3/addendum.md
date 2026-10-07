@@ -65,6 +65,7 @@
 **演示前预检（逐项确认）**
 
 - [ ] 本地 Supabase 栈已启动，迁移与 seed 已应用；边缘函数 `wechat-login` / `pay-order` 已 serve；`pay-order` 先预热一发（首次调用有冷启动）。
+- [ ] （订阅展示时）`orders` 在 `supabase_realtime` publication；应用迁移 / `db reset` 后**已重启 realtime 容器**（`docker restart supabase_realtime_we-order`；不重启则订阅收不到事件，Story 5.1 实测）。
 - [ ] 演示图片已就位：`product-images` 桶有图，对应商品已回填 `products.image_path`（缺图自动占位、不阻塞）。
 - [ ] 主机 IP 已确认；真机与电脑在同一局域网且可访问；做过一次真机 → 读目录的最小冒烟（含 `uni.request` 对局域网 http 的验证）。
 - [ ] 开发者工具已勾选「不校验合法域名…」；真机开发版已打开调试模式。

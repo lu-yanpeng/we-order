@@ -174,4 +174,59 @@ pnpm build:mp-weixin # Build complete
 1. **`onEvent` 属加法型扩展**：AD-9 入口形状为 `subscribe({ scope, orderId? })`；本次为入口增加可选 `onEvent`（推送触发信号），句柄形状 `{ unsubscribe, onStatus }` 不变——该口为 Story 5.1 的 `spec.onEvent` 预留、本次接线使用。
 2. **空态 / 全完成不建立订阅（读后定订阅）**：空态期间的新单不靠推送发现，由可见域重进 / 下拉刷新读取发现——spine 明确「空态停止轮询与订阅」，属有意行为。
 3. **补读失败静默停轮询**（决策 D3）：不停轮询之外的兜底，由下一次推送 / 进页面 / 手动刷新自愈。
-4. **真机完整 PoC、订阅驱动更新观察（SM-5）与验证矩阵 #5 / #6 / #12** 留 Story 5.4；publication 迁移与两身份隔离验证留 Story 5.3。
+4. **真机完整 PoC、订阅驱动更新观察（SM-5）与验证矩阵 #5 / #12** 留 Story 5.4；publication 迁移与两身份隔离验证（#6）已于 Story 5.3 完成（见下）。
+
+## Story 5.3 publication 配置与 RLS 隔离验证
+
+- 日期：2026-10-07
+- 环境：supabase 侧 `supabase migration up --local` / `supabase db reset --local`（重放全部迁移 + 种子）/ `supabase test db`（20 文件 / 645 断言）/ `supabase gen types typescript --local`；`deno task verify:realtime-isolation`（15 项断言）/ `deno task verify:pay-order`（回归）；本地 Supabase 栈（WSL），realtime 容器重启后生效。
+- 范围：`public.orders` 加入 `supabase_realtime` publication 的正式迁移（幂等、只加这一张表）；pgTAP 静态声明断言（98 文件）；两身份真实 WebSocket 隔离验证（验证矩阵 #6 的现场证据）；realtime 重启注意事项入档。**不含**：真机完整 PoC、订阅驱动更新观察与止损判定（Story 5.4）；mp 客户端零改动。
+- 决策记录（Ly，开工前逐项拍板）：① 迁移 = 幂等守卫 + 只加 orders（1A）；② 隔离验证 = 仓库内可重复脚本（2A）；③ pgTAP 断言 = 草案 4 组共 5 条（3 同意）；④ 证据路径 = `db reset` 清库重建（4A，本地数据不需保留、自行重新登录）；⑤ 合成临时身份、结束清理（5 同意）。
+
+### 交付物
+
+| 类别 | 内容 |
+| --- | --- |
+| 新增（迁移） | `supabase/migrations/20261007093123_realtime_orders_publication.sql`：`public.orders` 加入 `supabase_realtime`（幂等守卫、只加这一张表、不收紧 publish 操作类型；publication 缺失时失败得响亮） |
+| 新增（测试） | `supabase/tests/database/98_realtime_publication.test.sql`（5 条）；`supabase/tests/README.md`（文件表 / 说明 / 脚本清单 / 验证记录） |
+| 新增（脚本） | `supabase/scripts/verify-realtime-isolation.ts` + `deno.json` 的 `verify:realtime-isolation`（两身份真实 WebSocket；15 项断言） |
+| 修改（文档） | `docs/phase-3/addendum.md` §F 预检增加「publication 在、realtime 已重启」项；`validation-matrix.md` #6 行填写 |
+| 未改动 | mp 客户端全部；表结构 / 函数 / 权限 / 类型（生成类型与入仓零差异） |
+
+### 关键实现点
+
+- **迁移幂等两分支都实测**：`migration up` 在「已是成员」环境（5.1 手工状态）走跳过分支；`db reset` 在干净库走添加分支；迁移文件手工重放同样跳过（`DO` 无报错）。
+- **只加一张表可测**：98 把 publication 的 public 成员清单钉为 `orders` 一张、`puballtables = false`；将来新增发布表必须到测试处登记。
+- **pgTAP 只钉声明**：断言 publication 成员与订阅前置（`authenticated` 有 SELECT、`anon` 没有；orders 唯一策略为面向 `authenticated` 的本人 SELECT）；WAL 事件的投递语义（RLS 过滤后到达）测不了，交给真实 WebSocket 脚本。
+- **隔离脚本的假阴性防护**：每个负向窗口前先断言 B 的变化真实落库（`pay-order` 建单 + 催单成功 + `ready_at` 被提前）；正向对照在**同一个连接**上验证 A 自己的 INSERT / UPDATE 到达；结束时连接仍是 `SUBSCRIBED`。详情 filter 用 `id=eq.B 的订单` 精确命中目标行——filter 命中也不放行，RLS 是唯一裁决。
+- **重启 realtime 不可省**：5.1 实测「运行中的容器不拾取 publication 变化」，已写入迁移注释、`tests/README.md` 与 addendum §F 三处。
+
+### 验收点与证据
+
+| Story 5.3 验收点 | 结论 / 证据 |
+| --- | --- |
+| `orders` 加入 publication（只加这一张表）；干净重建与既有环境都可用 | 迁移两分支均实测通过；`98` 5 条断言；`pg_publication_tables` 成员恰为 `orders` |
+| publication 不构成授权放开；本人 SELECT 策略是订阅前置 | `98`：`puballtables = false`；`authenticated` 有 SELECT、`anon` 没有；orders 唯一策略为 `orders_own_read`（SELECT，面向 `authenticated`） |
+| 两身份 A 订阅 / B 变更 → A 收不到任何 `INSERT` / `UPDATE`（含列级数据） | `verify:realtime-isolation`：列表 filter 与详情 filter 两条链路各 0 个事件（窗口 5 s），事件记录仅 `verify-isolation-own:INSERT` / `UPDATE`（A 自己的事件）；负向窗口非空测（B 的变化已落库断言） |
+| 现有 REST / RPC 行为不受影响；类型契约向后兼容 | `supabase test db` 20 文件 / 645 断言全绿（此前基线 19 / 640，+98 的 5 条）；`verify:pay-order` 回归通过；`gen types` 与入仓零差异（无表结构变更） |
+| pgTAP 基线保持可运行且通过；订阅是 P2 AD-5 的显式例外 | `test db` 全绿；订阅消费的是 RLS 过滤后的变更事件、不是行读取（AD-13 / AR-P3-14） |
+
+### 验证命令与输出（本轮由协同实施会话执行、结果如上；轻量验收口径下由演示者复核，输出不入档）
+
+```bash
+cd supabase
+supabase migration up --local          # 已是成员 → 跳过分支（不报错）
+supabase db reset --local              # 干净库 → 添加分支（Ly 已确认清库）
+docker restart supabase_realtime_we-order   # publication 生效的必要步骤（5.1 实测）
+supabase test db                       # Files=20, Tests=645, Result: PASS
+deno task verify:realtime-isolation    # PASS：15 项断言；事件记录仅 verify-isolation-own:INSERT/UPDATE
+deno task verify:pay-order             # PASS（REST/RPC 回归）
+supabase gen types typescript --local  # 与入仓零差异
+```
+
+### 有意偏差与遗留
+
+1. **重启 realtime 无法自动化**：迁移不能代为重启容器（5.1 实测的拾取延迟）——已写进迁移注释、`tests/README.md`、addendum §F 三处；演示预检照做。
+2. **脚本运行时与小程序不同源但同协议**：脚本用 Deno + `realtime-js 2.116.0`（deno 锁定的传递版本）；小程序侧为 2.117.1 + pnpm patch。补丁只服务微信宿主的 `URL` 兼容，不改变 join / 凭证 / RLS 语义；真机侧仍由 Story 5.4 负责。
+3. **合成分身**：脚本造 `verify-isolation-*` 临时用户并清理（订单随用户级联）；不触碰真机真实身份。
+4. **验证矩阵 #5 / #12** 留 Story 5.4（真机订阅驱动更新、回退与恢复）。
