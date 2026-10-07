@@ -17,6 +17,9 @@ export type RealtimeConnectionStatus = 'connecting' | 'subscribed' | 'unavailabl
 
 /**
  * 订阅句柄：入口形状 `subscribe({ scope, orderId? }) → { unsubscribe, onStatus }`（AD-9）。
+ *
+ * 备注（Story 5.2）：推送到达只作**触发信号**，不在此句柄上暴露原始行；
+ * 触发回调经订阅入口的可选 `onEvent` 传入（加法型扩展），由 `api/orders.ts` 转交。
  */
 export interface RealtimeSubscriptionHandle {
   /** 退订（幂等）：同一句柄重复调用只生效一次；退订后其状态回调不再触发 */

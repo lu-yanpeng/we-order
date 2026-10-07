@@ -8,11 +8,14 @@
  * 3. shouldPoll（空态 / 终态）停轮询、恢复后重排；
  * 4. 串行化：在飞时自动读取合并（不重复）、手动读取等待后补跑（不丢弃）；
  * 5. 连续失败 3 次降级为手动刷新入口；任一成功清零并恢复轮询；
- * 6. 订阅健康 → 不轮询；恢复非健康 → 回退轮询；seq 铸造递增。
+ * 6. 订阅健康 → 不轮询；恢复非健康 → 回退轮询；seq 铸造递增；
+ * 7. 订阅接线（bindSubscription，Story 5.2）：进入 subscribed 先补读再停轮询、非健康回退、
+ *    在飞合并、补读失败静默、解绑 / dispose 后状态不再生效。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MAX_CONSECUTIVE_FAILURES, POLL_INTERVAL_MS, useOrderStatus } from './use-order-status'
 import type { OrderReadKind } from './use-order-status'
+import type { RealtimeConnectionStatus, RealtimeSubscriptionHandle } from '@/types/realtime'
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -249,5 +252,160 @@ describe('useOrderStatus 刷新编排（Story 4.3）', () => {
     await s.runManualRead()
     s.setSubscriptionHealthy(true)
     expect(read).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('useOrderStatus 订阅接线（Story 5.2；AD-8）', () => {
+  /** 可控假订阅句柄：注册时立即回调当前状态（同 core/realtime 契约），之后经 emit 驱动 */
+  function fakeSubscription(initial: RealtimeConnectionStatus = 'connecting') {
+    const listeners = new Set<(status: RealtimeConnectionStatus) => void>()
+    let current = initial
+    const handle: RealtimeSubscriptionHandle = {
+      unsubscribe: vi.fn(),
+      onStatus: (callback) => {
+        listeners.add(callback)
+        callback(current)
+        return () => {
+          listeners.delete(callback)
+        }
+      },
+    }
+    return {
+      handle,
+      emit: (status: RealtimeConnectionStatus) => {
+        current = status
+        for (const listener of [...listeners]) listener(status)
+      },
+    }
+  }
+
+  it('订阅健康：先补读一次再停轮询；恢复非健康回退轮询；再次健康再补读', async () => {
+    const read = vi.fn(async () => true)
+    const s = useOrderStatus({ read })
+    const sub = fakeSubscription()
+
+    await s.setActive(true) // 读 1（进入）；轮询已排
+    expect(s.isPolling.value).toBe(true)
+    s.bindSubscription(sub.handle)
+    expect(read).toHaveBeenCalledTimes(1)
+
+    sub.emit('subscribed') // 补读（读 2）+ 停轮询
+    expect(read).toHaveBeenCalledTimes(2)
+    expect(s.isPolling.value).toBe(false)
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 3)
+    expect(read).toHaveBeenCalledTimes(2) // 订阅健康 → 不轮询
+
+    sub.emit('connecting') // 断开 → 回退轮询
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS)
+    expect(read).toHaveBeenCalledTimes(3)
+
+    sub.emit('subscribed') // 恢复 → 补读一次再停
+    expect(read).toHaveBeenCalledTimes(4)
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 2)
+    expect(read).toHaveBeenCalledTimes(4)
+  })
+
+  it('unavailable（会话未就绪 / 放弃重连）回退轮询', async () => {
+    const read = vi.fn(async () => true)
+    const s = useOrderStatus({ read })
+    const sub = fakeSubscription()
+
+    await s.setActive(true) // 读 1
+    s.bindSubscription(sub.handle)
+    sub.emit('unavailable')
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS)
+    expect(read).toHaveBeenCalledTimes(2) // 回退轮询可用
+
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS)
+    expect(read).toHaveBeenCalledTimes(3)
+  })
+
+  it('补读在在飞读取时合并（不并发）；订阅健康后读取链收尾不再排轮询', async () => {
+    let release: () => void = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const read = vi
+      .fn<(seq: number, kind: OrderReadKind) => Promise<boolean>>()
+      .mockImplementationOnce(async () => {
+        await gate
+        return true
+      })
+      .mockImplementation(async () => true)
+
+    const s = useOrderStatus({ read })
+    const entering = s.setActive(true) // 读 1 在飞
+    const sub = fakeSubscription()
+    s.bindSubscription(sub.handle)
+
+    sub.emit('subscribed') // 补读合并进在飞读取
+    expect(read).toHaveBeenCalledTimes(1)
+
+    release()
+    await entering
+    expect(s.isPolling.value).toBe(false)
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 3)
+    expect(read).toHaveBeenCalledTimes(1)
+  })
+
+  it('补读失败：静默且不恢复轮询（D3 决策：由下一次推送 / 进页面 / 手动刷新自愈）', async () => {
+    const read = vi.fn().mockResolvedValueOnce(true).mockResolvedValue(false)
+    const s = useOrderStatus({ read })
+    const sub = fakeSubscription()
+
+    await s.setActive(true) // 读 1 成功
+    s.bindSubscription(sub.handle)
+    sub.emit('subscribed') // 补读（读 2）失败
+    expect(read).toHaveBeenCalledTimes(2)
+    expect(s.isPolling.value).toBe(false)
+
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 3)
+    expect(read).toHaveBeenCalledTimes(2)
+  })
+
+  it('解绑后迟到状态不再影响策略', async () => {
+    const read = vi.fn(async () => true)
+    const s = useOrderStatus({ read })
+    const sub = fakeSubscription()
+
+    await s.setActive(true) // 读 1
+    const detach = s.bindSubscription(sub.handle)
+    sub.emit('subscribed') // 读 2 + 停轮询
+    expect(read).toHaveBeenCalledTimes(2)
+
+    detach()
+    sub.emit('connecting')
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 3)
+    expect(read).toHaveBeenCalledTimes(2) // 不回退、不读取
+  })
+
+  it('注册时已是 subscribed（复用句柄）：立即补读一次并停轮询', async () => {
+    const read = vi.fn(async () => true)
+    const s = useOrderStatus({ read })
+
+    await s.setActive(true) // 读 1；轮询已排
+    expect(s.isPolling.value).toBe(true)
+
+    const sub = fakeSubscription('subscribed')
+    s.bindSubscription(sub.handle) // 注册即回调当前状态
+    expect(read).toHaveBeenCalledTimes(2)
+    expect(s.isPolling.value).toBe(false)
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 2)
+    expect(read).toHaveBeenCalledTimes(2)
+  })
+
+  it('dispose 后订阅状态不再驱动策略', async () => {
+    const read = vi.fn(async () => true)
+    const s = useOrderStatus({ read })
+    const sub = fakeSubscription()
+
+    await s.setActive(true) // 读 1
+    s.bindSubscription(sub.handle)
+    sub.emit('subscribed') // 读 2
+    s.dispose()
+
+    sub.emit('connecting')
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 3)
+    expect(read).toHaveBeenCalledTimes(2)
   })
 })

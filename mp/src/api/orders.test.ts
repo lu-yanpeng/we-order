@@ -385,7 +385,7 @@ describe('completeOrder（Story 4.5；FR-P3-14）', () => {
   })
 })
 
-describe('subscribeOrders（Story 5.1 订阅入口；AD-9）', () => {
+describe('subscribeOrders（Story 5.1 / 5.2 订阅入口；AD-9）', () => {
   beforeEach(() => {
     openChannelMock.mockReset()
   })
@@ -402,6 +402,17 @@ describe('subscribeOrders（Story 5.1 订阅入口；AD-9）', () => {
       { event: 'INSERT', schema: 'public', table: 'orders', filter: 'user_id=eq.user-1' },
       { event: 'UPDATE', schema: 'public', table: 'orders', filter: 'user_id=eq.user-1' },
     ])
+    expect(spec.onEvent).toBeUndefined() // 未传（Story 5.1 被动接线契约不变）
+  })
+
+  it('onEvent（Story 5.2）：推送触发回调经选项原样转交 core（只作触发信号、不携带行数据）', () => {
+    const onEvent = vi.fn()
+    subscribeOrders({ scope: 'list', onEvent })
+
+    const spec = openChannelMock.mock.calls[0][0] as RealtimeChannelSpec
+    expect(spec.onEvent).toBe(onEvent)
+    spec.onEvent?.()
+    expect(onEvent).toHaveBeenCalledTimes(1)
   })
 
   it('详情：按订单 id 过滤（只订 INSERT / UPDATE）；缺订单 id 时静态 unavailable、不发起订阅', () => {

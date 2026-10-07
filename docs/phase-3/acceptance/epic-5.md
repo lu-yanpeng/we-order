@@ -97,4 +97,81 @@ pnpm build:mp-weixin # Build complete（产物约 1.2M；realtime 与 phoenix �
 4. **`@supabase/phoenix` 直依赖**：为 uni 构建链 `preserveSymlinks` 与 pnpm 隔离布局的兼容所需，版本锁 0.4.5（与 realtime-js 要求一致）；移除会重新出现 Rollup 解析失败。
 5. **`@supabase/realtime-js` 依赖补丁（有意偏差）**：spine 的原始路线是「transport 扩展点 + URL 垫片」；实测微信宿主拒绝改写 `URL`（工具与真机形态可能不同），垫片在该宿主无效，故追加 pnpm patch 移除库内 `new URL` 调用。补丁只改 `httpEndpointURL`（行为与 WHATWG 版对照验证一致）；**升级该依赖时必须重做 / 验证补丁**，`pnpm install` 会自动应用（`patchedDependencies` 已登记）。
 6. **协议层预演脚本**：一次性工具（Node 直连），不入仓；复现步骤已记于本记录。
-7. **日志脱敏（复测后无损加固）**：库的 transport 日志会携带 `apikey` 查询参数（发布密钥属公开值），复测后在输出前统一脱敏为 `apikey=***`（`log.ts` 的 `redactLogMessage` + 单测）；行为不变，随 Story 5.2 的回归一并复验。
+7. **日志脱敏（复测后无损加固）**：库的 transport 日志会携带 `apikey` 查询参数（发布密钥属公开值），复测后在输出前统一脱敏为 `apikey=***`（`log.ts` 的 `redactLogMessage` + 单测）；行为不变，随 Story 5.2 的回归一并复验 → **已于 Story 5.2 复测确认（`apikey=***`，无回归）**。
+
+## Story 5.2 订阅接入与回退（刷新策略）
+
+- 日期：2026-10-07
+- 环境：mp 侧 `pnpm test`（vitest 3.2.7）/ `pnpm type-check`（vue-tsc 3.3.6）/ `pnpm lint` / `pnpm build:mp-weixin`；手动冒烟在本地 Supabase 栈 + 开发者工具 / 真机（清单与复测结果见下节）。
+- 范围：订阅状态 → 刷新策略接入——`subscribed` → 先补读一次再停轮询、等待推送；其余状态回退 5s 轮询；推送（`onEvent`）只作触发信号触发一次读取；**读后定订阅**（有未完成订单才订阅；空态 / 全完成 / 未读到数据不订阅；恢复内容自动补订；离开可见域退订）；不设统一开关。**不含** publication 正式入仓与 RLS 隔离验证（Story 5.3）与真机完整 PoC（Story 5.4）。
+- 决策记录（Ly，开工前逐项拍板）：① 推送信号线 = `subscribeOrders` 选项 `onEvent`（加法型扩展，句柄形状不变）；② 状态翻译唯一落点 = `useOrderStatus.bindSubscription`；③ 补读失败 = 静默照常停轮询（自愈路径：下一次推送 / 进页面 / 手动刷新）；④ 订阅生命周期 = 读后定订阅；⑤ 连发推送 = 靠既有「在飞读取合并」；⑥ 离开订单 tab / 页面隐藏即退订（不采用「首页常开」——socket 本身常驻，退订只是 channel 级 join/leave；常开会在不可见视图上产生后台读取或无效订阅）。
+
+### 交付物
+
+| 类别 | 内容 |
+| --- | --- |
+| 修改（客户端） | `api/orders.ts`（`onEvent` 选项 → `core/realtime` 的 `spec.onEvent`）；`composables/use-order-status.ts`（新增 `bindSubscription`：subscribed → 补读 + 停轮询，其余 → 回退轮询；返回解绑函数）；`pages/home/composables/use-orders.ts` 与 `sub-order-detail/composables/use-order-detail.ts`（读后定订阅：`worthSubscribing` / open / close / sync + `onEvent` 推送触发）；`types/realtime.ts`（句柄契约备注）；`core/realtime/README.md`（用法与 5.2 接线说明） |
+| 修改（测试） | `use-order-status.test.ts`（+7）；`api/orders.test.ts`（+1）；`use-orders.test.ts`（+6）；`use-order-detail.test.ts`（+6），合计 20 项 |
+| 未改动 | `core/realtime` 运行时编排、会话 / 对接层、后端全部 |
+
+### 关键实现点
+
+- **读后定订阅**：订阅建立 / 拆除都由读取结果驱动——`worthSubscribing()`（列表：存在未完成订单；详情：已读到且未完成）满足才开、不满足即关；从未读到数据（失败 / 加载中）不订阅，轮询重试成功后补订。
+- **补读再停**：`bindSubscription` 是唯一翻译点；进入 `subscribed`（含首次建立、重连恢复、注册即 subscribed 的复用句柄）→ 先 `startRead('auto')` 补读（auto 语义，填上订阅生效前未重放的变化），再 `setSubscriptionHealthy(true)` 停轮询；补读在在飞读取时合并（不并发）。
+- **回退**：任何非 `subscribed` 状态（连接中 / 断开 / 重连中 / 会话未就绪 / 放弃重连）→ `setSubscriptionHealthy(false)` → 5s 轮询；断开到回退生效 ≤ 1 个轮询周期。
+- **推送触发**：`onEvent` 只作触发信号（不携带行数据）→ `runAutoRead()`（合并 / 静默 / 保游标），与轮询共享序号门与状态单调（AD-7）；连发推送靠「同一时刻最多一个在飞读取」合并。
+- **不设开关**：无任何订阅开 / 关配置或 Mock 回退；订阅不可用是唯一回退条件。
+
+### 验收点与证据（自动验证部分）
+
+| Story 5.2 验收点 | 结论 / 证据 |
+| --- | --- |
+| 订阅健康：推送只作触发、共享同一应用路径、不轮询 | 单测：subscribed 后 15s 无轮询、推送 +1 次读取、在飞时合并；序号门 / 状态单调用例保持通过 |
+| 非 `SUBSCRIBED` → `SUBSCRIBED`（含首次）先补读再停 | 单测：emit subscribed / 注册即 subscribed → 立即补读一次且此后不轮询 |
+| 订阅不可用 → 回退 5s、≤ 2 个周期恢复、无报错打扰 | 单测：unavailable / connecting → 5s 轮询恢复更新；无 toast；订阅失败不产错误类别（5.1 既有） |
+| 仅有效会话建立、等待、补订、续期同步 | 5.1 既有（core/realtime 单测：会话等待 / 补订 / setAuth）；5.2 只消费状态（unavailable → 回退），手测第 3 条复核 |
+| 不设开关；离开可见域退订 + 停轮询 | 单测：leave → unsubscribe + 停表；代码无开关 |
+| 单活跃 channel；无双倍刷新 / 旧结果回写 | core/realtime 单活跃（5.1 既有）+ 健康 → 不轮询（单测）+ 序号门（既有单测） |
+| 空态 / 全完成退订（spine「空态停止轮询与订阅」） | 单测：空态 / 全完成不建立订阅、恢复内容自动补订 |
+| 推送不产生用户可见失败 | 单测无 toast；订阅失败静默由 5.1 既有覆盖 |
+
+### 验证命令与输出（由演示者本人执行，输出不入档）
+
+```bash
+cd mp
+pnpm test            # 21 文件 / 246 项全过（含 Story 5.2 新增 20 项）
+pnpm type-check      # 0 错误
+pnpm lint            # 0 错误
+pnpm build:mp-weixin # Build complete
+```
+
+### 手动冒烟清单与复测结果（2026-10-07，Ly 实操确认，开发者工具 + 真机）
+
+> 轻量验收口径（沿用 2026-10-06 Ly 裁定）：本人实操确认、自审自负责，截图 / 录屏不入档。
+> 前置：本地 Supabase 栈运行中、`orders` 在 `supabase_realtime` publication（5.1 手工状态，5.3 正式入仓）；开发者工具导入 `dist/dev/mp-weixin`（或 `pnpm dev:mp-weixin`）并勾选「不校验合法域名」。
+> 观察要点：只刷订单可见域；切到点餐 tab / 页面隐藏后应无任何请求。
+
+1. **健康路径**：进订单 tab（有未完成订单）→ `[realtime] channel subscribed`；订阅补读一次后 Network 面板不再每 5s 出现 `get_my_orders`。
+2. **推送驱动**：催单 / 等推进 → `[realtime] event UPDATE` 后立即出现一次 `get_my_orders`，页面无需手动刷新更新。
+3. **断线回退与恢复**：`docker restart supabase_realtime_we-order`（或断网）→ `[realtime] socket closed`；5s 轮询恢复；恢复后 `channel subscribed` → 先补读一次 → 轮询停（断线窗口内的推进不丢——Story 5.4 / 矩阵 #5 的预备）。
+4. **离开可见域**：切到点餐 tab / 页面隐藏 → `[realtime] unsubscribed`、无请求；切回 → 立即读一次 + `channel subscribed`。
+5. **空态与终态**：无未完成订单（空态 / 全部已完成）→ 不建立订阅、不轮询；下单后回到订单 tab → 立即读取并补订（`[realtime] subscription requested`）。
+
+复测结果：**全部通过**（本人实操确认，开发者工具 + 真机，行为与上述期望一致）。
+
+| # | 场景 | 结果 | 观察（日志要点） |
+| --- | --- | --- | --- |
+| 1 | 健康路径：订阅后不轮询 | 通过 | `channel subscribed` → 补读一次后不再每 5s 轮询 |
+| 2 | 推送驱动更新 | 通过 | `event UPDATE` 后立即出现一次 `get_my_orders`，页面自动更新 |
+| 3 | 断线回退与恢复 | 通过 | `socket closed` → 5s 轮询恢复；恢复后先补读一次 → 轮询停 |
+| 4 | 离开可见域退订 | 通过 | 切走 `unsubscribed`、无请求；切回立即读取 + 订阅 |
+| 5 | 空态 / 终态与下单后补订 | 通过 | 空态 / 全完成无订阅、无轮询；下单回来读取后补订 |
+
+5.1 遗留项复验：`[realtime]` 日志脱敏随本轮回归确认无回归——`apikey` 显示为 `***`。
+
+### 有意偏差与遗留
+
+1. **`onEvent` 属加法型扩展**：AD-9 入口形状为 `subscribe({ scope, orderId? })`；本次为入口增加可选 `onEvent`（推送触发信号），句柄形状 `{ unsubscribe, onStatus }` 不变——该口为 Story 5.1 的 `spec.onEvent` 预留、本次接线使用。
+2. **空态 / 全完成不建立订阅（读后定订阅）**：空态期间的新单不靠推送发现，由可见域重进 / 下拉刷新读取发现——spine 明确「空态停止轮询与订阅」，属有意行为。
+3. **补读失败静默停轮询**（决策 D3）：不停轮询之外的兜底，由下一次推送 / 进页面 / 手动刷新自愈。
+4. **真机完整 PoC、订阅驱动更新观察（SM-5）与验证矩阵 #5 / #6 / #12** 留 Story 5.4；publication 迁移与两身份隔离验证留 Story 5.3。

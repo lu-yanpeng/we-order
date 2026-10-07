@@ -10,7 +10,9 @@
  *    序号门与状态单调在 `utils/order-status.ts`（AD-7：旧响应不覆盖新状态、状态不倒退）；
  * 2. 刷新编排：经 `composables/use-order-status.ts` 管理可见域开关与 5s 轮询（Story 4.3；
  *    FR-P3-12）——空态与「全部已完成」停止轮询（FR-P3-10 + 2026-10-04 补记）、
- *    连续失败 3 次降级为手动刷新入口；
+ *    连续失败 3 次降级为手动刷新入口；订阅接入（Story 5.2；FR-P3-15/16；AD-8 / AD-9）：
+ *    读后定订阅（有未完成订单才订阅、空态 / 全完成退订）、订阅健康 → 推送触发读取且
+ *    不轮询、不健康 → 回退轮询、离开可见域退订；
  * 3. 状态机与交互：加载 → 失败 → 空 → 内容；骨架 / 下拉刷新 / 触底分页；
  *    卡片操作：进入订单详情；催单 / 确认取餐的真实动作分别由根 `use-urge` /
  *    `use-confirm-pickup` 承接（Story 4.4 / 4.5）；操作后立即读取入口 `refreshAfterAction`。
@@ -141,6 +143,8 @@ export function useOrders() {
       skeletonVisible.value = false
       loading.value = false
       loaded.value = true
+      // 读取结果决定订阅存续（Story 5.2「读后定订阅」）：有未完成订单才订阅、否则退订
+      syncSubscription()
     }
   }
 
@@ -160,22 +164,59 @@ export function useOrders() {
   })
 
   /**
-   * 可见域开关（AD-8）：页面把「订单 tab 激活 且页面可见」合成后调用。
-   * 进入（含切回 tab、从详情返回、回到前台）→ 立即读一次并重置轮询计时；
-   * 离开 → 停表。
-   *
-   * Story 5.1 被动接线：进入时建立订单列表订阅、离开时退订——只负责连接与日志，
-   * 不改变刷新策略（轮询照旧）；5.2 在同一接入点接「健康→停轮询、推送→读取」。
-   * 订阅 / 退订在 core/realtime 幂等，重复调用安全（切 tab / 回前台可能重复触发）。
+   * 订阅接线（Story 5.2；AD-8 / AD-9）：
+   * - **读后定订阅**：订阅的建立与拆除由读取结果决定——已知存在未完成订单才订阅；
+   *   空态 / 全部已完成不建立订阅、不轮询（spine：「空态停止轮询与订阅」），
+   *   恢复内容（下拉刷新 / 回到可见域读取）后自动补订；
+   * - 订阅状态经 `bindSubscription` 翻译为刷新策略：`subscribed` → 先补读一次再停轮询、
+   *   等待推送；连接中 / 断开 / 重连中 / 会话未就绪 → 回退 5s 轮询；
+   * - 推送（`onEvent`）只作触发信号：立即读一次，与轮询共享同一状态应用路径（AD-7）；
+   * - 离开可见域 → 退订 + 停轮询；订阅 / 退订在 core/realtime 幂等。
    */
+  let domainActive = false
   let subscription: RealtimeSubscriptionHandle | null = null
+  let detachSubscriptionStatus: (() => void) | null = null
 
+  /** 有值得盯的内容才订阅：已知存在未完成订单（completed 为终态，不再变化） */
+  const worthSubscribing = () => orders.value.some((order) => order.status !== 'completed')
+
+  /** 推送到达：立即读一次（auto 语义——合并、静默、保游标；在飞读取合并，D5） */
+  const onPush = () => {
+    void status.runAutoRead()
+  }
+
+  const openSubscription = () => {
+    subscription = subscribeOrders({ scope: 'list', onEvent: onPush })
+    detachSubscriptionStatus = status.bindSubscription(subscription)
+  }
+
+  const closeSubscription = () => {
+    detachSubscriptionStatus?.()
+    detachSubscriptionStatus = null
+    subscription?.unsubscribe()
+    subscription = null
+  }
+
+  /** 订阅存续与可见域 / 读取结果同步：满足条件则建、否则退（幂等，可重复调用） */
+  const syncSubscription = () => {
+    if (domainActive && worthSubscribing()) {
+      if (subscription === null) openSubscription()
+      return
+    }
+    if (subscription !== null) closeSubscription()
+  }
+
+  /**
+   * 可见域开关（AD-8）：页面把「订单 tab 激活 且页面可见」合成后调用。
+   * 进入（含切回 tab、从详情返回、回到前台）→ 建立订阅（有内容时）+ 立即读一次并重置轮询计时；
+   * 离开 → 退订 + 停表。
+   */
   const setActive = (next: boolean): Promise<void> => {
+    domainActive = next
     if (next) {
-      subscription = subscribeOrders({ scope: 'list' })
+      syncSubscription()
     } else {
-      subscription?.unsubscribe()
-      subscription = null
+      closeSubscription()
     }
     return status.setActive(next)
   }

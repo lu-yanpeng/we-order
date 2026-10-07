@@ -20,7 +20,7 @@ Supabase Realtime 自适配的客户端基础设施：基于公开的 Phoenix �
 ## 用法（api/ 层）
 
 ```ts
-// api/orders.ts（无状态工厂；形状见 AD-9）
+// api/orders.ts（无状态工厂；形状见 AD-9；onEvent 为 Story 5.2 的加法型扩展）
 export function subscribeOrders(options: OrderSubscriptionOptions): RealtimeSubscriptionHandle {
   return openChannel({
     key: 'orders:list', // 或 `orders:<id>`（同键幂等复用）
@@ -30,13 +30,16 @@ export function subscribeOrders(options: OrderSubscriptionOptions): RealtimeSubs
       { event: 'INSERT', schema: 'public', table: 'orders', filter: `user_id=eq.${userId}` },
       { event: 'UPDATE', schema: 'public', table: 'orders', filter: `user_id=eq.${userId}` },
     ],
+    onEvent: options.onEvent, // 推送只作触发信号：由刷新编排触发一次服务端读取（AD-7）
   })
 }
 ```
 
 页面 / Composable 只消费句柄：`unsubscribe()`（幂等）与 `onStatus(cb)`（注册时立即回调当前
-状态、之后只在转移时回调）。**推送只作触发信号**：命中的回调不携带原始行，由使用方走服务端
-读取路径（AD-7）。
+状态、之后只在转移时回调）；推送触发回调经订阅入口的可选 `onEvent` 传入、不携带原始行。
+**推送只作触发信号**：使用方（`composables/use-order-status.ts` 的 `bindSubscription`）
+把订阅状态翻译为刷新策略——`subscribed` → 先补读一次再停轮询、其余状态回退 5s 轮询；
+推送 → 立即读取一次，与轮询共享同一状态应用路径（AD-7；Story 5.2）。
 
 ## 关键行为
 

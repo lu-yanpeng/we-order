@@ -10,20 +10,24 @@
  * 6. 失败保留已有数据（自动 / 轮询静默、用户主动刷新才 toast）；
  * 7. 轮询 5s 刷新、状态单调不倒退、空态停止轮询（Story 4.3）；
  * 8. 操作后读取 `refreshAfterAction`（Story 4.5）：立即读取 + auto 语义合并（保游标、
- *    状态更新）、失败静默（保留数据、不 toast）。
+ *    状态更新）、失败静默（保留数据、不 toast）；
+ * 9. 订阅接线（Story 5.2；AD-8）：读后定订阅、subscribed 先补读再停轮询、推送触发读取、
+ *    不可用回退轮询、空态 / 全完成退订、离开可见域退订。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { OrderListItem, OrdersPage, OrderStatus } from '@/types/api-contracts'
+import type { RealtimeConnectionStatus, RealtimeSubscriptionHandle } from '@/types/realtime'
+import type { OrderSubscriptionOptions } from '@/api/orders'
 
-const { fetchOrdersMock, toastMock } = vi.hoisted(() => ({
+const { fetchOrdersMock, subscribeOrdersMock, toastMock } = vi.hoisted(() => ({
   fetchOrdersMock: vi.fn(),
+  subscribeOrdersMock: vi.fn(),
   toastMock: vi.fn(),
 }))
 
 vi.mock('@/api/orders', () => ({
   fetchOrders: fetchOrdersMock,
-  // Story 5.1 被动接线：订阅入口（返回空句柄；订阅行为由 core/realtime 单测覆盖）
-  subscribeOrders: () => ({ unsubscribe: vi.fn(), onStatus: () => () => {} }),
+  subscribeOrders: subscribeOrdersMock,
 }))
 
 import { useOrders } from './use-orders'
@@ -58,8 +62,52 @@ function enter(s: ReturnType<typeof useOrders>) {
   return s.setActive(true)
 }
 
+/** 可控假订阅（Story 5.2）：记录入口选项（scope / onEvent），状态与推送由测试驱动 */
+interface FakeSubscription {
+  options: OrderSubscriptionOptions
+  handle: RealtimeSubscriptionHandle
+  unsubscribe: ReturnType<typeof vi.fn>
+  emitStatus: (status: RealtimeConnectionStatus) => void
+  emitEvent: () => void
+}
+
+let subs: {
+  created: FakeSubscription[]
+  last: () => FakeSubscription
+}
+
+/** 安装 subscribeOrders 工厂：每个用例重置后调用一次，未显式触发的状态保持 connecting */
+function installSubscriptionFactory() {
+  const created: FakeSubscription[] = []
+  subscribeOrdersMock.mockImplementation((options: OrderSubscriptionOptions) => {
+    const listeners = new Set<(status: RealtimeConnectionStatus) => void>()
+    const unsubscribe = vi.fn(() => listeners.clear())
+    const fake: FakeSubscription = {
+      options,
+      unsubscribe,
+      handle: {
+        unsubscribe,
+        onStatus: (callback) => {
+          listeners.add(callback)
+          callback('connecting') // 同 core/realtime 契约：注册时立即回调当前状态
+          return () => listeners.delete(callback)
+        },
+      },
+      emitStatus: (status) => {
+        for (const listener of [...listeners]) listener(status)
+      },
+      emitEvent: () => options.onEvent?.(),
+    }
+    created.push(fake)
+    return fake.handle
+  })
+  return { created, last: () => created[created.length - 1] }
+}
+
 beforeEach(() => {
   fetchOrdersMock.mockReset()
+  subscribeOrdersMock.mockReset()
+  subs = installSubscriptionFactory()
   toastMock.mockReset()
   vi.stubGlobal('uni', { showToast: toastMock })
   vi.useFakeTimers()
@@ -406,5 +454,107 @@ describe('useOrders 操作后读取（Story 4.5）', () => {
     await vi.advanceTimersByTimeAsync(1)
     expect(fetchOrdersMock).toHaveBeenCalledTimes(3)
     expect(s.orders.value[0].status).toBe('completed')
+  })
+})
+
+describe('useOrders 订阅接线（Story 5.2；FR-P3-15/16；AD-8）', () => {
+  it('读后定订阅：有未完成订单才订阅；subscribed → 补读一次并停轮询；推送触发读取', async () => {
+    fetchOrdersMock.mockResolvedValue(page([item(1, 'cooking')]))
+
+    const s = useOrders()
+    await enter(s) // 读 1 → 读后定订阅
+    expect(subs.created).toHaveLength(1)
+    expect(subs.last().options).toMatchObject({ scope: 'list' })
+    expect(fetchOrdersMock).toHaveBeenCalledTimes(1)
+
+    subs.last().emitStatus('subscribed') // 补读（读 2）+ 停轮询
+    expect(fetchOrdersMock).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(15000)
+    expect(fetchOrdersMock).toHaveBeenCalledTimes(2) // 订阅健康 → 不轮询
+
+    subs.last().emitEvent() // 推送只作触发信号 → 立即读取一次
+    expect(fetchOrdersMock).toHaveBeenCalledTimes(3)
+    await vi.advanceTimersByTimeAsync(10000)
+    expect(fetchOrdersMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('订阅不可用（会话未就绪 / 放弃重连）：回退 5s 轮询，≤ 2 个周期内恢复更新', async () => {
+    fetchOrdersMock
+      .mockResolvedValueOnce(page([item(1, 'cooking')]))
+      .mockResolvedValueOnce(page([item(1, 'pickup')]))
+
+    const s = useOrders()
+    await enter(s)
+    subs.last().emitStatus('unavailable') // 回退轮询（轮询计时已由进入读取排定）
+
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(fetchOrdersMock).toHaveBeenCalledTimes(2)
+    expect(s.orders.value[0].status).toBe('pickup')
+  })
+
+  it('空态不订阅、不轮询；读到未完成订单后自动补订', async () => {
+    fetchOrdersMock.mockResolvedValueOnce(page([]))
+    const s = useOrders()
+    await enter(s)
+    expect(subs.created).toHaveLength(0) // 空态：不建立订阅
+
+    await vi.advanceTimersByTimeAsync(15000)
+    expect(fetchOrdersMock).toHaveBeenCalledTimes(1)
+
+    fetchOrdersMock.mockResolvedValueOnce(page([item(1, 'cooking')]))
+    await s.refreshOrders() // 显式刷新读到新单（下拉 / 从点餐 tab 下单回来）
+    expect(subs.created).toHaveLength(1) // 恢复内容 → 自动补订
+  })
+
+  it('全部已完成：推送读取后自动退订 + 停轮询（终态不再变化）', async () => {
+    fetchOrdersMock
+      .mockResolvedValueOnce(page([item(1, 'pickup')]))
+      .mockResolvedValueOnce(page([item(1, 'pickup')])) // subscribed 补读
+      .mockResolvedValueOnce(page([item(1, 'completed')])) // 推送后读取 → 已完成
+
+    const s = useOrders()
+    await enter(s)
+    expect(subs.created).toHaveLength(1)
+    subs.last().emitStatus('subscribed') // 读 2
+    expect(fetchOrdersMock).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(1) // 等补读落地（否则推送会合并进在飞读取，D5）
+
+    subs.last().emitEvent() // 读 3 → 读后退订
+    await vi.advanceTimersByTimeAsync(1)
+    expect(fetchOrdersMock).toHaveBeenCalledTimes(3)
+    expect(subs.last().unsubscribe).toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(15000)
+    expect(fetchOrdersMock).toHaveBeenCalledTimes(3) // 不轮询
+  })
+
+  it('首读失败无数据：不订阅、轮询重试成功后补订', async () => {
+    fetchOrdersMock.mockRejectedValueOnce({ source: 'client', code: 'network_unreachable' })
+    const s = useOrders()
+    await enter(s)
+    expect(subs.created).toHaveLength(0)
+    expect(s.error.value).toBe('网络不可用，请检查网络后重试')
+
+    fetchOrdersMock.mockResolvedValueOnce(page([item(1, 'cooking')]))
+    await vi.advanceTimersByTimeAsync(5000) // 轮询重试成功
+    expect(subs.created).toHaveLength(1)
+  })
+
+  it('离开可见域退订；回来有内容重新订阅', async () => {
+    fetchOrdersMock.mockResolvedValue(page([item(1, 'cooking')]))
+    const s = useOrders()
+    await enter(s)
+    expect(subs.created).toHaveLength(1)
+    const first = subs.last()
+
+    await s.setActive(false)
+    expect(first.unsubscribe).toHaveBeenCalled()
+
+    await s.setActive(true) // 已知有内容 → 立即补订 + 读取
+    expect(subs.created).toHaveLength(2)
+    expect(fetchOrdersMock).toHaveBeenCalledTimes(2)
+
+    await s.setActive(false)
+    expect(subs.last().unsubscribe).toHaveBeenCalled()
   })
 })

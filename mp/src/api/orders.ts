@@ -12,8 +12,9 @@
  * 5. 确认取餐：经服务端 `complete_order`（Story 4.5；FR-P3-14）——把本人「待取餐」订单置为
  *    「已完成」，重复确认幂等（返回成功且不改完成时间）；超时自动完成由服务端兜底；
  * 6. 结算意图（幂等键）生命周期（Story 3.4；AD-10）——`weorder_checkout_intent` 唯一出口；
- * 7. 订阅入口（Story 5.1；AD-9）——`subscribeOrders()` 无状态工厂：构造 orders 的订阅规格
- *    （表 / 事件 / filter）并交给 `core/realtime`；本文件不持有模块级 channel。
+ * 7. 订阅入口（Story 5.1 / 5.2；AD-9）——`subscribeOrders()` 无状态工厂：构造 orders 的订阅规格
+ *    （表 / 事件 / filter）并交给 `core/realtime`；`onEvent` 把推送信号交给刷新编排触发读取
+ *    （只作触发信号，不携带行数据）；本文件不持有模块级 channel。
  *
  * 订单侧 Mock 数据源（`mock/orders.ts`）已随 Story 4.2 删除；本文件不存在任何
  * Mock 读写路径或回退开关，读取只有服务端一条通路（FR-P3-3 整体收口）。
@@ -95,6 +96,12 @@ export interface OrderSubscriptionOptions {
   scope: OrderSubscriptionScope
   /** `scope = 'order'` 时必填：订单服务端 UUID（仅作 filter，不构成归属判定） */
   orderId?: string
+  /**
+   * 推送到达回调（Story 5.2；AD-8）：只作**触发信号**、不携带行数据；
+   * 使用方（刷新编排）收到后走服务端读取路径拉取最新状态（与轮询共享同一应用路径）。
+   * 可选（Story 5.1 被动接线不传）；订阅失败 / 断线不触发，静默回退轮询。
+   */
+  onEvent?: () => void
 }
 
 /** 不成立的单笔订阅（缺订单 id）：形状不变，静态回报 unavailable；不发起任何连接 */
@@ -134,6 +141,7 @@ export function subscribeOrders(options: OrderSubscriptionOptions): RealtimeSubs
         { event: 'UPDATE', schema: 'public', table: 'orders', filter },
       ]
     },
+    onEvent: options.onEvent,
   })
 }
 

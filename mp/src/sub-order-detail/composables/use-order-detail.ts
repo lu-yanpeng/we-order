@@ -6,6 +6,8 @@
  *    商品、规格摘要、金额、门店信息、取杯号都是下单时快照，不随目录改名 / 改价变化；
  * 2. 刷新编排：经 `composables/use-order-status.ts` 管理可见域与 5s 轮询（Story 4.3；
  *    FR-P3-12）——订单已完成（终态）停止轮询；连续失败 3 次降级为手动刷新入口；
+ *    订阅接入（Story 5.2；FR-P3-15/16；AD-8 / AD-9）：读后定订阅（读到且未完成才订阅）、
+ *    订阅健康 → 推送触发读取且不轮询、不健康 → 回退轮询、离开可见域 / 卸载退订；
  * 3. 状态应用单调：序号门 + 状态不倒退（`utils/order-status.ts`；AD-7）；
  * 4. 操作后立即读取入口 `refreshAfterAction`（确认取餐成功后由根 `use-confirm-pickup` 调用，
  *    Story 4.5；同 auto 语义：合并 / 静默 + 重置轮询计时）；确认取餐与催单的真实动作分别由
@@ -125,6 +127,8 @@ export function useOrderDetail() {
       overlayVisible.value = false
       loadedOnce = true
       loading.value = false
+      // 读取结果决定订阅存续（Story 5.2「读后定订阅」）：已读到且未完成才订阅、否则退订
+      syncSubscription()
     }
   }
 
@@ -141,31 +145,67 @@ export function useOrderDetail() {
   }
 
   /**
-   * 订阅句柄（Story 5.1 被动接线）：进入可见域建立单笔订单订阅、离开退订；
-   * 只负责连接与日志，不改变刷新策略（轮询照旧）；5.2 接「健康→停轮询、推送→读取」。
+   * 订阅接线（Story 5.2；AD-8 / AD-9）：
+   * - **读后定订阅**：读到订单且未完成才订阅；已完成（终态）/ 未读到 / 空 id 不订阅、
+   *   不轮询；成功读取后自动补订、推进到已完成自动退订；
+   * - 订阅状态经 `bindSubscription` 翻译为刷新策略：`subscribed` → 先补读一次再停轮询、
+   *   等待推送；连接中 / 断开 / 重连中 / 会话未就绪 → 回退 5s 轮询；
+   * - 推送（`onEvent`）只作触发信号：立即读一次，与轮询共享同一状态应用路径（AD-7）；
+   * - 离开可见域 / 页面卸载 → 退订 + 停表；订阅 / 退订在 core/realtime 幂等。
    */
+  let domainActive = false
   let subscription: RealtimeSubscriptionHandle | null = null
+  let detachSubscriptionStatus: (() => void) | null = null
 
-  const releaseSubscription = () => {
+  /** 有值得盯的内容才订阅：已读到订单且未完成（completed 终态不再变化） */
+  const worthSubscribing = () =>
+    orderId.value !== '' && order.value !== null && order.value.status !== 'completed'
+
+  /** 推送到达：立即读一次（auto 语义——合并、静默；在飞读取合并，D5） */
+  const onPush = () => {
+    void status.runAutoRead()
+  }
+
+  const openSubscription = () => {
+    subscription = subscribeOrders({ scope: 'order', orderId: orderId.value, onEvent: onPush })
+    detachSubscriptionStatus = status.bindSubscription(subscription)
+  }
+
+  const closeSubscription = () => {
+    detachSubscriptionStatus?.()
+    detachSubscriptionStatus = null
     subscription?.unsubscribe()
     subscription = null
   }
 
+  /** 订阅存续与可见域 / 读取结果同步：满足条件则建、否则退（幂等，可重复调用） */
+  const syncSubscription = () => {
+    if (domainActive && worthSubscribing()) {
+      if (subscription === null) openSubscription()
+      return
+    }
+    if (subscription !== null) closeSubscription()
+  }
+
   /**
-   * 可见域开关（页面 onShow / onHide / onUnload）：进入时返回首个读取的完成 Promise；
-   * 订单 id 未登记（直接访问页面无参数）时不建立订阅，读取侧走本地守卫失败态。
+   * 可见域开关（页面 onShow / onHide / onUnload）：进入时建立订阅（有内容时）并返回
+   * 首个读取的完成 Promise；订单 id 未登记（直接访问页面无参数）时不建立订阅，
+   * 读取侧走本地守卫失败态。
    */
   const setActive = (next: boolean): Promise<void> => {
-    if (next && orderId.value !== '') {
-      subscription = subscribeOrders({ scope: 'order', orderId: orderId.value })
+    domainActive = next
+    if (next) {
+      syncSubscription()
+    } else {
+      closeSubscription()
     }
-    if (!next) releaseSubscription()
     return status.setActive(next)
   }
 
   /** 停止编排（页面 onUnload）：退订 + 停表，不再发起任何读取 */
   const dispose = () => {
-    releaseSubscription()
+    domainActive = false
+    closeSubscription()
     status.dispose()
   }
 

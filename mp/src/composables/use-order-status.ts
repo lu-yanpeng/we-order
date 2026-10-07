@@ -11,8 +11,9 @@
  *    状态应用与序号门在 `utils/order-status.ts`，由使用方在 `read` 内完成；
  * 3. 失败降级：连续失败 3 次（进入 / 轮询 / 手动都计入）停止轮询、保留数据、
  *    降级为手动刷新入口；任一读取成功清零；仍可见则恢复轮询；
- * 4. 订阅接入点：`setSubscriptionHealthy(true)` 即停轮询（Epic 5 的「先补读再停」在置位前完成）；
- *    未启用订阅（默认）时轮询是唯一刷新路径；
+ * 4. 订阅接入点（Story 5.2）：`bindSubscription(handle)` 是「订阅状态 → 刷新策略」的唯一翻译点——
+ *    `subscribed`（含首次建立 / 断线恢复）→ 先补读一次再停轮询、等待推送；
+ *    `connecting` / `unavailable` → 回退轮询；未绑定订阅（默认）时轮询是唯一刷新路径；
  * 5. 串行化：同一时刻最多一个在飞读取；轮询与进入触发与在飞读取合并（跳过），
  *    手动读取不丢弃（等待在飞读取完成后补跑一次，兑现「下拉必然读取一次」）；
  * 6. 操作触发读取（Story 4.5）：确认取餐等动作成功后立即读取一次，复用 auto 语义
@@ -23,6 +24,7 @@
  */
 import { ref } from 'vue'
 import type { Ref } from 'vue'
+import type { RealtimeSubscriptionHandle } from '@/types/realtime'
 
 /** 读取语义：`auto` = 首屏 / 进入可见域 / 轮询；`manual` = 下拉刷新 / 失败重试（显式刷新） */
 export type OrderReadKind = 'auto' | 'manual'
@@ -44,7 +46,14 @@ export interface OrderStatusController {
    * 重复置同值幂等。返回进入时那次读取的完成 Promise（页面无需等待，测试 / 下拉可 await）。
    */
   setActive: (active: boolean) => Promise<void>
-  /** 订阅健康上报（Epic 5 接入点）：healthy → 不轮询；恢复非健康 → 回退轮询（若可见） */
+  /**
+   * 绑定订阅句柄（Story 5.2 接入点；AD-8）：把订阅状态翻译为刷新策略——
+   * `subscribed`（含首次建立 / 重连恢复）→ 先补读一次再停轮询、等待推送；
+   * `connecting` / `unavailable` → 回退轮询（若可见）。
+   * 返回解绑函数（退订 / 离开可见域时调用）：解绑后的迟到状态不再影响策略。
+   */
+  bindSubscription: (handle: RealtimeSubscriptionHandle) => () => void
+  /** 订阅健康上报（供测试直接驱动；`bindSubscription` 内部使用）：healthy → 不轮询；恢复非健康 → 回退轮询（若可见） */
   setSubscriptionHealthy: (healthy: boolean) => void
   /** 显式刷新（下拉 / 失败重试）：立即读一次并重置轮询计时；在飞时等待后补跑，可 await */
   runManualRead: () => Promise<void>
@@ -185,6 +194,26 @@ export function useOrderStatus(options: UseOrderStatusOptions): OrderStatusContr
     scheduleNextPoll()
   }
 
+  /**
+   * 订阅状态 → 刷新策略的唯一点（Story 5.2；AD-8）：
+   * - 进入 `subscribed`（含首次建立与断线恢复）：先补读一次（auto 语义——合并 / 静默，
+   *   填上订阅生效前 Realtime 未重放的变化），再停轮询、等待推送；补读失败静默，
+   *   由下一次推送 / 进页面 / 手动刷新自愈（不停轮询之外的兜底，Story 5.2 决策 D3）；
+   * - 非 `subscribed`（连接中 / 断开 / 重连中 / 会话未就绪）：回退 5s 轮询（若可见）。
+   * 返回解绑函数：退订时调用，之后的迟到状态不再影响策略。
+   */
+  const bindSubscription = (handle: RealtimeSubscriptionHandle): (() => void) => {
+    return handle.onStatus((subscriptionStatus) => {
+      if (disposed) return
+      if (subscriptionStatus === 'subscribed') {
+        void startRead('auto')
+        setSubscriptionHealthy(true)
+        return
+      }
+      setSubscriptionHealthy(false)
+    })
+  }
+
   /** 显式刷新（下拉 / 失败重试）：立即读一次并重置轮询计时 */
   const runManualRead = () => (disposed ? Promise.resolve() : startRead('manual'))
 
@@ -204,6 +233,7 @@ export function useOrderStatus(options: UseOrderStatusOptions): OrderStatusContr
 
   return {
     setActive,
+    bindSubscription,
     setSubscriptionHealthy,
     runManualRead,
     runAutoRead,
