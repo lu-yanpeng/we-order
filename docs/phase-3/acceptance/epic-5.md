@@ -230,3 +230,63 @@ supabase gen types typescript --local  # 与入仓零差异
 2. **脚本运行时与小程序不同源但同协议**：脚本用 Deno + `realtime-js 2.116.0`（deno 锁定的传递版本）；小程序侧为 2.117.1 + pnpm patch。补丁只服务微信宿主的 `URL` 兼容，不改变 join / 凭证 / RLS 语义；真机侧仍由 Story 5.4 负责。
 3. **合成分身**：脚本造 `verify-isolation-*` 临时用户并清理（订单随用户级联）；不触碰真机真实身份。
 4. **验证矩阵 #5 / #12** 留 Story 5.4（真机订阅驱动更新、回退与恢复）。
+
+## Story 5.4 真机 PoC 冒烟与止损判定
+
+- 日期：2026-10-07
+- 环境：真机（开发版 + 调试模式，与电脑同局域网；`mp/.env.local` 指向 Windows 局域网 IP，经端口转发到 WSL 本地栈），微信开发者工具「真机调试」观察控制台与 Network；本地 Supabase 栈（迁移 + seed 已应用，`orders` 在 `supabase_realtime` publication，realtime 容器已重启）；mp 侧 `pnpm test`（vitest 3.2.7）/ `pnpm type-check`（vue-tsc 3.3.6）/ `pnpm lint` / `pnpm build:mp-weixin`。
+- 范围：#12 订阅驱动更新（SM-5）与 #5 回退与恢复的真机 PoC（含断线窗口变化不丢、空窗 ≤ 2 个轮询周期）；加练 A（失败上限放弃）在本轮顺带完成；**不执行**纯轮询降级演练与时间盒计时（见决策 ⑤）；现场发现一条无关小缺陷并修复（见「现场修复」）。
+- 决策记录（Ly，运行前逐项拍板）：① 观察页 = 订单详情页（1A）；② 断线制造 = 停容器再启回（2A）；③ 停机窗口内变化 = 点一次「催单」（3A）；④ 加练范围 = 只做放弃上限（4A）；⑤ 止损 = 功能已于 5.1 ~ 5.3 完成并跑通，不再执行时间盒计时与降级演练，`core/realtime` 保持启用（Ly 裁定，非「超时未跑通」结论）；⑥ 证据 = 轻量文字（6A）。观察参数：临时 `ready_delay_seconds = 30`（#12 轮）/ `120`（#5 轮），结束已还原 15（未入仓）。
+
+### 交付物
+
+| 类别 | 内容 |
+| --- | --- |
+| 修改（客户端，现场修复） | 新增 `mp/src/utils/loading.ts`（`hideLoadingQuietly()`）；`pages/home/composables/use-orders.ts` / `composables/use-checkout-bar.ts` 两个跳转入口改用——修复真机 `hideLoading:fail:toast can't be found`（详见「现场修复」） |
+| 修改（文档） | `validation-matrix.md` #5 / #12 两行与表头结论、订阅判定口径；`core/realtime/README.md` 失败上限时长描述校准（约 20~30s，含看门狗兜底）；本记录 |
+| 未改动 | 后端全部（迁移 / 函数 / 类型 / 脚本）；`core/realtime` 运行时逻辑与刷新策略；依赖清单 |
+
+### 手动冒烟记录（2026-10-07，Ly 实操确认，真机）
+
+三轮实跑（观察参数 30 / 120 已还原）：
+
+1. **#12 订阅驱动更新（SM-5）**：下单 → 进入详情 → `channel subscribed orders:e0d72230…`；Network 读取仅 4 条（进入 1 + 订阅补读 1 + 两次事件后各 1），订阅健康期零周期请求；`ready_at 18:45:05` → 第 1 次 `event UPDATE` → 页面「待取餐」；`completed_at 18:45:38`（自动完成）→ 第 2 次 `event UPDATE` → 「已完成」→ `unsubscribed`（终态退订）；全程未触碰屏幕。
+2. **#5 回退 + 变化不丢 + 放弃上限**：19:17:19 停容器 → `transport close` → `socket closed; failure 1/5`、状态 connecting，≤1 个轮询周期内 Network 恢复每 5s 请求；约 19:17:23 点「催单」（`ready_at` 提前到 19:17:26）→ 服务端在停机窗口内推进到「待取餐」→ 页面 ≤1 个周期自动上屏（无 `event UPDATE`，纯轮询）；19:17:35 启回后尝试仍失败（含一次 20s 看门狗兜底计失败）→ 约 19:17:42 `give up after 5 failures; polling takes over`（失败上限；放弃后无重连风暴、轮询继续兜底）；19:17:57 自动完成 → 轮询读到终态后 `unsubscribed`。
+3. **#5 恢复（补读与停轮询）**：19:26:29 停容器（4s 短窗）→ `failure 1/5 ~ 4/5` → 19:26:33 启回 → 下一次尝试 `socket open` → `phx_join` → `channel subscribed`（failure 4/5 上限内自愈）→ 一次补读后零周期请求；其后该单推进（19:27:59）与自动完成（19:28:31）均由恢复后的订阅事件驱动更新（页面自动更新、无手刷）。全程无用户可见报错。
+
+### 验收点与证据
+
+| Story 5.4 验收点 | 结论 / 证据 |
+| --- | --- |
+| 真机可观察到一次订阅驱动的页面更新（SM-5；#12） | 通过：冒烟 1（两次事件各触发恰好一次读取，页面自动更新；零周期请求） |
+| 阻断 socket → 自动回退 5s 轮询；断开到回退空窗 ≤ 2 个周期；窗口内变化不丢（#5） | 通过：冒烟 2（failures 1/5~4/5 期间每 5s 请求；催单造的变化经轮询 ≤1 周期上屏） |
+| 恢复 SUBSCRIBED → 先补读一次再停轮询；上限内自愈 | 通过：冒烟 3（failure 4/5 → `socket open` → `channel subscribed` → 补读 → 停轮询） |
+| 失败上限放弃（加练 A）：退避 + 上限、无重连风暴；放弃后轮询兜底 | 通过：冒烟 2（`give up after 5 failures`；轮询照常；「下次进可见域重订」为设计行为、单测覆盖） |
+| 回退与恢复过程开发期可观察、不面向用户暴露 | 通过：全程仅 `[realtime]` 日志与 Network 现象；无弹错/打扰（另见「现场修复」） |
+| 归属隔离（#6）与订阅驱动更新（#12）记录进手动验证矩阵 | 通过：#6 见 Story 5.3；#5 / #12 已写入 `validation-matrix.md` |
+| 止损（时间盒与纯轮询降级演练） | 按 Ly 裁定关闭：功能已完成并跑通，不再计时/演练；`core/realtime` 保持启用 |
+
+### 验证命令与输出（由演示者本人执行，输出不入档）
+
+```bash
+cd mp
+pnpm test            # 21 文件 / 246 项全过
+pnpm type-check      # 0 错误
+pnpm lint            # 0 错误
+pnpm build:mp-weixin # Build complete（含现场修复）
+```
+
+### 现场修复（PoC 发现的无关小缺陷）
+
+- **现象**：真机每次进入订单详情，控制台报 `(in promise) MiniProgramError {"errMsg":"hideLoading:fail:toast can't be found"}`；功能无影响，纯控制台噪音。
+- **根因**：`navigateTo` 跳页触发当前页 `onHide`，宿主自动隐藏 loading；`complete` 回调里再 `uni.hideLoading()` 时已无 loading 可隐藏，Promise 拒绝未被处理（开发者工具上这句 hide 仍需保留——它清理「返回时重新冒出」的 loading）。
+- **修复**：新增 `utils/loading.ts` 的 `hideLoadingQuietly()`（传 `fail` 回调让 uni 不走 Promise 分支；`@dcloudio/types` 未声明该重载，按运行时形状收窄）；进详情与进结算两个同型入口统一改用。
+- **复测**：真机重建后进入详情，报错消失；`pnpm test / type-check / lint / build` 全过。
+
+### 有意偏差与遗留
+
+1. **止损判定按裁定关闭**（决策 ⑤）：不产生「降级为纯轮询」的运行态变更；`core/realtime` 保持启用。
+2. **首轮时序干扰**：第一次尝试时订单自然推进时刻与停机窗口重合（催单未成），该轮不计入证据；改为临时 `ready_delay` 控制窗口后重跑（参数已还原）。
+3. **失败上限实际时长**：本轮 5 次失败约 22s（含一次 20s 看门狗兜底；受「重连尝试挂起」影响）；`core/realtime/README.md` 描述已由「约 28s」校准为「约 20~30s，含看门狗兜底」。
+4. **放弃后不自动重订**：达上限后客户端不再自动重连（设计行为），下次进入可见域重新订阅；本轮以轮询兜底验证（页面不降级）。
+5. **现场修复不在 Story 5.4 范围**：属导航路径的遗留小缺陷，与 5.4 证据无耦合；单独记录、由 Ly 决定提交拆分。

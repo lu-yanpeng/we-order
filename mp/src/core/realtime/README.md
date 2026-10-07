@@ -53,8 +53,9 @@ export function subscribeOrders(options: OrderSubscriptionOptions): RealtimeSubs
   回调取最新值，双保险）。
 - **连接**：`supabaseUrl()` 的 http(s) 换 ws(s) + `/realtime/v1`；`apikey` 走查询参数，
   `access_token` 走 `phx_join` 载荷；心跳 25s；断线由 realtime-js 退避重连（1/2/5/10s，之后每 10s）。
-- **上限**：连续失败 5 次（约 28s 无一次成功）即放弃、状态 `unavailable`、断开客户端；
-  下次进入可见域重新订阅。看门狗 20s：状态停在 `connecting` 时计一次失败并重建 channel。
+- **上限**：连续失败 5 次（约 20~30s 无一次成功；挂起的重连尝试由 20s 看门狗兜底计一次失败）
+  即放弃、状态 `unavailable`、断开客户端；下次进入可见域重新订阅。看门狗 20s：状态停在
+  `connecting` 时计一次失败并重建 channel。
 - **状态**：`connecting | subscribed | unavailable`（`types/realtime.ts`）；订阅失败不抛异常、
   不产出错误类别、对用户静默；开发期看 `[realtime]` 前缀日志观察连接 / 订阅 / 退订 / 回退 / 恢复。
 - **归属**：filter 不构成归属判定，RLS 是唯一裁决（两个身份隔离验证属 Story 5.3）。
