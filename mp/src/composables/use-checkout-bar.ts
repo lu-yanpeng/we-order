@@ -19,6 +19,7 @@
 import { ref } from 'vue'
 import type { Ref } from 'vue'
 import type { CartItem } from '@/types/cart'
+import { hideLoadingQuietly } from '@/utils/loading'
 
 /** 结算栏可见性：模块级共享，保证 once-true-never-false（AD-4-e） */
 const checkoutBarVisible = ref(false)
@@ -106,7 +107,8 @@ export function useCheckoutBar(items: Ref<CartItem[]>) {
         checkingOut.value = false
       },
       complete: () => {
-        uni.hideLoading()
+        // 跳页时宿主已自动隐藏 loading，真机重复 hide 会失败；静默处理（见 utils/loading.ts）
+        hideLoadingQuietly()
       },
     })
   }

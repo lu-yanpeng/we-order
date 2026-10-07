@@ -37,6 +37,7 @@ import type { OrderListItem, OrdersPage } from '@/types/api-contracts'
 import { fetchOrders, subscribeOrders } from '@/api/orders'
 import type { RealtimeSubscriptionHandle } from '@/types/realtime'
 import { errorCopyOr } from '@/utils/error-copy'
+import { hideLoadingQuietly } from '@/utils/loading'
 import { appendOrderPage, mergeOrderList, replaceOrderList } from '@/utils/order-status'
 import type { AppliedSeqMap } from '@/utils/order-status'
 import { useOrderStatus } from '@/composables/use-order-status'
@@ -281,7 +282,8 @@ export function useOrders() {
         navigatingToDetail.value = false
       },
       complete: () => {
-        uni.hideLoading()
+        // 跳页时宿主已自动隐藏 loading，真机重复 hide 会失败；静默处理（见 utils/loading.ts）
+        hideLoadingQuietly()
       },
     })
   }
