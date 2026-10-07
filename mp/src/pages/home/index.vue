@@ -357,6 +357,7 @@ onHide(() => {
       @confirm="handleSpecConfirm"
       @toggle-option="toggleOption"
       @update-count="updateCount"
+      :image-url="productImageUrl(currentProduct?.image_path ?? null)"
     />
   </view>
 </template>

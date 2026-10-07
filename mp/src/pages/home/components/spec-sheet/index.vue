@@ -9,7 +9,7 @@
  *   - 有规格（hasSpecs）：显示规格组 + 数量步进器
  *   - 无规格（!hasSpecs）：仅显示数量步进器
  */
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { MenuProduct, SpecSelections } from '@/types/api-contracts'
 import MyStepper from '@/components/stepper/index.vue'
 import BottomBar from '@/components/bottom-bar/index.vue'
@@ -29,6 +29,7 @@ const props = defineProps<{
   stepperLabel: string
   /** 是否有规格组 */
   hasSpecs: boolean
+  imageUrl?: string
 }>()
 
 const emit = defineEmits<{
@@ -67,6 +68,8 @@ const popupVisible = computed({
   get: () => props.visible,
   set: (val) => emit('update:visible', val),
 })
+
+const imageFailed = ref(false)
 </script>
 
 <template>
@@ -87,8 +90,17 @@ const popupVisible = computed({
       >
         <view class="flex shrink-0 items-start border-b border-border-hairline p-[32rpx]">
           <view
-            class="mr-[24rpx] h-[144rpx] w-[144rpx] shrink-0 rounded-[24rpx] bg-surface-ceramic"
-          />
+            class="mr-[24rpx] h-[160rpx] w-[160rpx] shrink-0 overflow-hidden rounded-[24rpx] bg-surface-ceramic"
+          >
+            <image
+              v-if="imageUrl && !imageFailed"
+              class="h-full w-full"
+              :src="imageUrl"
+              mode="aspectFill"
+              lazy-load
+              @error="imageFailed = true"
+            />
+          </view>
           <view class="flex min-w-0 flex-1 flex-col pt-[8rpx]">
             <text class="leading-[1.3] font-semibold text-[32rpx] text-ink">{{
               product.name
