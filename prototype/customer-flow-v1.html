@@ -2,54 +2,63 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>顾客端线框图 v2 · 微信点餐小程序</title>
+<title>顾客端线框图 v3 · 微信点餐小程序</title>
 <style>
   *{box-sizing:border-box}
   body{
     margin:0;padding:36px 20px 56px;background:#eef0f2;color:#1c1c1e;
     font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
   }
-  .pagehead{max-width:1240px;margin:0 auto 34px;text-align:center}
+  .pagehead{max-width:1280px;margin:0 auto 34px;text-align:center}
   .pagehead h1{font-size:24px;margin:0 0 10px;letter-spacing:.5px}
   .pagehead p{color:#6b7280;font-size:14px;line-height:1.8;margin:0}
-  .pagehead .kbd{display:inline-block;border:1px solid #d1d5db;background:#fff;border-radius:5px;padding:1px 7px;font-size:13px;color:#374151;margin:0 2px}
-  .flow{max-width:1240px;margin:0 auto;display:flex;flex-wrap:wrap;gap:36px;justify-content:center;align-items:flex-start}
+  .pagehead b{color:#374151}
+  .flow{max-width:1280px;margin:0 auto;display:flex;flex-wrap:wrap;gap:36px;justify-content:center;align-items:flex-start}
 
   .unit{display:flex;flex-direction:column;align-items:center;gap:12px}
   .phone{
     width:375px;background:#0f0f11;border-radius:42px;padding:10px;
     box-shadow:0 18px 42px rgba(15,15,17,.22),0 2px 8px rgba(15,15,17,.14);
   }
-  .screen{background:#f5f6f8;border-radius:33px;overflow:hidden;height:660px;display:flex;flex-direction:column}
+  .screen{position:relative;background:#f5f6f8;border-radius:33px;overflow:hidden;height:660px;display:flex;flex-direction:column}
   .statusbar{display:flex;justify-content:space-between;padding:11px 22px 5px;font-size:12px;color:#9ca3af;flex:none}
-  .navbar{flex:none;display:flex;align-items:center;justify-content:center;position:relative;padding:7px 16px 12px;font-size:16px;font-weight:600;color:#111}
-  .navbar .back{position:absolute;left:16px;font-size:17px;color:#6b7280;font-weight:400}
-  .content{flex:1;overflow:hidden;padding:0 12px 12px}
 
-  .card{background:#fff;border:1px solid #e8eaee;border-radius:12px;padding:12px;box-shadow:0 1px 3px rgba(17,24,39,.05)}
-  .card + .card{margin-top:10px}
-  .notice{display:flex;gap:10px;align-items:center;background:#fbfcfd;border:1px solid #e8eaee;border-radius:10px;padding:9px 11px;margin-bottom:10px}
-  .notice .ico{width:22px;height:22px;flex:none;border-radius:6px;background:#eef0f3;display:flex;align-items:center;justify-content:center;font-size:11px;color:#8892a0}
-  .notice .txt{font-size:11.5px;color:#7a8494;line-height:1.5}
+  /* 顶部：tab 切换器（左上角，可左右滑动切换） */
+  .tabswitch{flex:none;display:flex;gap:6px;padding:8px 16px 10px;justify-content:flex-start}
+  .tabs{display:inline-flex;background:#e9ecf0;border-radius:999px;padding:3px}
+  .tabs .t{border-radius:999px;padding:6px 18px;font-size:13px;color:#6b7280}
+  .tabs .t.on{background:#fff;color:#111;font-weight:700;box-shadow:0 1px 2px rgba(17,24,39,.12)}
+  .swipehint{font-size:10px;color:#b6bdc7;align-self:center;margin-left:6px}
 
-  .catrow{display:flex;gap:8px;margin-bottom:10px}
-  .cat{flex:none;border:1px solid #e5e7eb;background:#fff;border-radius:999px;padding:5px 14px;font-size:12.5px;color:#4b5563}
-  .cat.on{background:#1c1c1e;border-color:#1c1c1e;color:#fff;font-weight:600}
+  /* 黏性分类标题 */
+  .stickytitle{flex:none;background:#fff;border-bottom:1px solid #e8eaee;padding:9px 16px;font-size:13px;font-weight:700;color:#16181d;display:flex;align-items:center;justify-content:space-between}
+  .stickytitle span{font-size:11px;font-weight:400;color:#b6bdc7}
 
-  .dish{display:flex;gap:11px;align-items:center;background:#fff;border:1px solid #e8eaee;border-radius:12px;padding:10px;box-shadow:0 1px 3px rgba(17,24,39,.05)}
-  .dish + .dish{margin-top:9px}
-  .thumb{width:56px;height:56px;flex:none;border-radius:9px;background:repeating-linear-gradient(45deg,#eef0f3 0 7px,#e4e7ec 7px 14px);display:flex;align-items:center;justify-content:center;font-size:10px;color:#98a1b0}
+  /* 点餐 tab：左分类 + 右商品 */
+  .menulayout{flex:1;display:flex;overflow:hidden}
+  .cats{width:88px;flex:none;background:#f0f2f5;padding:8px 6px;display:flex;flex-direction:column;gap:4px}
+  .cats .c{border-radius:8px;padding:9px 6px;font-size:12px;color:#6b7280;text-align:center}
+  .cats .c.on{background:#fff;color:#111;font-weight:700;box-shadow:0 1px 2px rgba(17,24,39,.08)}
+  .dishes{flex:1;overflow:hidden;padding:8px 10px 12px}
+  .dish{display:flex;gap:10px;align-items:center;background:#fff;border:1px solid #e8eaee;border-radius:12px;padding:9px;box-shadow:0 1px 3px rgba(17,24,39,.05)}
+  .dish + .dish{margin-top:8px}
+  .thumb{width:52px;height:52px;flex:none;border-radius:9px;background:repeating-linear-gradient(45deg,#eef0f3 0 7px,#e4e7ec 7px 14px);display:flex;align-items:center;justify-content:center;font-size:10px;color:#98a1b0}
   .dish .info{flex:1;min-width:0}
-  .dish .name{font-size:14px;font-weight:600;color:#16181d}
-  .dish .desc{font-size:11.5px;color:#98a1b0;margin-top:3px}
-  .dish .price{font-size:13.5px;font-weight:700;color:#16181d;margin-top:5px}
-  .plus{width:27px;height:27px;flex:none;border-radius:50%;background:#1c1c1e;color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:600}
+  .dish .name{font-size:13.5px;font-weight:600;color:#16181d}
+  .dish .desc{font-size:11px;color:#98a1b0;margin-top:3px}
+  .dish .price{font-size:13px;font-weight:700;color:#16181d;margin-top:4px}
+  .plus{position:relative;width:27px;height:27px;flex:none;border-radius:50%;background:#1c1c1e;color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:600}
+  .qty{position:absolute;top:-6px;right:-6px;background:#6b7280;color:#fff;font-size:9px;line-height:1;border-radius:999px;padding:2px 4px}
 
-  .sheet{background:#fff;border:1px solid #e8eaee;border-radius:14px;padding:14px;box-shadow:0 1px 3px rgba(17,24,39,.05)}
-  .sheet .stitle{font-size:15px;font-weight:700;text-align:center;color:#16181d}
-  .sheet .sprice{font-size:14px;color:#8892a0;text-align:center;margin:4px 0 14px}
-  .sheet .sprice b{font-size:17px;color:#16181d}
-  .fld{margin-bottom:13px}
+  /* 底部抽屉（规格面板 = 简易商品详情） */
+  .dim{position:absolute;inset:0;background:rgba(15,15,17,.45);z-index:5}
+  .drawer{position:absolute;left:0;right:0;bottom:0;max-height:75%;z-index:6;background:#fff;border-radius:20px 20px 0 0;padding:8px 16px 16px;display:flex;flex-direction:column;box-shadow:0 -10px 30px rgba(15,15,17,.18)}
+  .handle{width:38px;height:4px;border-radius:999px;background:#d7dbe0;margin:2px auto 12px}
+  .drawer .hero{height:118px;border-radius:12px;background:repeating-linear-gradient(45deg,#eef0f3 0 8px,#e4e7ec 8px 16px);display:flex;align-items:center;justify-content:center;font-size:12px;color:#98a1b0;margin-bottom:12px}
+  .drawer .dname{font-size:16px;font-weight:700;color:#16181d}
+  .drawer .ddesc{font-size:12px;color:#8892a0;margin-top:4px;line-height:1.5}
+  .drawer .dprice{font-size:15px;font-weight:800;color:#16181d;margin-top:8px}
+  .fld{margin-top:12px}
   .flabel{font-size:12px;color:#98a1b0;margin-bottom:7px}
   .opts{display:flex;gap:7px;flex-wrap:wrap}
   .opt{border:1px solid #e5e7eb;background:#fafbfc;border-radius:8px;padding:6px 13px;font-size:12.5px;color:#4b5563}
@@ -57,17 +66,28 @@
   .steps{display:flex;align-items:center;gap:10px}
   .step{width:26px;height:26px;border:1px solid #d7dbe0;background:#fff;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:15px;color:#4b5563}
   .stepval{width:34px;text-align:center;font-size:14px;font-weight:600}
-  .textarea{border:1px dashed #d7dbe0;border-radius:9px;padding:9px 11px;font-size:12px;color:#b3bac4;background:#fbfcfd}
+  .drawerspacer{flex:1}
+  .drawerbtn{background:#1c1c1e;color:#fff;border-radius:999px;padding:12px 0;text-align:center;font-size:14px;font-weight:700;margin-top:14px}
 
+  /* 购物车条 / 底部按钮 */
   .bottombar{flex:none;border-top:1px solid #e8eaee;background:#fff;padding:10px 14px 14px;display:flex;align-items:center;gap:10px}
-  .bottom .label{font-size:11px;color:#98a1b0}
+  .label{font-size:11px;color:#98a1b0}
   .total{font-size:16px;font-weight:800;color:#16181d}
   .paybtn{flex:1;background:#1c1c1e;color:#fff;border-radius:999px;padding:12px 0;text-align:center;font-size:14.5px;font-weight:700}
-  .count{font-size:12px;color:#6b7280}
-
   .rowline{display:flex;justify-content:space-between;font-size:13px;color:#374151;margin:7px 0}
   .rowline b{color:#16181d}
   .dash{border-top:1px dashed #e5e7eb;margin:10px 0}
+  .card{background:#fff;border:1px solid #e8eaee;border-radius:12px;padding:12px;box-shadow:0 1px 3px rgba(17,24,39,.05)}
+  .card + .card{margin-top:10px}
+  .content{flex:1;overflow:hidden;padding:10px 12px 12px}
+
+  /* 订单明细行（带图） */
+  .oitem{display:flex;gap:10px;align-items:center;margin:9px 0}
+  .oitem .thumb{width:46px;height:46px}
+  .oitem .oi{flex:1;min-width:0}
+  .oitem .oiname{font-size:13px;font-weight:600;color:#16181d}
+  .oitem .oispec{font-size:11px;color:#98a1b0;margin-top:3px}
+  .oitem .oiprice{font-size:12.5px;color:#374151;text-align:right}
   .orderhead{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#98a1b0;margin-bottom:8px}
   .pill{display:inline-block;border-radius:999px;font-size:11px;padding:2.5px 9px;font-weight:600}
   .pill.making{background:#fef3c7;color:#92400e}
@@ -77,13 +97,7 @@
   .huge .num{font-size:44px;font-weight:800;letter-spacing:2px;color:#16181d;line-height:1}
   .huge .lbl{font-size:12px;color:#98a1b0;margin-top:8px}
 
-  .tabbar{flex:none;display:flex;border-top:1px solid #e8eaee;background:#fff;padding:8px 0 12px}
-  .tab{flex:1;text-align:center;font-size:11px;color:#98a1b0}
-  .tab .icon{display:block;font-size:17px;margin-bottom:2px}
-  .tab.on{color:#16181d;font-weight:700}
-
-  .ghostbtn{display:block;border:1px dashed #c9cfd8;border-radius:10px;padding:10px 0;text-align:center;font-size:13px;color:#6b7280;background:#fff}
-  .solidbtn{display:block;background:#1c1c1e;color:#fff;border-radius:999px;padding:11px 0;text-align:center;font-size:14px;font-weight:700}
+  .textarea{border:1px dashed #d7dbe0;border-radius:9px;padding:9px 11px;font-size:12px;color:#b3bac4;background:#fbfcfd}
 
   .unit .cap{max-width:375px;text-align:center;font-size:12.5px;color:#6b7280;line-height:1.7}
   .unit .cap b{color:#374151}
@@ -92,101 +106,60 @@
 <body>
 
 <div class="pagehead">
-  <h1>顾客端线框图 v2 · 微信点餐小程序</h1>
+  <h1>顾客端线框图 v3 · 微信点餐小程序</h1>
   <p>
-    奶茶店堂食扫码点单模式 · 黑白灰草图，不是最终设计<br>
-    本轮已按你的反馈修改：<b>删首页、删桌号、删月售、删取餐方式，「再来一单」做成真按钮</b><br>
-    看完请说：哪些要留、哪些删掉、缺了什么（<span class="kbd">①</span> 到 <span class="kbd">⑦</span> 编号对应下方各屏）
+    奶茶店堂食扫码点单模式 · 黑白灰草图<br>
+    本轮修改：<b>删顶部通知；tab 移到左上角左右滑动切换；点餐页改左右布局 + 黏性分类标题；规格面板改底部抽屉（含商品图/描述，最高 75%）；确认订单加商品图；「再来一单」为真按钮</b><br>
+    看完继续用「留 / 删 / 补」反馈，不着急一次讲完
   </p>
 </div>
 
 <div class="flow">
 
-  <!-- ① 菜单页 -->
+  <!-- ① 点餐 tab -->
   <div class="unit">
     <div class="phone">
       <div class="screen">
         <div class="statusbar"><span>9:41</span><span>▮▮▮ ▮</span></div>
-        <div class="navbar">点单</div>
-        <div class="content">
-          <div class="notice">
-            <div class="ico">告</div>
-            <div class="txt">本店支持堂食扫码点单，做好后到前台喊号自取 · 营业时间 10:00 - 22:00</div>
-          </div>
-          <div class="catrow">
-            <div class="cat on">招牌奶茶</div>
-            <div class="cat">果茶</div>
-            <div class="cat">咖啡</div>
-            <div class="cat">小食</div>
-          </div>
-          <div class="dish">
-            <div class="thumb">图</div>
-            <div class="info">
-              <div class="name">饮品 A</div>
-              <div class="desc">示例描述文字</div>
-              <div class="price">¥ 12.0</div>
-            </div>
-            <div class="plus">+</div>
-          </div>
-          <div class="dish">
-            <div class="thumb">图</div>
-            <div class="info">
-              <div class="name">饮品 B</div>
-              <div class="desc">示例描述文字</div>
-              <div class="price">¥ 15.0</div>
-            </div>
-            <div class="plus">+</div>
-          </div>
-          <div class="dish">
-            <div class="thumb">图</div>
-            <div class="info">
-              <div class="name">饮品 C</div>
-              <div class="desc">示例描述文字</div>
-              <div class="price">¥ 18.0</div>
-            </div>
-            <div class="plus">+</div>
-          </div>
+        <div class="tabswitch">
+          <div class="tabs"><span class="t on">点餐</span><span class="t">订单</span></div>
+          <span class="swipehint">← 左右滑动切换 →</span>
         </div>
-        <div class="tabbar">
-          <div class="tab on"><span class="icon">▤</span>点单</div>
-          <div class="tab"><span class="icon">☰</span>订单</div>
-        </div>
-      </div>
-    </div>
-    <div class="cap">① <b>点单页</b>：分类胶囊 + 饮品列表；「+」加购时弹 ② 规格面板</div>
-  </div>
-
-  <!-- ② 规格面板 -->
-  <div class="unit">
-    <div class="phone">
-      <div class="screen">
-        <div class="statusbar"><span>9:41</span><span>▮▮▮ ▮</span></div>
-        <div class="navbar"><span class="back">‹</span>点单</div>
-        <div class="content">
-          <div class="sheet">
-            <div class="stitle">选择规格</div>
-            <div class="sprice"><b>¥ 12.0</b></div>
-            <div class="fld">
-              <div class="flabel">杯型</div>
-              <div class="opts"><span class="opt on">中杯</span><span class="opt">大杯 +2</span></div>
-            </div>
-            <div class="fld">
-              <div class="flabel">糖度</div>
-              <div class="opts"><span class="opt on">正常糖</span><span class="opt">七分糖</span><span class="opt">半糖</span><span class="opt">无糖</span></div>
-            </div>
-            <div class="fld">
-              <div class="flabel">冰度</div>
-              <div class="opts"><span class="opt on">正常冰</span><span class="opt">少冰</span><span class="opt">去冰</span><span class="opt">热饮</span></div>
-            </div>
-            <div class="fld">
-              <div class="flabel">加料（可多选）</div>
-              <div class="opts"><span class="opt">珍珠 +2</span><span class="opt on">椰果 +2</span><span class="opt">布丁 +3</span></div>
-            </div>
-            <div class="fld">
-              <div class="flabel">数量</div>
-              <div class="steps">
-                <div class="step">−</div><div class="stepval">1</div><div class="step">+</div>
+        <div class="stickytitle">招牌奶茶 <span>滚动时自动更新为当前分类</span></div>
+        <div class="menulayout">
+          <div class="cats">
+            <div class="c on">招牌奶茶</div>
+            <div class="c">果茶</div>
+            <div class="c">咖啡</div>
+            <div class="c">小食</div>
+          </div>
+          <div class="dishes">
+            <div class="dish">
+              <div class="thumb">图</div>
+              <div class="info">
+                <div class="name">饮品 A</div>
+                <div class="desc">示例描述文字</div>
+                <div class="price">¥ 12.0</div>
               </div>
+              <div class="plus">+</div>
+            </div>
+            <div class="dish">
+              <div class="thumb">图</div>
+              <div class="info">
+                <div class="name">饮品 B</div>
+                <div class="desc">示例描述文字</div>
+                <div class="price">¥ 15.0</div>
+              </div>
+              <div class="plus">+<span class="qty">2</span></div>
+            </div>
+            <div class="dish">
+              <div class="thumb">图</div>
+              <div class="info">
+                <div class="name">饮品 C</div>
+                <div class="desc">示例描述文字</div>
+                <div class="price">¥ 18.0</div>
+              </div>
+              <div class="plus">+</div>
             </div>
           </div>
         </div>
@@ -199,20 +172,133 @@
         </div>
       </div>
     </div>
-    <div class="cap">② <b>规格面板</b>：杯型 / 糖度 / 冰度 / 加料 + 底部购物车栏</div>
+    <div class="cap">① <b>点餐 tab</b>：左侧分类、右侧商品；滑动商品时左侧自动高亮、顶部黏性标题更新（加号角标 = 已加购数量）</div>
   </div>
 
-  <!-- ③ 确认订单 -->
+  <!-- ② 规格抽屉 -->
   <div class="unit">
     <div class="phone">
       <div class="screen">
         <div class="statusbar"><span>9:41</span><span>▮▮▮ ▮</span></div>
-        <div class="navbar"><span class="back">‹</span>确认订单</div>
+        <div class="tabswitch">
+          <div class="tabs"><span class="t on">点餐</span><span class="t">订单</span></div>
+        </div>
+        <div class="stickytitle">招牌奶茶 <span>滚动时自动更新为当前分类</span></div>
+        <div class="menulayout">
+          <div class="cats">
+            <div class="c on">招牌奶茶</div>
+            <div class="c">果茶</div>
+            <div class="c">咖啡</div>
+            <div class="c">小食</div>
+          </div>
+          <div class="dishes">
+            <div class="dish">
+              <div class="thumb">图</div>
+              <div class="info">
+                <div class="name">饮品 A</div>
+                <div class="desc">示例描述文字</div>
+                <div class="price">¥ 12.0</div>
+              </div>
+              <div class="plus">+</div>
+            </div>
+            <div class="dish">
+              <div class="thumb">图</div>
+              <div class="info">
+                <div class="name">饮品 B</div>
+                <div class="desc">示例描述文字</div>
+                <div class="price">¥ 15.0</div>
+              </div>
+              <div class="plus">+</div>
+            </div>
+          </div>
+        </div>
+        <div class="dim"></div>
+        <div class="drawer">
+          <div class="handle"></div>
+          <div class="hero">商品头图（仅此一张）</div>
+          <div class="dname">饮品 A</div>
+          <div class="ddesc">示例描述：这是商品详情描述，规格面板即简易详情页</div>
+          <div class="dprice">¥ 12.0</div>
+          <div class="fld">
+            <div class="flabel">杯型</div>
+            <div class="opts"><span class="opt on">中杯</span><span class="opt">大杯 +2</span></div>
+          </div>
+          <div class="fld">
+            <div class="flabel">糖度</div>
+            <div class="opts"><span class="opt on">正常糖</span><span class="opt">七分糖</span><span class="opt">半糖</span><span class="opt">无糖</span></div>
+          </div>
+          <div class="fld">
+            <div class="flabel">冰度</div>
+            <div class="opts"><span class="opt on">正常冰</span><span class="opt">少冰</span><span class="opt">去冰</span><span class="opt">热饮</span></div>
+          </div>
+          <div class="fld">
+            <div class="flabel">加料（可多选）</div>
+            <div class="opts"><span class="opt">珍珠 +2</span><span class="opt on">椰果 +2</span><span class="opt">布丁 +3</span></div>
+          </div>
+          <div class="fld">
+            <div class="flabel">数量</div>
+            <div class="steps"><div class="step">−</div><div class="stepval">1</div><div class="step">+</div></div>
+          </div>
+          <div class="drawerspacer"></div>
+          <div class="drawerbtn">加入购物车</div>
+        </div>
+      </div>
+    </div>
+    <div class="cap">② <b>规格抽屉</b>：底部上升（最高 75%，随内容撑开）——商品图 + 描述 + 规格 + 步进器。无规格商品则只显示图、描述、步进器</div>
+  </div>
+
+  <!-- ③ 订单 tab -->
+  <div class="unit">
+    <div class="phone">
+      <div class="screen">
+        <div class="statusbar"><span>9:41</span><span>▮▮▮ ▮</span></div>
+        <div class="tabswitch">
+          <div class="tabs"><span class="t">点餐</span><span class="t on">订单</span></div>
+          <span class="swipehint">← 左右滑动切换 →</span>
+        </div>
         <div class="content">
           <div class="card">
-            <div class="orderhead"><span>共 2 件</span><span>备注可留空</span></div>
-            <div class="rowline"><span>饮品 A（中杯 / 正常糖 / 正常冰 / 椰果）</span><span>×1</span></div>
-            <div class="rowline"><span>饮品 B（大杯 / 七分糖 / 少冰）</span><span>×1</span></div>
+            <div class="orderhead"><span>取餐号 032</span><span class="pill making">制作中</span></div>
+            <div class="rowline"><span>饮品 A、饮品 B</span><span>¥ 29.0</span></div>
+            <div class="dash"></div>
+            <div class="rowline"><span>下单时间 14:32</span><span></span></div>
+          </div>
+          <div class="card" style="opacity:.85">
+            <div class="orderhead"><span>取餐号 028</span><span class="pill done">已完成</span></div>
+            <div class="rowline"><span>饮品 C</span><span>¥ 18.0</span></div>
+            <div class="dash"></div>
+            <div class="rowline"><span>下单时间 13:05</span><span class="opt" style="padding:4px 12px;border-radius:999px">再来一单</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap">③ <b>订单 tab</b>：与点餐同页，左右滑动即可切换（已完成订单里可再来一单）</div>
+  </div>
+
+  <!-- ④ 确认订单 -->
+  <div class="unit">
+    <div class="phone">
+      <div class="screen">
+        <div class="statusbar"><span>9:41</span><span>▮▮▮ ▮</span></div>
+        <div class="stickytitle" style="border-bottom:none;padding-bottom:2px">确认订单 <span>共 2 件</span></div>
+        <div class="content">
+          <div class="card">
+            <div class="oitem">
+              <div class="thumb">图</div>
+              <div class="oi">
+                <div class="oiname">饮品 A</div>
+                <div class="oispec">中杯 / 正常糖 / 正常冰 / 椰果</div>
+              </div>
+              <div class="oiprice">×1<br>¥ 12.0</div>
+            </div>
+            <div class="oitem">
+              <div class="thumb">图</div>
+              <div class="oi">
+                <div class="oiname">饮品 B</div>
+                <div class="oispec">大杯 / 七分糖 / 少冰</div>
+              </div>
+              <div class="oiprice">×1<br>¥ 15.0</div>
+            </div>
             <div class="dash"></div>
             <div class="rowline"><span>合计</span><span><b>¥ 29.0</b></span></div>
           </div>
@@ -230,26 +316,26 @@
         </div>
       </div>
     </div>
-    <div class="cap">③ <b>确认订单</b>：明细 + 备注 + 提交（保持极简）</div>
+    <div class="cap">④ <b>确认订单</b>：商品行带图</div>
   </div>
 
-  <!-- ④ 支付 -->
+  <!-- ⑤ 支付 -->
   <div class="unit">
     <div class="phone">
       <div class="screen">
         <div class="statusbar"><span>9:41</span><span>▮▮▮ ▮</span></div>
-        <div class="navbar"><span class="back">‹</span>支付</div>
+        <div class="stickytitle" style="border-bottom:none;padding-bottom:2px">支付</div>
         <div class="content">
           <div class="card">
             <div class="rowline"><span>订单金额</span><span><b>¥ 29.0</b></span></div>
           </div>
           <div class="card">
             <div class="flabel">支付方式（占位，未接真实支付）</div>
-            <div class="dish">
+            <div class="oitem" style="margin:0">
               <div class="thumb">图标</div>
-              <div class="info">
-                <div class="name">微信支付</div>
-                <div class="desc">点击完成支付</div>
+              <div class="oi">
+                <div class="oiname">微信支付</div>
+                <div class="oispec">点击完成支付</div>
               </div>
               <span class="pill done">默认</span>
             </div>
@@ -260,15 +346,15 @@
         </div>
       </div>
     </div>
-    <div class="cap">④ <b>支付页</b>：按「真实支付的形状」摆放，但暂未接入真实支付</div>
+    <div class="cap">⑤ <b>支付页</b>：按真实支付形状摆放，暂未接入真实支付</div>
   </div>
 
-  <!-- ⑤ 下单成功 -->
+  <!-- ⑥ 下单成功 -->
   <div class="unit">
     <div class="phone">
       <div class="screen">
         <div class="statusbar"><span>9:41</span><span>▮▮▮ ▮</span></div>
-        <div class="navbar">下单成功</div>
+        <div class="stickytitle" style="border-bottom:none;padding-bottom:2px">下单成功</div>
         <div class="content">
           <div class="huge">
             <div class="num">032</div>
@@ -276,8 +362,22 @@
           </div>
           <div class="card">
             <div class="orderhead"><span>订单明细</span><span class="pill making">制作中</span></div>
-            <div class="rowline"><span>饮品 A（中杯…）</span><span>×1</span></div>
-            <div class="rowline"><span>饮品 B（大杯…）</span><span>×1</span></div>
+            <div class="oitem">
+              <div class="thumb">图</div>
+              <div class="oi">
+                <div class="oiname">饮品 A</div>
+                <div class="oispec">中杯 / 正常糖 / 正常冰</div>
+              </div>
+              <div class="oiprice">×1</div>
+            </div>
+            <div class="oitem">
+              <div class="thumb">图</div>
+              <div class="oi">
+                <div class="oiname">饮品 B</div>
+                <div class="oispec">大杯 / 七分糖 / 少冰</div>
+              </div>
+              <div class="oiprice">×1</div>
+            </div>
           </div>
         </div>
         <div class="bottombar">
@@ -285,38 +385,7 @@
         </div>
       </div>
     </div>
-    <div class="cap">⑤ <b>下单成功</b>：取餐号 + 状态（状态流转规则待定）</div>
-  </div>
-
-  <!-- ⑥ 订单列表 -->
-  <div class="unit">
-    <div class="phone">
-      <div class="screen">
-        <div class="statusbar"><span>9:41</span><span>▮▮▮ ▮</span></div>
-        <div class="navbar">我的订单</div>
-        <div class="content">
-          <div class="catrow">
-            <div class="cat on">进行中</div>
-            <div class="cat">已完成</div>
-          </div>
-          <div class="card">
-            <div class="orderhead"><span>取餐号 032</span><span class="pill making">制作中</span></div>
-            <div class="rowline"><span>饮品 A、饮品 B</span><span>¥ 29.0</span></div>
-            <div class="dash"></div>
-            <div class="rowline"><span>下单时间 14:32</span><span></span></div>
-          </div>
-          <div class="card" style="opacity:.85">
-            <div class="orderhead"><span>取餐号 028</span><span class="pill done">已完成</span></div>
-            <div class="rowline"><span>饮品 C</span><span>¥ 18.0</span></div>
-          </div>
-        </div>
-        <div class="tabbar">
-          <div class="tab"><span class="icon">▤</span>点单</div>
-          <div class="tab on"><span class="icon">☰</span>订单</div>
-        </div>
-      </div>
-    </div>
-    <div class="cap">⑥ <b>订单列表</b>：进行中 / 已完成 分段</div>
+    <div class="cap">⑥ <b>下单成功</b>：取餐号 + 状态（状态流转规则待定）</div>
   </div>
 
   <!-- ⑦ 再来一单 -->
@@ -324,22 +393,28 @@
     <div class="phone">
       <div class="screen">
         <div class="statusbar"><span>9:41</span><span>▮▮▮ ▮</span></div>
-        <div class="navbar"><span class="back">‹</span>已完成订单</div>
+        <div class="stickytitle" style="border-bottom:none;padding-bottom:2px">订单详情 <span>已完成</span></div>
         <div class="content">
           <div class="card">
             <div class="orderhead"><span>取餐号 028</span><span class="pill done">已完成</span></div>
-            <div class="rowline"><span>饮品 C（大杯 / 半糖 / 少冰）</span><span>×2</span></div>
+            <div class="oitem">
+              <div class="thumb">图</div>
+              <div class="oi">
+                <div class="oiname">饮品 C</div>
+                <div class="oispec">大杯 / 半糖 / 少冰</div>
+              </div>
+              <div class="oiprice">×2<br>¥ 36.0</div>
+            </div>
             <div class="dash"></div>
-            <div class="rowline"><span>合计</span><span><b>¥ 36.0</b></span></div>
+            <div class="rowline"><span>下单时间 13:05</span><span><b>¥ 36.0</b></span></div>
           </div>
-          <div class="ghostbtn" style="margin-top:12px">查看订单详情（占位）</div>
         </div>
         <div class="bottombar">
           <div class="paybtn" style="flex:none;width:100%">再来一单</div>
         </div>
       </div>
     </div>
-    <div class="cap">⑦ <b>再来一单</b>：点按钮后把原订单的商品加回购物车</div>
+    <div class="cap">⑦ <b>再来一单</b>：点按钮后把原订单商品加回购物车</div>
   </div>
 
 </div>
